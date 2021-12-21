@@ -7567,6 +7567,11 @@ public final class Settings {
         public static final String SMART_5G = "smart_5g";
 
         /**
+         * @hide
+         */
+        public static final String UDFPS_ANIM_STYLE = "udfps_anim_style";
+
+        /**
          * Controls whether gestures are enabled.
          * @hide
          */
