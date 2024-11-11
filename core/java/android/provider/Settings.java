@@ -7573,6 +7573,11 @@ public final class Settings {
         public static final String GESTURES_ENABLED = "gestures_enabled";
 
         /**
+         * @hide
+         */
+        public static final String UDFPS_ICON = "udfps_icon";
+
+        /**
          * Controls whether double tap to wake is enabled.
          * @hide
          */
