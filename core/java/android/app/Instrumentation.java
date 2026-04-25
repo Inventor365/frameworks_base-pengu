@@ -71,7 +71,6 @@ import android.view.WindowManagerGlobal;
 
 import com.android.internal.content.ReferrerIntent;
 import com.android.internal.util.custom.AdvancedAppSpoofUtils;
-import com.android.internal.util.custom.PerAppsPropsUtils;
 
 import java.io.File;
 import java.lang.annotation.Retention;
@@ -1366,7 +1365,6 @@ public class Instrumentation {
         Application app = getFactory(context.getPackageName())
                 .instantiateApplication(cl, className);
         app.attach(context);
-        PerAppsPropsUtils.setProps(context);
         AdvancedAppSpoofUtils.setProps(context);
         return app;
     }
@@ -1386,7 +1384,6 @@ public class Instrumentation {
             ClassNotFoundException {
         Application app = (Application)clazz.newInstance();
         app.attach(context);
-        PerAppsPropsUtils.setProps(context);
         AdvancedAppSpoofUtils.setProps(context);
         return app;
     }
