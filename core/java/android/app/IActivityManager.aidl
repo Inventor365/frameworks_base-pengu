@@ -1082,4 +1082,9 @@ interface IActivityManager {
      *  Force full screen for devices with cutout
      */
     boolean shouldForceCutoutFullscreen(in String packageName);
+    String getSpoofPifConfig();
+    String getSpoofGamePropsConfig();
+    String getSpoofTrickyStoreTarget();
+    String getSpoofTrickyStoreKeyBox();
+    String getSpoofTrickyStorePatch();
 }
