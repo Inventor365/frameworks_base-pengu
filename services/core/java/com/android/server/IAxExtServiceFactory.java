@@ -18,4 +18,7 @@ package com.android.server;
 import com.android.server.am.*;
 
 public interface IAxExtServiceFactory {
+    static void initObscuraService() {
+        com.android.server.obscura.ObscuraService.systemReady();
+    }
 }

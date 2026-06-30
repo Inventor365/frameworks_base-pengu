@@ -6324,6 +6324,11 @@ public abstract class Context {
     public static final String POWER_INSIGHT_SERVICE = "power_insight";
 
     /**
+     * @hide
+     */
+    public static final String OBSCURA_SERVICE = "obscura";
+
+    /**
      * Use with {@link #getSystemService(String)} to retrieve a {@link android.app.role.RoleManager}
      * for managing roles.
      *

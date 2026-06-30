@@ -64,6 +64,7 @@ public class AxExtServiceFactory {
     }
 
     public static void systemReady() {
+        IAxExtServiceFactory.initObscuraService();
     }
     
     public static void onLateSystemReady() {
