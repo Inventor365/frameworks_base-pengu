@@ -59,7 +59,7 @@
 
     <!-- When the lock screen is showing and the phone plugged in, and the battery
          is not fully charged, and it's plugged into a slow charger, say that it's charging slowly.  -->
-    <string name="keyguard_plugged_in_charging_slowly"><xliff:g id="percentage">%s</xliff:g> • Charging slowly</string>
+    <string name="keyguard_plugged_in_charging_slowly"><xliff:g id="percentage">%s</xliff:g> • Charging Slowly</string>
 
     <!-- When the lock screen is showing and the phone plugged in, and the defend mode is triggered, say that charging is temporarily limited.  -->
     <string name="keyguard_plugged_in_charging_limited"><xliff:g id="percentage">%s</xliff:g> • Charging on hold to protect battery</string>

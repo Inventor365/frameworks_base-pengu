@@ -1399,6 +1399,21 @@ public class KeyguardIndicationController {
         return computePowerChargingStringIndication();
     }
 
+    private float getChargingCurrentAmps() {
+        if (mChargingCurrent > 0) {
+            int divider = mCurrentDivider > 0 ? mCurrentDivider : 1000;
+            return mChargingCurrent / (float) divider / 1000f;
+        } else if (mChargingWattage > 0 && mChargingVoltage > 0) {
+            int divider = mCurrentDivider > 0 ? mCurrentDivider : 1000;
+            float watts = mChargingWattage / (float) divider / 1000f;
+            float volts = mChargingVoltage / 1000000f;
+            if (volts > 0) {
+                return watts / volts;
+            }
+        }
+        return -1f;
+    }
+
     protected String computePowerChargingStringIndication() {
         if (mPowerCharged) {
             return mContext.getResources().getString(R.string.keyguard_charged);
@@ -1411,7 +1426,22 @@ public class KeyguardIndicationController {
 
         final boolean hasChargingTime = mChargingTimeRemaining > 0;
         int chargingId;
-        if (mPowerPluggedInWired) {
+        float currentAmps = getChargingCurrentAmps();
+        if (currentAmps > 0f) {
+            if (currentAmps > 8.0f) {
+                chargingId = hasChargingTime
+                        ? R.string.keyguard_indication_superfast_charging_time
+                        : R.string.keyguard_plugged_in_superfast_charging;
+            } else if (currentAmps >= 2.0f) {
+                chargingId = hasChargingTime
+                        ? R.string.keyguard_indication_fast_maybe_charging_time
+                        : R.string.keyguard_plugged_in_fast_maybe_charging;
+            } else {
+                chargingId = hasChargingTime
+                        ? R.string.keyguard_indication_charging_time_slowly
+                        : R.string.keyguard_plugged_in_charging_slowly;
+            }
+        } else if (mPowerPluggedInWired) {
             switch (mChargingSpeed) {
                 case BatteryStatus.CHARGING_OEM:
                     if (mHasDashCharger) {
@@ -1434,8 +1464,8 @@ public class KeyguardIndicationController {
                     break;
                 case BatteryStatus.CHARGING_FAST:
                     chargingId = hasChargingTime
-                            ? R.string.keyguard_indication_charging_time_fast
-                            : R.string.keyguard_plugged_in_charging_fast;
+                            ? R.string.keyguard_indication_fast_maybe_charging_time
+                            : R.string.keyguard_plugged_in_fast_maybe_charging;
                     break;
                 case BatteryStatus.CHARGING_SLOWLY:
                     chargingId = hasChargingTime
@@ -1444,8 +1474,8 @@ public class KeyguardIndicationController {
                     break;
                 default:
                     chargingId = hasChargingTime
-                            ? R.string.keyguard_indication_charging_time
-                            : R.string.keyguard_plugged_in;
+                            ? R.string.keyguard_indication_charging_time_slowly
+                            : R.string.keyguard_plugged_in_charging_slowly;
                     break;
             }
         } else if (mPowerPluggedInWireless) {
