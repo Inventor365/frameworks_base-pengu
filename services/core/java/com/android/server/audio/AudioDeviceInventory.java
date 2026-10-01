@@ -1162,6 +1162,23 @@ public class AudioDeviceInventory {
             final DeviceInfo di = mConnectedDevices.get(key);
 // QTI_END: 2024-05-11: Audio: base: Remove A2DP to A2DP quick SHO changes
 // QTI_BEGIN: 2022-10-07: Bluetooth: Merge "base: Reduce A2SP SHO time" into t-keystone-qcom-dev
+            if (di == null && btInfo.mProfile == BluetoothProfile.A2DP
+                    && event == BtHelper.EVENT_DEVICE_CONFIG_CHANGE) {
+                // Bluetooth still has this sink active, but audio policy rejected its connection.
+                // This happens when the sink picks a codec on connection (e.g. LHDC, served by
+                // another audio HAL module) that Bluetooth replaces right away: the first module
+                // fails to open while the codec switches. Retry with the new codec instead of
+                // leaving the sink without an audio route until it reconnects.
+                AudioService.sDeviceLogger.enqueue(new EventLogger.StringEvent(
+                        "A2DP config change for untracked device addr="
+                                + Utils.anonymizeBluetoothAddress(address)
+                                + ", retrying connection").printSlog(EventLogger.Event.ALOGW, TAG));
+                mmi.set(MediaMetrics.Property.EARLY_RETURN, "retry A2DP connection").record();
+                setBluetoothActiveDevice(new AudioDeviceBroker.BtDeviceInfo(btInfo,
+                        BluetoothProfile.STATE_CONNECTED),
+                        "onBluetoothDeviceConfigChange" /*eventSource*/);
+                return delayMs;
+            }
             if (di == null) {
 // QTI_END: 2022-10-07: Bluetooth: Merge "base: Reduce A2SP SHO time" into t-keystone-qcom-dev
 // QTI_BEGIN: 2024-05-11: Audio: base: Remove A2DP to A2DP quick SHO changes
