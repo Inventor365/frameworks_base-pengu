@@ -527,11 +527,16 @@ public class NotificationShadeWindowControllerImpl
         }
     }
 
+    private boolean mShadeNeedsInput;
+
     private void applyFocusableFlag(NotificationShadeWindowState state) {
         boolean panelFocusable = state.notificationShadeFocusable && state.shadeOrQsExpanded;
         if (state.bouncerShowing && (state.keyguardOccluded || state.keyguardNeedsInput)
                 || (ENABLE_REMOTE_INPUT && state.remoteInputActive)
                 || state.glanceableHubShowing) {
+            mLpChanged.flags &= ~LayoutParams.FLAG_NOT_FOCUSABLE;
+            mLpChanged.flags &= ~LayoutParams.FLAG_ALT_FOCUSABLE_IM;
+        } else if (panelFocusable && mShadeNeedsInput) {
             mLpChanged.flags &= ~LayoutParams.FLAG_NOT_FOCUSABLE;
             mLpChanged.flags &= ~LayoutParams.FLAG_ALT_FOCUSABLE_IM;
         } else if (state.isKeyguardShowingAndNotOccluded() || panelFocusable) {
@@ -827,6 +832,12 @@ public class NotificationShadeWindowControllerImpl
         }
         mCurrentState.panelVisible = visible;
         mCurrentState.notificationShadeFocusable = visible;
+        apply(mCurrentState);
+    }
+
+    @Override
+    public void setShadeNeedsInput(boolean needsInput) {
+        mShadeNeedsInput = needsInput;
         apply(mCurrentState);
     }
 

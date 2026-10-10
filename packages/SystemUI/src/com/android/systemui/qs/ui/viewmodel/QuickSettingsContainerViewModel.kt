@@ -33,6 +33,7 @@ import com.android.systemui.qs.panels.ui.viewmodel.MediaInRowInLandscapeViewMode
 import com.android.systemui.qs.panels.ui.viewmodel.TileGridViewModel
 import com.android.systemui.penguin.QsPanels
 import com.android.systemui.shade.ShadeDisplayAware
+import com.android.systemui.statusbar.NotificationShadeWindowController
 import com.android.systemui.shade.ui.viewmodel.ShadeHeaderViewModel
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
@@ -58,6 +59,7 @@ constructor(
     mediaInRowInLandscapeViewModelFactory: MediaInRowInLandscapeViewModel.Factory,
     @ShadeDisplayAware shadeDisplayTypeRepository: DisplayTypeRepository,
     qsPanels: Optional<QsPanels>,
+    private val shadeWindowController: NotificationShadeWindowController,
 ) : HydratedActivatable() {
 
     val penguin: QsPanels? = qsPanels.orElse(null)
@@ -87,6 +89,8 @@ constructor(
 
     val showMediaInRow: Boolean
         get() = qsMediaInRowViewModel.shouldMediaShowInRow
+
+    fun setTextInputActive(active: Boolean) = shadeWindowController.setShadeNeedsInput(active)
 
     fun onMediaSwipeToDismiss() = mediaCarouselInteractor.onSwipeToDismiss()
 
