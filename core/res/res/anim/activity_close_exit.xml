@@ -27,7 +27,7 @@
         android:fillEnabled="true"
         android:fillBefore="true"
         android:fillAfter="true"
-        android:interpolator="@interpolator/penguin_close_exit_translate"
+        android:interpolator="@interpolator/zz_penguin_close_exit_translate"
         android:duration="350" />
 
     <alpha
@@ -36,6 +36,6 @@
         android:fillEnabled="true"
         android:fillBefore="true"
         android:fillAfter="true"
-        android:interpolator="@interpolator/penguin_slide_alpha"
+        android:interpolator="@interpolator/zz_penguin_slide_alpha"
         android:duration="350" />
 </set>
