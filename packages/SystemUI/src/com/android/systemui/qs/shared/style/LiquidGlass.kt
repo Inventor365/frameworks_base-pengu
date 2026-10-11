@@ -25,6 +25,7 @@ import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.State
@@ -616,6 +617,14 @@ fun Modifier.glassBlurRegion(shape: Shape): Modifier {
     if (radius <= 0) return this
     val visible = remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val fade = LocalGlassBlurAlpha.current
+    LaunchedEffect(fade, allowed) {
+        androidx.compose.runtime.snapshotFlow { if (allowed()) fade().coerceIn(0f, 1f) else 0f }
+            .collect { alpha ->
+                val blur = drawable[0] ?: return@collect
+                if (alpha < 0.01f) blur.setVisible(false, false)
+                else blur.setAlpha((alpha * 255).toInt())
+            }
+    }
     return onGloballyPositioned { coordinates ->
             val bounds = coordinates.boundsInWindow()
             val topLeft = coordinates.windowToLocal(bounds.topLeft)
