@@ -45,7 +45,10 @@ object WallpaperPickerIntentUtils {
         }
     }
 
+    fun isLockScreenGallery(intent: Intent): Boolean = intent.action == ACTION_LOCK_SCREENS
+
     private const val WALLPAPER_LAUNCH_SOURCE = "com.android.wallpaper.LAUNCH_SOURCE"
+    const val EXTRA_OVER_LOCK_SCREEN = "over_lock_screen"
     private const val ACTION_LOCK_SCREENS = "com.android.wallpaper.action.LOCK_SCREENS"
     const val LAUNCH_SOURCE_KEYGUARD = "app_launched_keyguard"
 }

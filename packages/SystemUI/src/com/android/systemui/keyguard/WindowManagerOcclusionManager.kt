@@ -19,6 +19,7 @@ package com.android.systemui.keyguard
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import android.app.TaskInfo
 import android.app.WindowConfiguration
 import android.content.Context
 import android.graphics.Matrix
@@ -151,6 +152,7 @@ constructor(
                 if (
                     info == null ||
                         info.isNoAnimationOcclude() ||
+                        info.changes.any { it.mode == TRANSIT_OPEN && it.taskInfo.animatesItself() } ||
                         !powerInteractor.detailedWakefulness.value.isAwakeForAnimations()
                 ) {
                     Log.d(TAG, "occludeTransition#startAnimation: skipping animation, finishing now")
@@ -220,6 +222,11 @@ constructor(
                 )
                 if (!powerInteractor.detailedWakefulness.value.isAwakeForAnimations()) {
                     Log.d(TAG, "occludeAnimationRunner: device waking, finishing without animation")
+                    occludeAnimationFinishedCallback?.onAnimationFinished()
+                    return
+                }
+                apps.firstOrNull()?.takeIf { it.taskInfo.animatesItself() }?.let { app ->
+                    SurfaceControl.Transaction().show(app.leash).setAlpha(app.leash, 1f).apply()
                     occludeAnimationFinishedCallback?.onAnimationFinished()
                     return
                 }
@@ -302,6 +309,11 @@ constructor(
                     return
                 }
                 val target = apps[0]
+                if (target.taskInfo.animatesItself()) {
+                    SurfaceControl.Transaction().hide(target.leash).apply()
+                    finishAnimation()
+                    return
+                }
                 executor.execute {
                     unoccludeAnimator?.cancel()
                     if (!target.leash.isValid) {
@@ -525,6 +537,12 @@ constructor(
             }
         }
 
+    /**
+     * The lock screen gallery grows out of the lock screen itself, so its window goes on as it is.
+     */
+    private fun TaskInfo?.animatesItself(): Boolean =
+        this?.topActivity?.className == LOCK_SCREEN_GALLERY
+
     /** Whether WM asked for the occlude to happen without an animation (e.g. screen was off). */
     private fun TransitionInfo.isNoAnimationOcclude(): Boolean =
         changes.any { it.mode == TRANSIT_OPEN && it.hasFlags(TransitionInfo.FLAG_NO_ANIMATION) }
@@ -543,5 +561,7 @@ constructor(
 
     companion object {
         val TAG = "WindowManagerOcclusion"
+        private const val LOCK_SCREEN_GALLERY =
+            "com.android.customization.gallery.ui.LockScreenGalleryActivity"
     }
 }

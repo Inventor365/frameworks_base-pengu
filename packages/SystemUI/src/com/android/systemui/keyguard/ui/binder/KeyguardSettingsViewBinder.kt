@@ -17,7 +17,9 @@
 
 package com.android.systemui.keyguard.ui.binder
 
+import android.app.KeyguardManager
 import android.graphics.Rect
+import android.os.UserHandle
 import android.util.TypedValue
 import android.view.View
 import android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED
@@ -141,10 +143,24 @@ object KeyguardSettingsViewBinder {
         return disposableHandle
     }
 
-    /** Opens the wallpaper picker screen after the device is unlocked by the user. */
+    /**
+     * Opens the wallpaper picker screen. The lock screen gallery opens over the lock screen when
+     * nothing is needed to unlock, so it can return there; otherwise after the user unlocks.
+     */
     private fun navigateToLockScreenSettings(activityStarter: ActivityStarter, view: View) {
+        val context = view.context
+        val intent = WallpaperPickerIntentUtils.getIntent(context, LAUNCH_SOURCE_KEYGUARD)
+        val keyguard = context.getSystemService(KeyguardManager::class.java)
+        if (WallpaperPickerIntentUtils.isLockScreenGallery(intent) &&
+            keyguard?.isKeyguardLocked == true && !keyguard.isDeviceLocked) {
+            context.startActivityAsUser(
+                intent.putExtra(WallpaperPickerIntentUtils.EXTRA_OVER_LOCK_SCREEN, true),
+                UserHandle.CURRENT,
+            )
+            return
+        }
         activityStarter.postStartActivityDismissingKeyguard(
-            WallpaperPickerIntentUtils.getIntent(view.context, LAUNCH_SOURCE_KEYGUARD),
+            intent,
             /* delay= */ 0,
             /* animationController= */ null,
             /* customMessage= */ view.context.getString(R.string.keyguard_unlock_to_customize_ls),
