@@ -882,7 +882,8 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
     private int mFontWeightAdjustment;
     private Typeface mOriginalTypeface;
     private String mFontFamily;
-    private String mLastResolvedSystemFont;
+    private String mLastResolvedSystemFont = Typeface.getFontName();
+    private boolean mHasFontResource;
 
     // True if setKeyListener() has been explicitly called
     private boolean mListenerChanged = false;
@@ -2436,6 +2437,7 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
             @XMLTypefaceAttr int typefaceIndex, @Typeface.Style int style,
             @IntRange(from = FontStyle.FONT_WEIGHT_UNSPECIFIED, to = FontStyle.FONT_WEIGHT_MAX)
                     int weight) {
+        mHasFontResource = typeface != null;
         if (typeface == null && familyName != null) {
             // Lookup normal Typeface from system font map.
             final Typeface normalTypeface = Typeface.create(familyName, Typeface.NORMAL);
@@ -4683,7 +4685,8 @@ public class TextView extends View implements ViewTreeObserver.OnPreDrawListener
             }
         }
 
-        if (!TextUtils.equals(mLastResolvedSystemFont, Typeface.getFontName())) {
+        if (!mHasFontResource
+                && !TextUtils.equals(mLastResolvedSystemFont, Typeface.getFontName())) {
             Typeface tf = Typeface.getOverrideTypeface(mFontFamily);
             setTypeface(tf);
             mLastResolvedSystemFont = Typeface.getFontName();
