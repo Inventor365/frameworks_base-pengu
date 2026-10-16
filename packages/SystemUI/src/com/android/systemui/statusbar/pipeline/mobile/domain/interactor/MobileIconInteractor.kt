@@ -48,6 +48,7 @@ import com.android.systemui.statusbar.pipeline.mobile.domain.model.NetworkTypeIc
 import com.android.systemui.statusbar.pipeline.mobile.domain.model.SignalIconModel
 import com.android.systemui.statusbar.pipeline.satellite.ui.model.SatelliteIconModel
 import com.android.systemui.statusbar.pipeline.shared.data.model.DataActivityModel
+import com.android.systemui.statusbar.policy.FiveGServiceClient
 import com.android.systemui.statusbar.policy.FiveGServiceClient.FiveGServiceState
 import com.android.systemui.util.CarrierNameCustomization
 import kotlinx.coroutines.CoroutineScope
@@ -537,7 +538,8 @@ class MobileIconInteractorImpl(
 
     private fun getLookupKey(resolvedNetworkType: ResolvedNetworkType,
                              customizationInfo: MobileIconCustomizationMode): String {
-        return if (isNsa(resolvedNetworkType.networkType)) {
+        return if (isNsa(resolvedNetworkType.networkType) &&
+                FiveGServiceClient.getInstance(context).isServiceConnected) {
             if (customizationInfo.originNetworkType  == TelephonyManager.NETWORK_TYPE_UNKNOWN) {
                 MobileMappings.toIconKey(customizationInfo.voiceNetworkType)
             }else {
