@@ -289,12 +289,12 @@ class DesktopModeWindowDecorViewModelTests : DesktopModeWindowDecorViewModelTest
         val taskInfo = decor.taskInfo
 
         val view = mock<View> { on { id } doReturn R.id.close_window }
-        whenever(mockDesktopTasksController.closeTask(taskInfo))
+        whenever(mockDesktopTasksController.closeTask(taskInfo, true))
             .thenReturn(DesktopTasksController.CloseTaskResult.CLOSED_DESKTOP)
 
         onClickListenerCaptor.firstValue.onClick(view)
 
-        verify(mockDesktopTasksController).closeTask(taskInfo)
+        verify(mockDesktopTasksController).closeTask(taskInfo, true)
     }
 
     @Test
@@ -713,7 +713,7 @@ class DesktopModeWindowDecorViewModelTests : DesktopModeWindowDecorViewModelTest
         val taskInfo = decor.taskInfo
         val uri = Uri.parse("https://www.google.com")
         val intent = Intent(ACTION_MAIN, uri)
-        whenever(mockDesktopTasksController.closeTask(taskInfo))
+        whenever(mockDesktopTasksController.closeTask(taskInfo, true))
             .thenReturn(DesktopTasksController.CloseTaskResult.CLOSED_DESKTOP)
 
         windowDecorationActions.onSwitchToBrowser(taskInfo, intent)
@@ -1083,7 +1083,7 @@ class DesktopModeWindowDecorViewModelTests : DesktopModeWindowDecorViewModelTest
         )
         onClickListenerCaptor.firstValue.onClick(view)
 
-        verify(mockDesktopTasksController).closeTask(decor.taskInfo)
+        verify(mockDesktopTasksController).closeTask(decor.taskInfo, true)
     }
 
     @Test

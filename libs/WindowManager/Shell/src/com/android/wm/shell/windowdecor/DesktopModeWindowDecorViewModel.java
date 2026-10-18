@@ -1344,7 +1344,8 @@ public class DesktopModeWindowDecorViewModel implements WindowDecorViewModel,
      * TODO(b/448484440): Make the method private.
      */
     public void closeTask(RunningTaskInfo task) {
-        closeTask(task, /* forceKeepDesktop= */ false);
+        // Closing a window is not an explicit request to leave the desktop session.
+        closeTask(task, /* forceKeepDesktop= */ true);
     }
 
     private void closeTask(RunningTaskInfo task, Boolean forceKeepDesktop) {
@@ -2203,7 +2204,7 @@ public class DesktopModeWindowDecorViewModel implements WindowDecorViewModel,
         public void onClose(@NonNull RunningTaskInfo taskInfo) {
             WdLog.logD(TAG, "Using DefaultWindowDecorationActions to close task=%d",
                     taskInfo.taskId);
-            mViewModel.closeTask(taskInfo, /* forceKeepDesktop= */ false);
+            mViewModel.closeTask(taskInfo);
         }
 
         @Override

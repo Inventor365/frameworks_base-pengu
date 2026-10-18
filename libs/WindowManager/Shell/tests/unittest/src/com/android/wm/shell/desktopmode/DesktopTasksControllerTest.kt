@@ -4082,6 +4082,30 @@ class DesktopTasksControllerTest : ShellTestCase() {
     }
 
     @Test
+    @EnableFlags(Flags.FLAG_ENABLE_DESKTOP_WALLPAPER_ACTIVITY_FOR_SYSTEM_USER)
+    fun onDesktopWindowClose_lastVisibleWindow_twoMinimized_keepDesktop() {
+        val visibleTask = setUpFreeformTask()
+        val minimizedTask1 = setUpFreeformTask()
+        val minimizedTask2 = setUpFreeformTask()
+        taskRepository.minimizeTask(DEFAULT_DISPLAY, minimizedTask1.taskId)
+        taskRepository.minimizeTask(DEFAULT_DISPLAY, minimizedTask2.taskId)
+
+        val wct = WindowContainerTransaction()
+        controller.onDesktopWindowClose(
+            wct,
+            displayId = DEFAULT_DISPLAY,
+            visibleTask,
+            forceKeepDesktop = true,
+        )
+
+        // The wallpaper and desk must stay, so minimized windows remain accessible.
+        assertThat(wct.hierarchyOps).isEmpty()
+        assertThat(taskRepository.isAnyDeskActive(DEFAULT_DISPLAY)).isTrue()
+        assertThat(taskRepository.isMinimizedTask(minimizedTask1.taskId)).isTrue()
+        assertThat(taskRepository.isMinimizedTask(minimizedTask2.taskId)).isTrue()
+    }
+
+    @Test
     fun onDesktopWindowClose_lastWindow_desktopFirst_deactivatesDesk() {
         rootTaskDisplayAreaOrganizer.setDesktopFirst(DEFAULT_DISPLAY)
         val task = setUpFreeformTask()
