@@ -215,6 +215,14 @@ final class AppLaunchShortcutManager {
     public boolean handleShortcutService(KeyEvent event) {
         // TODO(b/358569822): Ideally shortcut service custom shortcuts should be either
         //  migrated to bookmarks or customizable shortcut APIs.
+        if (event.getKeyCode() == KeyEvent.KEYCODE_SPACE
+                && event.hasModifiers(KeyEvent.META_ALT_ON)) {
+            android.view.InputDevice device = event.getDevice();
+            if (device == null || device.isVirtual()
+                    || device.getKeyboardType() != android.view.InputDevice.KEYBOARD_TYPE_ALPHABETIC) {
+                return false;
+            }
+        }
         final long shortcutCodeMeta = event.getMetaState() & SHORTCUT_CODE_META_MASK;
         if (shortcutCodeMeta == 0) {
             return false;
@@ -222,6 +230,11 @@ final class AppLaunchShortcutManager {
         long shortcutCode = event.getKeyCode() | (shortcutCodeMeta << Integer.SIZE);
         IShortcutService shortcutService = mShortcutKeyServices.get(shortcutCode);
         if (shortcutService != null) {
+            // A registered shortcut is one action per press. Releases and repeats must
+            // remain consumed without notifying the listener a second time.
+            if (event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0) {
+                return true;
+            }
             try {
                 shortcutService.notifyShortcutKeyPressed(shortcutCode);
             } catch (RemoteException e) {

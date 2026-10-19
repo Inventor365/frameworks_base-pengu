@@ -88,6 +88,9 @@ import java.util.function.IntConsumer;
  * @hide
  */
 public final class WindowManagerGlobal {
+    /** @hide Registered shortcut callbacks fire once on the first key down. */
+    public static final int SHORTCUT_CALLBACK_VERSION = 1;
+
     private static final String TAG = "WindowManager";
 
     /**
