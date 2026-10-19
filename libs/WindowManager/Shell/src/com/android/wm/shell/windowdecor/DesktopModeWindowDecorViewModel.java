@@ -61,6 +61,7 @@ import android.os.Looper;
 import android.os.RemoteException;
 import android.os.UserHandle;
 import android.util.SparseArray;
+import android.view.Display;
 import android.view.Choreographer;
 import android.view.IWindowManager;
 import android.view.InputChannel;
@@ -266,7 +267,13 @@ public class DesktopModeWindowDecorViewModel implements WindowDecorViewModel,
     private final WindowDecorationGestureExclusionTracker mGestureExclusionTracker;
     private boolean mInImmersiveMode;
     private boolean mImmersiveBarsRevealed;
+    private boolean mImmersiveTaskbarRevealed;
+    /** Display whose immersive reveal state the fields above describe. */
+    private int mImmersiveRevealDisplayId = Display.INVALID_DISPLAY;
     private boolean mImmersiveTopEdgeTouch;
+    private boolean mImmersiveBottomEdgeTouch;
+    /** Bottom hover/touch showed the taskbar while the force-hide was already applied. */
+    private boolean mImmersiveBottomInteraction;
     private final String mSysUIPackageName;
     private final AssistContentRequester mAssistContentRequester;
     private final WindowDecorViewHostSupplier<WindowDecorViewHost> mWindowDecorViewHostSupplier;
@@ -1535,11 +1542,36 @@ public class DesktopModeWindowDecorViewModel implements WindowDecorViewModel,
         if (mShellDesktopState.canEnterDesktopMode()) {
             final int displayId = ev.getDisplayId();
             final DesktopRepository repository = mDesktopUserRepositories.getCurrent();
-            if (repository.getTaskInFullImmersiveState(displayId) != null) {
-                updateImmersiveTopEdge(ev);
-            } else if (mImmersiveBarsRevealed || mImmersiveTopEdgeTouch) {
+            final boolean immersiveHere = repository.getTaskInFullImmersiveState(displayId) != null;
+            if (mImmersiveRevealDisplayId != displayId
+                    && mImmersiveRevealDisplayId != Display.INVALID_DISPLAY) {
+                // The reveal state is for one display; drop the other display's reveal first.
+                if (mImmersiveBarsRevealed) {
+                    mDesktopImmersiveController.setTopEdgeRevealing(
+                            mImmersiveRevealDisplayId, false);
+                }
+                if (mImmersiveTaskbarRevealed) {
+                    mDesktopImmersiveController.setTaskbarEdgeRevealing(
+                            mImmersiveRevealDisplayId, false);
+                }
+                mImmersiveRevealDisplayId = Display.INVALID_DISPLAY;
                 mImmersiveBarsRevealed = false;
+                mImmersiveTaskbarRevealed = false;
                 mImmersiveTopEdgeTouch = false;
+                mImmersiveBottomEdgeTouch = false;
+                mImmersiveBottomInteraction = false;
+            }
+            if (immersiveHere) {
+                mImmersiveRevealDisplayId = displayId;
+                updateImmersiveTopEdge(ev);
+            } else if (mImmersiveBarsRevealed || mImmersiveTaskbarRevealed
+                    || mImmersiveTopEdgeTouch || mImmersiveBottomEdgeTouch
+                    || mImmersiveBottomInteraction) {
+                mImmersiveBarsRevealed = false;
+                mImmersiveTaskbarRevealed = false;
+                mImmersiveTopEdgeTouch = false;
+                mImmersiveBottomEdgeTouch = false;
+                mImmersiveBottomInteraction = false;
             }
             if (!mInImmersiveMode && (relevantDecor == null
                     || relevantDecor.getTaskInfo().getWindowingMode() != WINDOWING_MODE_FREEFORM
@@ -1797,41 +1829,72 @@ public class DesktopModeWindowDecorViewModel implements WindowDecorViewModel,
         return focusedDecor;
     }
 
-    private int getStatusBarHeight(int displayId) {
-        return mDisplayController.getDisplayLayout(displayId).stableInsets().top;
-    }
-
     /**
      * Fullscreen desktop windows hide the status bar, caption, and taskbar. A pointer in the top
-     * strip, or a swipe that starts there, brings them back until the pointer leaves.
+     * strip, or a swipe that starts there, brings them back until the pointer leaves. The same
+     * applies to the bottom strip so a pinned taskbar hides again after a hover or touch.
      */
     private void updateImmersiveTopEdge(MotionEvent ev) {
         final int displayId = ev.getDisplayId();
+        final DisplayLayout layout = mDisplayController.getDisplayLayout(displayId);
         final float density = mContext.getResources().getDisplayMetrics().density;
-        final int statusBar = mDisplayController.getDisplayLayout(displayId) == null
-                ? 0 : getStatusBarHeight(displayId);
+        final int statusBar = layout == null ? 0 : layout.stableInsets().top;
+        final int navBar = layout == null ? 0 : layout.stableInsets().bottom;
         final int triggerPx = Math.max(statusBar, (int) (24 * density));
         final int holdPx = statusBar + (int) (56 * density);
+        final int bottomTriggerPx = Math.max(navBar, (int) (24 * density));
+        final int bottomHoldPx = navBar + (int) (56 * density);
+        final int screenHeight = layout == null ? 0 : layout.height();
+        final int fromBottom = screenHeight <= 0 ? Integer.MAX_VALUE
+                : (int) (screenHeight - ev.getY());
         final int action = ev.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
             mImmersiveTopEdgeTouch = ev.getY() <= triggerPx;
+            mImmersiveBottomEdgeTouch = fromBottom <= bottomTriggerPx;
         } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             mImmersiveTopEdgeTouch = false;
+            mImmersiveBottomEdgeTouch = false;
+        }
+        final boolean fingerUp = action == MotionEvent.ACTION_UP
+                || action == MotionEvent.ACTION_HOVER_EXIT
+                || action == MotionEvent.ACTION_CANCEL;
+        final boolean inBottom = !fingerUp && (mImmersiveBottomEdgeTouch
+                || fromBottom <= (mImmersiveTaskbarRevealed ? bottomHoldPx : bottomTriggerPx));
+        if (inBottom) {
+            mImmersiveBottomInteraction = true;
         }
         final boolean reveal;
+        final boolean taskbar;
         if (action == MotionEvent.ACTION_HOVER_EXIT || action == MotionEvent.ACTION_CANCEL) {
             reveal = false;
+            taskbar = false;
         } else if (action == MotionEvent.ACTION_UP) {
+            // A tap on the taskbar must not leave it open. A pointer that is still in the
+            // top strip keeps the status bar and caption.
             reveal = ev.getY() <= holdPx;
+            taskbar = false;
         } else {
             final int zone = mImmersiveBarsRevealed ? holdPx : triggerPx;
             reveal = ev.getY() <= zone || mImmersiveTopEdgeTouch;
+            taskbar = inBottom;
         }
-        if (reveal == mImmersiveBarsRevealed) {
-            return;
+        if (reveal != mImmersiveBarsRevealed) {
+            mImmersiveBarsRevealed = reveal;
+            mDesktopImmersiveController.setTopEdgeRevealing(displayId, reveal);
         }
-        mImmersiveBarsRevealed = reveal;
-        mDesktopImmersiveController.setTopEdgeRevealing(displayId, reveal);
+        final boolean taskbarChanged = taskbar != mImmersiveTaskbarRevealed;
+        if (taskbarChanged) {
+            mImmersiveTaskbarRevealed = taskbar;
+            mDesktopImmersiveController.setTaskbarEdgeRevealing(displayId, taskbar);
+        }
+        // A pinned taskbar is shown by the platform without changing our override. Re-apply the
+        // hide once the pointer or finger leaves, including when the override value is unchanged.
+        if (!taskbar && mImmersiveBottomInteraction) {
+            mImmersiveBottomInteraction = false;
+            if (!taskbarChanged) {
+                mDesktopImmersiveController.reassertHiddenSystemBars(displayId);
+            }
+        }
     }
 
     private void createInputChannel(int displayId) {

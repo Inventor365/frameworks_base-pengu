@@ -83,6 +83,7 @@ class DesktopImmersiveController(
     @VisibleForTesting val pendingImmersiveTransitions = mutableListOf<PendingTransition>()
     private val systemBarOwner = Binder()
     private val topEdgeRevealedDisplays = mutableSetOf<Int>()
+    private val taskbarRevealedDisplays = mutableSetOf<Int>()
 
     /** Whether there is an immersive transition that hasn't completed yet. */
     private val inProgress: Boolean
@@ -411,6 +412,7 @@ class DesktopImmersiveController(
             )
             if (pendingTransition.direction == Direction.EXIT) {
                 topEdgeRevealedDisplays.remove(pendingTransition.displayId)
+                taskbarRevealedDisplays.remove(pendingTransition.displayId)
             }
             syncSystemBars(pendingTransition.displayId)
             when (pendingTransition.direction) {
@@ -439,6 +441,7 @@ class DesktopImmersiveController(
                     immersive = false,
                 )
                 topEdgeRevealedDisplays.remove(c.taskInfo!!.displayId)
+                taskbarRevealedDisplays.remove(c.taskInfo!!.displayId)
                 syncSystemBars(c.taskInfo!!.displayId)
             }
     }
@@ -459,17 +462,51 @@ class DesktopImmersiveController(
         }
     }
 
+    /**
+     * A bottom-edge hover or touch shows only the taskbar. The status bar and caption stay hidden
+     * unless the pointer is also in the top strip.
+     */
+    fun setTaskbarEdgeRevealing(displayId: Int, revealing: Boolean) {
+        val changed =
+            if (revealing) {
+                taskbarRevealedDisplays.add(displayId)
+            } else {
+                taskbarRevealedDisplays.remove(displayId)
+            }
+        if (changed) {
+            syncSystemBars(displayId)
+        }
+    }
+
+    /**
+     * Puts the fullscreen system-bar hide back after a bottom-edge hover or touch.
+     *
+     * The platform can show a pinned taskbar without changing this override, and writing the same
+     * hide again is ignored. Clear it and set it so the display policy hides the bars again.
+     */
+    fun reassertHiddenSystemBars(displayId: Int) {
+        val displayToken = rootDisplayAreaOrganizer?.getDisplayTokenForDisplay(displayId) ?: return
+        if (desktopUserRepositories.current.getTaskInFullImmersiveState(displayId) == null) return
+        val clear = WindowContainerTransaction()
+        clear.setSystemBarVisibilityOverride(displayToken, systemBarOwner, 0, 0)
+        shellTaskOrganizer.applyTransaction(clear)
+        val hide = WindowContainerTransaction()
+        hide.setSystemBarVisibilityOverride(displayToken, systemBarOwner, 0, hiddenTypes(displayId))
+        shellTaskOrganizer.applyTransaction(hide)
+    }
+
+    private fun hiddenTypes(displayId: Int): Int {
+        val immersive = desktopUserRepositories.current.getTaskInFullImmersiveState(displayId)
+        if (immersive == null) return 0
+        val hideStatus = displayId !in topEdgeRevealedDisplays
+        val hideTaskbar = hideStatus && displayId !in taskbarRevealedDisplays
+        return (if (hideStatus) statusBars() else 0) or (if (hideTaskbar) navigationBars() else 0)
+    }
+
     private fun syncSystemBars(displayId: Int) {
         val displayToken = rootDisplayAreaOrganizer?.getDisplayTokenForDisplay(displayId) ?: return
-        val immersive = desktopUserRepositories.current.getTaskInFullImmersiveState(displayId)
         val wct = WindowContainerTransaction()
-        val forciblyHiding =
-            if (immersive != null && displayId !in topEdgeRevealedDisplays) {
-                statusBars() or navigationBars()
-            } else {
-                0
-            }
-        wct.setSystemBarVisibilityOverride(displayToken, systemBarOwner, 0, forciblyHiding)
+        wct.setSystemBarVisibilityOverride(displayToken, systemBarOwner, 0, hiddenTypes(displayId))
         shellTaskOrganizer.applyTransaction(wct)
     }
 
