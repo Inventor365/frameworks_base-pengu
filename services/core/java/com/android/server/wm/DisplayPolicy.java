@@ -2794,7 +2794,13 @@ public class DisplayPolicy {
 
         if (controlTarget.canShowTransient()) {
             // Show transient bars if they are hidden; restore position if they are visible.
-            mDisplayContent.getInsetsPolicy().showTransient(SHOW_TYPES_FOR_SWIPE,
+            // A bottom swipe while the display hides the status bar (desktop fullscreen) reveals
+            // only the taskbar, so the status bar and caption stay hidden.
+            final InsetsPolicy insetsPolicy = mDisplayContent.getInsetsPolicy();
+            final boolean taskbarOnly = sp != null
+                    && sp.getSource().getType() == Type.navigationBars()
+                    && insetsPolicy.areTypesForciblyHidden(Type.statusBars());
+            insetsPolicy.showTransient(taskbarOnly ? Type.navigationBars() : SHOW_TYPES_FOR_SWIPE,
                     isGestureOnSystemBar);
             controlTarget.showInsets(restorePositionTypes, null /* statsToken */);
         } else {
