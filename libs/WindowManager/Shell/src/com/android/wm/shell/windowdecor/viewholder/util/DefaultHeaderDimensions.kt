@@ -98,7 +98,7 @@ class DefaultHeaderDimensions(private val resources: Resources) : HeaderDimensio
 
     override val customizableRegionMarginEnd: Int
         get() {
-            val numOfButtons = 3
+            val numOfButtons = 4
             return (windowControlButtonWidth + windowControlButtonMarginEnd) * numOfButtons +
                 customizableRegionEmptyDragSpace
         }

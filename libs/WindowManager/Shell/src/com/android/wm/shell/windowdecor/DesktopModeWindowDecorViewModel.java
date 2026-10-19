@@ -265,6 +265,8 @@ public class DesktopModeWindowDecorViewModel implements WindowDecorViewModel,
 
     private final WindowDecorationGestureExclusionTracker mGestureExclusionTracker;
     private boolean mInImmersiveMode;
+    private boolean mImmersiveBarsRevealed;
+    private boolean mImmersiveTopEdgeTouch;
     private final String mSysUIPackageName;
     private final AssistContentRequester mAssistContentRequester;
     private final WindowDecorViewHostSupplier<WindowDecorViewHost> mWindowDecorViewHostSupplier;
@@ -1531,6 +1533,14 @@ public class DesktopModeWindowDecorViewModel implements WindowDecorViewModel,
     private void handleReceivedMotionEvent(MotionEvent ev, IBinder inputChannelToken) {
         final WindowDecorationWrapper relevantDecor = getRelevantWindowDecor(ev);
         if (mShellDesktopState.canEnterDesktopMode()) {
+            final int displayId = ev.getDisplayId();
+            final DesktopRepository repository = mDesktopUserRepositories.getCurrent();
+            if (repository.getTaskInFullImmersiveState(displayId) != null) {
+                updateImmersiveTopEdge(ev);
+            } else if (mImmersiveBarsRevealed || mImmersiveTopEdgeTouch) {
+                mImmersiveBarsRevealed = false;
+                mImmersiveTopEdgeTouch = false;
+            }
             if (!mInImmersiveMode && (relevantDecor == null
                     || relevantDecor.getTaskInfo().getWindowingMode() != WINDOWING_MODE_FREEFORM
                     || mTransitionDragActive)) {
@@ -1789,6 +1799,39 @@ public class DesktopModeWindowDecorViewModel implements WindowDecorViewModel,
 
     private int getStatusBarHeight(int displayId) {
         return mDisplayController.getDisplayLayout(displayId).stableInsets().top;
+    }
+
+    /**
+     * Fullscreen desktop windows hide the status bar, caption, and taskbar. A pointer in the top
+     * strip, or a swipe that starts there, brings them back until the pointer leaves.
+     */
+    private void updateImmersiveTopEdge(MotionEvent ev) {
+        final int displayId = ev.getDisplayId();
+        final float density = mContext.getResources().getDisplayMetrics().density;
+        final int statusBar = mDisplayController.getDisplayLayout(displayId) == null
+                ? 0 : getStatusBarHeight(displayId);
+        final int triggerPx = Math.max(statusBar, (int) (24 * density));
+        final int holdPx = statusBar + (int) (56 * density);
+        final int action = ev.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            mImmersiveTopEdgeTouch = ev.getY() <= triggerPx;
+        } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            mImmersiveTopEdgeTouch = false;
+        }
+        final boolean reveal;
+        if (action == MotionEvent.ACTION_HOVER_EXIT || action == MotionEvent.ACTION_CANCEL) {
+            reveal = false;
+        } else if (action == MotionEvent.ACTION_UP) {
+            reveal = ev.getY() <= holdPx;
+        } else {
+            final int zone = mImmersiveBarsRevealed ? holdPx : triggerPx;
+            reveal = ev.getY() <= zone || mImmersiveTopEdgeTouch;
+        }
+        if (reveal == mImmersiveBarsRevealed) {
+            return;
+        }
+        mImmersiveBarsRevealed = reveal;
+        mDesktopImmersiveController.setTopEdgeRevealing(displayId, reveal);
     }
 
     private void createInputChannel(int displayId) {

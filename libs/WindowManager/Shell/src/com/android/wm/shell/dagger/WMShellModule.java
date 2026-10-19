@@ -1083,6 +1083,7 @@ public abstract class WMShellModule {
             DisplayController displayController,
             ShellTaskOrganizer shellTaskOrganizer,
             ShellCommandHandler shellCommandHandler,
+            RootDisplayAreaOrganizer rootDisplayAreaOrganizer,
             DesktopState desktopState) {
         if (desktopState.canEnterDesktopModeOrShowAppHandle()) {
             return Optional.of(
@@ -1092,7 +1093,8 @@ public abstract class WMShellModule {
                             desktopUserRepositories,
                             displayController,
                             shellTaskOrganizer,
-                            shellCommandHandler));
+                            shellCommandHandler,
+                            rootDisplayAreaOrganizer));
         }
         return Optional.empty();
     }

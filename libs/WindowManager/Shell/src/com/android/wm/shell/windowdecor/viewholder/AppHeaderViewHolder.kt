@@ -131,6 +131,8 @@ class AppHeaderViewHolder(
         rootView.requireViewById(R.id.maximize_button_view)
     private val maximizeWindowButton: ImageButton = rootView.requireViewById(R.id.maximize_window)
     private val minimizeWindowButton: ImageButton = rootView.requireViewById(R.id.minimize_window)
+    private val fullscreenWindowButton: ImageButton =
+        rootView.requireViewById(R.id.fullscreen_window)
     private val appNameTextView: TextView = rootView.requireViewById(R.id.application_name)
     private val appIconImageView: ImageView = rootView.requireViewById(R.id.application_icon)
     private val expandMenuErrorImageView: ImageView =
@@ -179,6 +181,7 @@ class AppHeaderViewHolder(
             closeWindowButton.setOnTouchListener(onTouch)
             maximizeWindowButton.setOnTouchListener(onTouch)
             minimizeWindowButton.setOnTouchListener(onTouch)
+            fullscreenWindowButton.setOnTouchListener(onTouch)
             openMenuButton.setOnTouchListener(onTouch)
         } else {
             captionView.setOnTouchListener(gestureInterceptor)
@@ -186,6 +189,7 @@ class AppHeaderViewHolder(
             closeWindowButton.setOnTouchListener(gestureInterceptor)
             maximizeWindowButton.setOnTouchListener(gestureInterceptor)
             minimizeWindowButton.setOnTouchListener(gestureInterceptor)
+            fullscreenWindowButton.setOnTouchListener(gestureInterceptor)
             openMenuButton.setOnTouchListener(gestureInterceptor)
         }
 
@@ -208,6 +212,9 @@ class AppHeaderViewHolder(
         minimizeWindowButton.throttleFirstClicks(CLICK_DELAY) { v ->
             windowDecorationActions.onMinimize(currentTaskInfo)
         }
+        fullscreenWindowButton.throttleFirstClicks(CLICK_DELAY) { v ->
+            windowDecorationActions.onImmersiveOrRestore(currentTaskInfo)
+        }
         openMenuButton.throttleFirstClicks(CLICK_DELAY) { v ->
             windowDecorationActions.onOpenHandleMenu(currentTaskInfo.taskId)
         }
@@ -219,7 +226,7 @@ class AppHeaderViewHolder(
 
         openMenuButton.layoutParams =
             openMenuButton.layoutParams.apply { height = dimensions.windowControlButtonHeight }
-        listOf(minimizeWindowButton, closeWindowButton).forEach { button ->
+        listOf(minimizeWindowButton, fullscreenWindowButton, closeWindowButton).forEach { button ->
             button.layoutParams =
                 button.layoutParams.apply {
                     width = dimensions.windowControlButtonWidth
@@ -491,6 +498,12 @@ class AppHeaderViewHolder(
         closeWindowButton.contentDescription = context.getString(R.string.close_button_text, name)
         minimizeWindowButton.contentDescription =
             context.getString(R.string.minimize_button_text, name)
+        fullscreenWindowButton.contentDescription =
+            context.getString(
+                if (isTaskInFullImmersiveState) R.string.exit_fullscreen_button_text
+                else R.string.fullscreen_button_text,
+                name,
+            )
 
         a11yTextMaximize = context.getString(R.string.maximize_button_text, name)
         a11yTextRestore = context.getString(R.string.restore_button_text, name)
@@ -530,6 +543,12 @@ class AppHeaderViewHolder(
         logDisplayCompatRestartButtonEventReported(taskInfo)
         currentTaskInfo = taskInfo
         isTaskInFullImmersiveState = inFullImmersiveState
+        fullscreenWindowButton.contentDescription =
+            context.getString(
+                if (inFullImmersiveState) R.string.exit_fullscreen_button_text
+                else R.string.fullscreen_button_text,
+                appNameTextView.text,
+            )
         bindDataWithThemedHeaders(
             taskInfo,
             isTaskMaximized,
@@ -624,6 +643,15 @@ class AppHeaderViewHolder(
         }
         // Minimize button.
         minimizeWindowButton.apply {
+            imageTintList = colorStateList
+            background =
+                createBackgroundDrawable(
+                    color = foregroundColor,
+                    cornerRadius = dimensions.buttonCornerRadius,
+                    drawableInsets = dimensions.minimizeBackgroundInsets,
+                )
+        }
+        fullscreenWindowButton.apply {
             imageTintList = colorStateList
             background =
                 createBackgroundDrawable(
@@ -1003,7 +1031,7 @@ class AppHeaderViewHolder(
         private const val LIGHT_THEME_UNFOCUSED_OPACITY = 166 // 65%
         private const val FOCUSED_OPACITY = 255
         private const val CLICK_DELAY: Long = 500
-        private const val WINDOW_CONTROLS_BUTTONS_COUNT = 3
+        private const val WINDOW_CONTROLS_BUTTONS_COUNT = 4
     }
 
     /** Factory for creating [AppHeaderViewHolder] instances. */

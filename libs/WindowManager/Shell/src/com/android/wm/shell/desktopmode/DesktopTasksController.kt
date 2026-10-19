@@ -6775,13 +6775,45 @@ class DesktopTasksController(
         snapController.onUserChange(newUserId)
     }
 
+    // Whether each task was requesting immersive at its last info change, so full immersive is
+    // entered automatically only when an app starts requesting it, and a user who restores the
+    // window while the app still requests it is not overridden.
+    private val lastImmersiveRequest = mutableMapOf<Int, Boolean>()
+
     /** Called when a task's info changes. */
     fun onTaskInfoChanged(taskInfo: RunningTaskInfo) {
         val repository = userRepositories.getProfile(taskInfo.userId)
         val inImmersive = repository.isTaskInFullImmersiveState(taskInfo.taskId)
         val requestingImmersive = taskInfo.requestingImmersive
+        val wasRequestingImmersive =
+            lastImmersiveRequest.put(taskInfo.taskId, requestingImmersive) ?: false
+        if (lastImmersiveRequest.size > MAX_TRACKED_IMMERSIVE_REQUESTS) {
+            lastImmersiveRequest.keys.retainAll(listOf(taskInfo.taskId))
+        }
+        if (
+            !inImmersive &&
+                requestingImmersive &&
+                !wasRequestingImmersive &&
+                taskInfo.isVisible &&
+                taskInfo.windowingMode == WINDOWING_MODE_FREEFORM &&
+                !RecentsTransitionStateListener.isRunning(recentsTransitionState)
+        ) {
+            val displayLayout = displayController.getDisplayLayout(taskInfo.displayId)
+            if (displayLayout != null && isTaskMaximized(taskInfo, displayLayout)) {
+                logV(
+                    "onTaskInfoChanged taskId=%d started requesting immersive while maximized," +
+                        " entering desktop-immersive mode",
+                    taskInfo.taskId,
+                )
+                // A maximized app going fullscreen (e.g. a video) hides its header and the
+                // system bars, as on a desktop OS.
+                desktopImmersiveController.moveTaskToImmersive(taskInfo)
+                return
+            }
+        }
         if (
             inImmersive &&
+                wasRequestingImmersive &&
                 !requestingImmersive &&
                 !RecentsTransitionStateListener.isRunning(recentsTransitionState)
         ) {
@@ -7108,6 +7140,9 @@ class DesktopTasksController(
     }
 
     companion object {
+        // Bound on per-task immersive-request bookkeeping; stale task ids are dropped past it.
+        private const val MAX_TRACKED_IMMERSIVE_REQUESTS = 64
+
         // Timeout used for CUJ_DESKTOP_MODE_ENTER_APP_HANDLE_DRAG_HOLD/RELEASE, this is longer than
         // the default timeout to avoid timing out in the middle of a drag action.
         private val APP_HANDLE_DRAG_CUJ_TIMEOUT_MS: Long = TimeUnit.SECONDS.toMillis(10L)

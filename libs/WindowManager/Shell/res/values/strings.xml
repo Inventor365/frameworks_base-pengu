@@ -277,6 +277,8 @@
     <string name="minimize_button_text">Minimize <xliff:g id="app_name" example="Chrome">%1$s</xliff:g></string>
     <!-- Accessibility text for the exit fullscreen window button [CHAR LIMIT=NONE] -->
     <string name="exit_fullscreen_button_text">Exit fullscreen for <xliff:g id="app_name" example="Chrome">%1$s</xliff:g></string>
+    <!-- Accessibility text for the desktop caption fullscreen button [CHAR LIMIT=NONE] -->
+    <string name="fullscreen_button_text">Fullscreen <xliff:g id="app_name" example="Chrome">%1$s</xliff:g></string>
     <!-- Accessibility text for the close window button [CHAR LIMIT=NONE] -->
     <string name="close_button_text">Close <xliff:g id="app_name" example="Chrome">%1$s</xliff:g></string>
     <!-- Accessibility text for the caption back button [CHAR LIMIT=NONE] -->

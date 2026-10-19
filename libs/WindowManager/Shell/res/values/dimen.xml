@@ -485,7 +485,8 @@
     <dimen name="caption_right_buttons_width">126dp</dimen>
 
     <!-- 2 buttons * 44dp button size + 16dp total margins. -->
-    <dimen name="desktop_mode_right_edge_buttons_width">104dp</dimen>
+    <!-- Minimize, maximize, fullscreen and close: 4 * (44dp + 8dp end margin). -->
+    <dimen name="desktop_mode_right_edge_buttons_width">208dp</dimen>
 
     <!-- 22dp padding + 24dp app icon + 16dp expand button.
          Text varies in size, we will calculate that width separately. -->

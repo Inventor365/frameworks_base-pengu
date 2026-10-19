@@ -162,7 +162,8 @@ public class RootDisplayAreaOrganizer extends DisplayAreaOrganizer {
 
     @Nullable
     public WindowContainerToken getDisplayTokenForDisplay(int displayId) {
-        return mDisplayAreasInfo.get(displayId).token;
+        final DisplayAreaInfo displayAreaInfo = mDisplayAreasInfo.get(displayId);
+        return displayAreaInfo == null ? null : displayAreaInfo.token;
     }
 
     public void dump(@NonNull PrintWriter pw, String prefix) {

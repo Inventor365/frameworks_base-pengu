@@ -97,7 +97,10 @@ class DesktopWallpaperActivity : FragmentActivity() {
         // it to be focusable).
         updateFocusableFlag(focusable = false)
 
-        onBackPressedDispatcher.addCallback(this) { moveTaskToBack(true) }
+        // The screen edge is usually this fullscreen wallpaper, not the freeform window.
+        // Moving it back reveals the launcher and leaves the desk. Back inside an app
+        // still reaches that app; back on the desktop itself stays on the desk.
+        onBackPressedDispatcher.addCallback(this) { }
 
         // Handle wallpaper color changes
         wallpaperManager = getSystemService(WallpaperManager::class.java)

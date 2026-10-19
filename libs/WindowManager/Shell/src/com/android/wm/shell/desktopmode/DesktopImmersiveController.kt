@@ -19,8 +19,11 @@ import android.animation.RectEvaluator
 import android.animation.ValueAnimator
 import android.app.ActivityManager.RunningTaskInfo
 import android.graphics.Rect
+import android.os.Binder
 import android.os.IBinder
 import android.view.SurfaceControl
+import android.view.WindowInsets.Type.navigationBars
+import android.view.WindowInsets.Type.statusBars
 import android.view.WindowManager.TRANSIT_CHANGE
 import android.view.animation.DecelerateInterpolator
 import android.window.TransitionInfo
@@ -29,6 +32,7 @@ import android.window.WindowContainerTransaction
 import androidx.core.animation.addListener
 import com.android.internal.annotations.VisibleForTesting
 import com.android.internal.protolog.ProtoLog
+import com.android.wm.shell.RootDisplayAreaOrganizer
 import com.android.wm.shell.ShellTaskOrganizer
 import com.android.wm.shell.common.DisplayController
 import com.android.wm.shell.desktopmode.data.DesktopRepository
@@ -54,6 +58,7 @@ class DesktopImmersiveController(
     private val shellTaskOrganizer: ShellTaskOrganizer,
     private val shellCommandHandler: ShellCommandHandler,
     private val transactionSupplier: () -> SurfaceControl.Transaction,
+    private val rootDisplayAreaOrganizer: RootDisplayAreaOrganizer? = null,
 ) : TransitionHandler, TransitionObserver {
 
     constructor(
@@ -63,6 +68,7 @@ class DesktopImmersiveController(
         displayController: DisplayController,
         shellTaskOrganizer: ShellTaskOrganizer,
         shellCommandHandler: ShellCommandHandler,
+        rootDisplayAreaOrganizer: RootDisplayAreaOrganizer? = null,
     ) : this(
         shellInit,
         transitions,
@@ -71,9 +77,12 @@ class DesktopImmersiveController(
         shellTaskOrganizer,
         shellCommandHandler,
         { SurfaceControl.Transaction() },
+        rootDisplayAreaOrganizer,
     )
 
     @VisibleForTesting val pendingImmersiveTransitions = mutableListOf<PendingTransition>()
+    private val systemBarOwner = Binder()
+    private val topEdgeRevealedDisplays = mutableSetOf<Int>()
 
     /** Whether there is an immersive transition that hasn't completed yet. */
     private val inProgress: Boolean
@@ -400,6 +409,10 @@ class DesktopImmersiveController(
                 taskId = taskId,
                 immersive = pendingTransition.direction == Direction.ENTER,
             )
+            if (pendingTransition.direction == Direction.EXIT) {
+                topEdgeRevealedDisplays.remove(pendingTransition.displayId)
+            }
+            syncSystemBars(pendingTransition.displayId)
             when (pendingTransition.direction) {
                 Direction.EXIT -> {
                     desktopRepository.removeBoundsBeforeFullImmersive(taskId)
@@ -425,7 +438,39 @@ class DesktopImmersiveController(
                     taskId = c.taskInfo!!.taskId,
                     immersive = false,
                 )
+                topEdgeRevealedDisplays.remove(c.taskInfo!!.displayId)
+                syncSystemBars(c.taskInfo!!.displayId)
             }
+    }
+
+    /**
+     * While a desktop window is fullscreen, a pointer or swipe at the top edge shows the status
+     * bar, caption, and taskbar. They hide again once the pointer leaves that strip.
+     */
+    fun setTopEdgeRevealing(displayId: Int, revealing: Boolean) {
+        val changed =
+            if (revealing) {
+                topEdgeRevealedDisplays.add(displayId)
+            } else {
+                topEdgeRevealedDisplays.remove(displayId)
+            }
+        if (changed) {
+            syncSystemBars(displayId)
+        }
+    }
+
+    private fun syncSystemBars(displayId: Int) {
+        val displayToken = rootDisplayAreaOrganizer?.getDisplayTokenForDisplay(displayId) ?: return
+        val immersive = desktopUserRepositories.current.getTaskInFullImmersiveState(displayId)
+        val wct = WindowContainerTransaction()
+        val forciblyHiding =
+            if (immersive != null && displayId !in topEdgeRevealedDisplays) {
+                statusBars() or navigationBars()
+            } else {
+                0
+            }
+        wct.setSystemBarVisibilityOverride(displayToken, systemBarOwner, 0, forciblyHiding)
+        shellTaskOrganizer.applyTransaction(wct)
     }
 
     override fun onTransitionMerged(merged: IBinder, playing: IBinder) {
