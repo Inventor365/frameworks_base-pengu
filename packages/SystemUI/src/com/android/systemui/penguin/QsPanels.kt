@@ -65,6 +65,10 @@ interface QsPanels {
 
     @Composable fun wideOverlay(viewModel: QuickSettingsContainerViewModel): Boolean
 
+    /** Whether the Quick Settings shade should draw AOSP's own toolbar and body. */
+    @Composable
+    fun stockOverlay(viewModel: QuickSettingsContainerViewModel): Boolean = false
+
     @Composable fun FooterAction(viewModel: QuickSettingsContainerViewModel) {}
 
     @Composable

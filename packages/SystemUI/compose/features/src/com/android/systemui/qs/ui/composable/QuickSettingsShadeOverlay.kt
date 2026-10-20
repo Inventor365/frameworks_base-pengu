@@ -400,9 +400,13 @@ private fun ContentScope.QuickSettingsLayout(
     ) {
         val toolbarViewModel =
             rememberViewModel("QuickSettingsLayout") { toolbarViewModelFactory.create() }
+        val stockOverlay =
+            qsContainerViewModel.penguin?.stockOverlay(qsContainerViewModel) == true
         val penguinTop =
-            qsContainerViewModel.penguin?.run { OverlayTop(qsContainerViewModel, toolbarViewModel) } ==
-                true
+            !stockOverlay &&
+                qsContainerViewModel.penguin?.run {
+                    OverlayTop(qsContainerViewModel, toolbarViewModel)
+                } == true
         if (!penguinTop && LocalSceneContainerPreloadedResources.current.isFullWidthShade) {
             QuickSettingsOverlayPrivacyChip(qsContainerViewModel.shadeHeaderViewModel)
             VerticalSeparator(QuickSettingsShade.Dimensions.ShortPadding)
@@ -433,7 +437,7 @@ private fun ContentScope.QuickSettingsLayout(
             VerticalSeparator(QuickSettingsShade.Dimensions.ToolbarBottomPadding)
         }
 
-        val penguin = qsContainerViewModel.penguin
+        val penguin = qsContainerViewModel.penguin.takeUnless { stockOverlay }
         if (penguin != null) {
             with(penguin) {
                 OverlayBody(qsContainerViewModel) { OverlayBuildNumber(buildNumberViewModelFactory) }
