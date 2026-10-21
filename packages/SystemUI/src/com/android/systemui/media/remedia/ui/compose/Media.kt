@@ -348,10 +348,15 @@ private fun CardCarouselContent(
                                 "composing media card ${viewModel.cards[pageIndex].key}",
                             )
                         }
+                        // The neighbours are only thumbnails at rest; while the carousel moves, the
+                        // card coming into view must already be laid out, or it shows up blank.
+                        val isScrolling = carouselState.isScrollInProgress
                         val presentation =
                             if (
                                 pageIndex == viewModel.currentIndex ||
-                                    !behavior.isCarouselScrollingEnabled
+                                    !behavior.isCarouselScrollingEnabled ||
+                                    (isScrolling &&
+                                        abs(pageIndex - carouselState.currentItem) <= 1)
                             ) {
                                 presentationStyle
                             } else {
@@ -1911,10 +1916,22 @@ object Media {
             }
         }
         from(Scenes.Compact, to = Scenes.Compressed) { fade(Elements.SeekBarSlider) }
-        from(Scenes.Thumbnail, to = Scenes.Default) { fadeAll() }
-        from(Scenes.Thumbnail, to = Scenes.Compact) { fadeAll() }
-        from(Scenes.Thumbnail, to = Scenes.Large) { fadeAll() }
-        from(Scenes.Thumbnail, to = Scenes.Compressed) { fadeAll() }
+        from(Scenes.Thumbnail, to = Scenes.Default) {
+            spec = tween(durationMillis = 100)
+            fadeAll()
+        }
+        from(Scenes.Thumbnail, to = Scenes.Compact) {
+            spec = tween(durationMillis = 100)
+            fadeAll()
+        }
+        from(Scenes.Thumbnail, to = Scenes.Large) {
+            spec = tween(durationMillis = 100)
+            fadeAll()
+        }
+        from(Scenes.Thumbnail, to = Scenes.Compressed) {
+            spec = tween(durationMillis = 100)
+            fadeAll()
+        }
     }
 
     /**

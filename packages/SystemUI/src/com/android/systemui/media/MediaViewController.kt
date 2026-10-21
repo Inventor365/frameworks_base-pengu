@@ -41,6 +41,7 @@ import com.android.internal.graphics.ColorUtils
 import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.media.MediaScrimState.STATE_SCRIM_HIDDEN
 import com.android.systemui.media.MediaScrimState.STATE_SCRIM_VISIBLE
+import com.android.systemui.scene.shared.flag.SceneContainerFlag
 import com.android.systemui.util.ScrimUtils
 
 import kotlinx.coroutines.*
@@ -526,6 +527,10 @@ class MediaViewController @Inject constructor(
     }
 
     override fun onKeyguardGoingAwayChanged(goingAway: Boolean) {
+        // With the scene container a touch on the lock screen starts "going away" even when it
+        // snaps back, and the flag then stays up for seconds. The artwork follows the keyguard
+        // showing state there instead, so a touch that does not unlock keeps it.
+        if (SceneContainerFlag.isEnabled) return
         bouncerShowingOrKeyguardDismissing = goingAway
         if (goingAway) {
             cleanupResources(true)
@@ -533,6 +538,7 @@ class MediaViewController @Inject constructor(
     }
 
     override fun onKeyguardFadingAwayChanged(fadingAway: Boolean) {
+        if (SceneContainerFlag.isEnabled) return
         bouncerShowingOrKeyguardDismissing = fadingAway
         if (fadingAway) {
             cleanupResources(true)
