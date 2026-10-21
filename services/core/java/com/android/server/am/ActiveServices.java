@@ -566,6 +566,8 @@ public final class ActiveServices {
 
 // QTI_BEGIN: 2023-04-06: Core: Add servicetracker AIDl support for service lifecycle event
     private vendor.qti.hardware.servicetracker.V1_0.IServicetracker mServicetracker;
+    // Not in VINTF (see isServicetrackerDeclared), so stop looking it up.
+    private boolean mServicetrackerUndeclared;
     private vendor.qti.hardware.servicetrackeraidl.IServicetracker  mServicetracker_aidl;
 
 // QTI_END: 2023-04-06: Core: Add servicetracker AIDl support for service lifecycle event
@@ -940,12 +942,26 @@ public final class ActiveServices {
     }
 
 // QTI_BEGIN: 2019-06-24: Core: Inform Servicetracker HAL about Service Lifecycle events
+    // Whether the servicetracker HIDL HAL is in VINTF; if not, it cannot appear
+    // later in this boot. Assume declared if hwservicemanager cannot tell.
+    private static boolean isServicetrackerDeclared() {
+        try {
+            return android.hidl.manager.V1_0.IServiceManager.getService().getTransport(
+                    IServicetracker.kInterfaceName, "default")
+                    != android.hidl.manager.V1_0.IServiceManager.Transport.EMPTY;
+        } catch (RemoteException | java.util.NoSuchElementException e) {
+            return true;
+        }
+    }
+
     private boolean getServicetrackerInstance() {
+        if (mServicetrackerUndeclared) return false;
         if (mServicetracker == null ) {
             try {
                 mServicetracker = IServicetracker.getService(false);
             } catch (java.util.NoSuchElementException e) {
                 // Service doesn't exist or cannot be opened logged below
+                mServicetrackerUndeclared = !isServicetrackerDeclared();
             } catch (RemoteException e) {
                 if (DEBUG_SERVICE) Slog.e(TAG, "Failed to get servicetracker interface", e);
                 return false;
