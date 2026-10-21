@@ -19,8 +19,12 @@ package com.android.systemui.qs.ui.viewmodel
 import android.content.res.Resources
 import android.graphics.Rect
 import android.media.AudioManager
+import android.os.Vibrator
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.Observer
 import com.android.compose.animation.scene.content.state.TransitionState
 import com.android.settingslib.volume.shared.model.AudioStream
 import com.android.systemui.Flags
@@ -44,6 +48,7 @@ import com.android.systemui.statusbar.core.StatusBarForDesktop
 import com.android.systemui.statusbar.notification.stack.domain.interactor.NotificationStackAppearanceInteractor
 import com.android.systemui.statusbar.notification.stack.shared.model.ShadeScrimShape
 import com.android.systemui.statusbar.ui.SystemBarUtilsState
+import com.android.systemui.util.RingerModeTracker
 import com.android.systemui.volume.dialog.domain.interactor.ExpandedAudioTileDetailsFeatureInteractor
 import com.android.systemui.volume.panel.component.volume.domain.model.SliderType
 import com.android.systemui.volume.panel.component.volume.slider.ui.viewmodel.AudioStreamSliderViewModel
@@ -54,6 +59,7 @@ import dagger.assisted.AssistedInject
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -88,6 +94,9 @@ constructor(
     private val blurConfig: BlurConfig,
     private val windowRootViewBlurInteractor: WindowRootViewBlurInteractor,
     private val qsPanelAppearanceInteractor: QSPanelAppearanceInteractor,
+    private val audioManager: AudioManager,
+    vibrator: Vibrator?,
+    private val ringerModeTracker: RingerModeTracker,
 ) : HydratedActivatable() {
 
     /**
@@ -163,8 +172,38 @@ constructor(
         }
     }
 
+    /** The ringer mode ([AudioManager.RINGER_MODE_NORMAL], _VIBRATE or _SILENT) of the device. */
+    var ringerMode: Int by mutableIntStateOf(audioManager.ringerModeInternal)
+        private set
+
+    /** Whether the device can vibrate, so the ringer has a vibrate mode between ring and mute. */
+    val supportsVibrateRinger: Boolean = vibrator?.hasVibrator() == true
+
+    /** Cycles the ringer: ring, then vibrate (where supported), then mute, then ring again. */
+    fun cycleRingerMode() {
+        val next =
+            when (audioManager.ringerModeInternal) {
+                AudioManager.RINGER_MODE_NORMAL ->
+                    if (supportsVibrateRinger) AudioManager.RINGER_MODE_VIBRATE
+                    else AudioManager.RINGER_MODE_SILENT
+                AudioManager.RINGER_MODE_VIBRATE -> AudioManager.RINGER_MODE_SILENT
+                else -> AudioManager.RINGER_MODE_NORMAL
+            }
+        audioManager.setRingerModeInternal(next)
+        ringerMode = next
+    }
+
     override suspend fun onActivated() {
         coroutineScope {
+            launch(mainDispatcher) {
+                val observer = Observer<Int> { ringerMode = it }
+                ringerModeTracker.ringerModeInternal.observeForever(observer)
+                try {
+                    awaitCancellation()
+                } finally {
+                    ringerModeTracker.ringerModeInternal.removeObserver(observer)
+                }
+            }
             launch {
                 shadeInteractor.isShadeTouchable
                     .distinctUntilChanged()

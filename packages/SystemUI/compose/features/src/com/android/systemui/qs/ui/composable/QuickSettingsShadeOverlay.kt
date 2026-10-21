@@ -16,6 +16,7 @@
 
 package com.android.systemui.qs.ui.composable
 
+import android.media.AudioManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -381,6 +382,9 @@ private fun ContentScope.QuickSettingsContainer(
                     isTransparencyEnabled = contentViewModel.isTransparencyEnabled,
                     volumeSliderViewModel = { contentViewModel.volumeSliderViewModel },
                     isVolumeDetailsEnabled = contentViewModel.isVolumeDetailsEnabled,
+                    ringerMode = contentViewModel.ringerMode,
+                    supportsVibrateRinger = contentViewModel.supportsVibrateRinger,
+                    onRingerClick = contentViewModel::cycleRingerMode,
                     audioDetailsViewModelFactory = contentViewModel.audioDetailsViewModelFactory,
                     modifier = modifier.sysuiResTag("quick_settings_panel"),
                 )
@@ -398,6 +402,9 @@ private fun ContentScope.QuickSettingsLayout(
     isTransparencyEnabled: Boolean,
     volumeSliderViewModel: () -> AudioStreamSliderViewModel?,
     isVolumeDetailsEnabled: Boolean,
+    ringerMode: Int,
+    supportsVibrateRinger: Boolean,
+    onRingerClick: () -> Unit,
     audioDetailsViewModelFactory: AudioDetailsViewModel.Factory,
     modifier: Modifier = Modifier,
 ) {
@@ -566,13 +573,9 @@ private fun ContentScope.QuickSettingsLayout(
                                 }
                             } else {
                                 // Without the audio details page, the round button next to the
-                                // slider mutes the stream, as the auto brightness button sits next
-                                // to the brightness slider.
-                                val muted =
-                                    volumeSliderState.icon?.resId.let {
-                                        it == R.drawable.ic_volume_off ||
-                                            it == R.drawable.ic_volume_media_bt_mute
-                                    }
+                                // slider is the ringer: ring, vibrate (where supported) or mute,
+                                // as the auto brightness button sits next to the brightness slider.
+                                val silenced = ringerMode != AudioManager.RINGER_MODE_NORMAL
                                 Spacer(Modifier.width(8.dp))
                                 IconButton(
                                     modifier =
@@ -583,35 +586,42 @@ private fun ContentScope.QuickSettingsLayout(
                                         IconButtonDefaults.iconButtonColors(
                                             containerColor =
                                                 when {
-                                                    glass && muted -> Color.White
+                                                    glass && silenced -> Color.White
                                                     glass -> LiquidGlassControl
-                                                    muted -> MaterialTheme.colorScheme.primary
+                                                    silenced -> MaterialTheme.colorScheme.primary
                                                     else ->
                                                         MaterialTheme.colorScheme
                                                             .surfaceContainerHighest
                                                 },
                                             contentColor =
                                                 when {
-                                                    glass && muted -> LiquidGlassVolume
+                                                    glass && silenced -> LiquidGlassVolume
                                                     glass -> Color.White
-                                                    muted -> MaterialTheme.colorScheme.onPrimary
+                                                    silenced -> MaterialTheme.colorScheme.onPrimary
                                                     else -> MaterialTheme.colorScheme.onSurface
                                                 },
                                         ),
-                                    onClick = {
-                                        volumeSliderViewModel.toggleMuted(volumeSliderState)
-                                    },
+                                    onClick = onRingerClick,
                                 ) {
                                     Icon(
                                         painterResource(
-                                            if (muted) R.drawable.ic_volume_off
-                                            else R.drawable.ic_volume_media
+                                            when (ringerMode) {
+                                                AudioManager.RINGER_MODE_VIBRATE ->
+                                                    R.drawable.ic_volume_ringer_vibrate
+                                                AudioManager.RINGER_MODE_SILENT ->
+                                                    R.drawable.ic_volume_ringer_mute
+                                                else -> R.drawable.ic_volume_ringer
+                                            }
                                         ),
                                         contentDescription =
                                             stringResource(
-                                                if (muted) R.string.volume_panel_hint_unmute
-                                                else R.string.volume_panel_hint_mute,
-                                                volumeSliderState.label,
+                                                when (ringerMode) {
+                                                    AudioManager.RINGER_MODE_VIBRATE ->
+                                                        R.string.volume_ringer_status_vibrate
+                                                    AudioManager.RINGER_MODE_SILENT ->
+                                                        R.string.volume_ringer_status_silent
+                                                    else -> R.string.volume_ringer_status_normal
+                                                }
                                             ),
                                     )
                                 }
