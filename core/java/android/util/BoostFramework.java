@@ -108,6 +108,9 @@ public class BoostFramework {
 /** @hide */
 // QTI_END: 2018-02-20: Performance: BoostFramework: To Enhance performance.
     private static boolean sIsLoaded = false;
+    // QPerformance/UxPerformance are either on the boot classpath or not; try
+    // once per process instead of throwing on every new BoostFramework().
+    private static boolean sLoadAttempted = false;
     private static Class<?> sPerfClass = null;
     private static Method sAcquireFunc = null;
     private static Method sPerfHintFunc = null;
@@ -355,7 +358,8 @@ public class BoostFramework {
 // QTI_BEGIN: 2018-02-20: Performance: BoostFramework: To Enhance performance.
         synchronized(BoostFramework.class) {
 // QTI_END: 2018-02-20: Performance: BoostFramework: To Enhance performance.
-            if (sIsLoaded == false) {
+            if (sIsLoaded == false && !sLoadAttempted) {
+                sLoadAttempted = true;
 // QTI_BEGIN: 2018-02-20: Performance: BoostFramework: To Enhance performance.
                 try {
 // QTI_END: 2018-02-20: Performance: BoostFramework: To Enhance performance.
