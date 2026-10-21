@@ -515,6 +515,23 @@ public class TrickyStoreService {
         }
     }
 
+    public static boolean isValidKeyboxXml(String xml) {
+        boolean hasEcdsa = xml.contains("<Key algorithm=\"ecdsa\">");
+        boolean hasRsa = xml.contains("<Key algorithm=\"rsa\">");
+        boolean hasId = xml.contains("<serial>") || xml.contains("DeviceID");
+        if (!hasEcdsa && !hasRsa) {
+            Log.e(TAG, "Keybox validation failed: no ECDSA or RSA key block found");
+            return false;
+        }
+        if (!hasId) {
+            Log.e(TAG, "Keybox validation failed: no identifier field (serial/DeviceID)");
+            return false;
+        }
+        if (!hasEcdsa) Log.w(TAG, "Keybox warning: missing ECDSA key block");
+        if (!hasRsa)   Log.w(TAG, "Keybox warning: missing RSA key block");
+        return true;
+    }
+
     private void checkKeyboxRevocation(String xml) {
         long now = System.currentTimeMillis();
         if (now - mLastRevocationCheckMs < REVOCATION_CHECK_COOLDOWN_MS) {
@@ -697,8 +714,8 @@ public class TrickyStoreService {
             if (XPOSED_PACKAGES.contains(pkg)) continue;
             Mode mode = mPackageModes.get(pkg);
             if (mode == Mode.SKIP) continue;
-            if (mode == Mode.GENERATE) return true;
-            if (mode == Mode.AUTO && isTeeBroken()) return true;
+            if (mode == Mode.GENERATE) return hasKeyboxes();
+            if (mode == Mode.AUTO && hasKeyboxes() && isTeeBroken()) return true;
         }
         return false;
     }
@@ -786,6 +803,7 @@ public class TrickyStoreService {
     }
 
     public boolean hasKeyboxes() {
+        maybeRefreshKeyBox();
         return mKeyBoxManager.hasKeyboxes();
     }
 

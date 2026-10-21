@@ -21,6 +21,7 @@ import android.content.Context;
 import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Process;
+import android.os.Binder;
 import android.os.UserHandle;
 import android.provider.Settings;
 import android.security.trickystore.TrickyStoreService;
@@ -29,6 +30,10 @@ import android.util.Slog;
 
 import com.android.internal.os.BackgroundThread;
 import com.android.server.SystemService;
+import com.android.server.security.rkp.DuckRkpManager;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.util.List;
 import java.util.Map;
@@ -48,6 +53,7 @@ public final class AxSpoofManagerService extends SystemService {
             Settings.Secure.SPOOF_TRICKYSTORE_TARGET,
             Settings.Secure.SPOOF_TRICKYSTORE_KEYBOX,
             Settings.Secure.SPOOF_TRICKYSTORE_PATCH,
+            Settings.Secure.SPOOF_DUCK_RKP_ENABLED,
     };
 
     private final ContentResolver mResolver;
@@ -56,6 +62,7 @@ public final class AxSpoofManagerService extends SystemService {
 
     private ContentObserver mObserver;
     private volatile boolean mReady;
+    private volatile DuckRkpManager mDuckRkp;
     private volatile int mUserId = UserHandle.USER_SYSTEM;
 
     public AxSpoofManagerService(Context context) {
@@ -93,6 +100,14 @@ public final class AxSpoofManagerService extends SystemService {
             return;
         }
         mUserId = ActivityManager.getCurrentUser();
+        mDuckRkp = new DuckRkpManager(getContext(), BackgroundThread.getHandler(),
+                () -> BackgroundThread.getHandler().post(() -> {
+                    if (mUserId == UserHandle.USER_SYSTEM) {
+                        refreshAll();
+                        maybeSeedDefaultTargets(false);
+                        restartPifTargets();
+                    }
+                }));
         refreshAll();
         registerObserver();
         mReady = true;
@@ -109,6 +124,13 @@ public final class AxSpoofManagerService extends SystemService {
             public void onChange(boolean selfChange, Uri uri, int userId) {
                 if (uri == null) {
                     return;
+                }
+                String changedKey = uri.getLastPathSegment();
+                if ((userId == UserHandle.USER_SYSTEM || userId == UserHandle.USER_ALL)
+                        && (Settings.Secure.SPOOF_TRICKYSTORE_KEYBOX.equals(changedKey)
+                            || Settings.Secure.SPOOF_DUCK_RKP_ENABLED.equals(changedKey)
+                            || "spoof_trickystore_enabled".equals(changedKey))) {
+                    mDuckRkp.onSettingsChanged("spoof_trickystore_enabled".equals(changedKey));
                 }
                 if (userId != UserHandle.USER_ALL && userId != mUserId) {
                     return;
@@ -132,6 +154,8 @@ public final class AxSpoofManagerService extends SystemService {
             mResolver.registerContentObserver(
                     Settings.Secure.getUriFor(key), false, mObserver, UserHandle.USER_ALL);
         }
+        mResolver.registerContentObserver(Settings.System.getUriFor("spoof_trickystore_enabled"),
+                false, mObserver, UserHandle.USER_SYSTEM);
     }
 
     private void refreshAll() {
@@ -166,7 +190,9 @@ public final class AxSpoofManagerService extends SystemService {
      */
     private void maybeSeedDefaultTargets(boolean restartGms) {
         try {
-            String keybox = readSetting(Settings.Secure.SPOOF_TRICKYSTORE_KEYBOX);
+            String keybox = mUserId == UserHandle.USER_SYSTEM && mDuckRkp != null
+                    ? mDuckRkp.getKeybox()
+                    : readSetting(Settings.Secure.SPOOF_TRICKYSTORE_KEYBOX);
             if (TextUtils.isEmpty(keybox)) {
                 return;
             }
@@ -246,6 +272,52 @@ public final class AxSpoofManagerService extends SystemService {
         }
     }
 
+    private boolean canReadTrickyStoreKeybox() {
+        int uid = Binder.getCallingUid();
+        if (uid == android.os.Process.SYSTEM_UID || uid == android.os.Process.ROOT_UID) return true;
+        if (UserHandle.getUserId(uid) != mUserId) return false;
+        String[] packages = getContext().getPackageManager().getPackagesForUid(uid);
+        if (packages == null) return false;
+        for (String pkg : packages) {
+            if (TrickyStoreService.XPOSED_PACKAGES.contains(pkg)) return false;
+        }
+        String targets = getCached(Settings.Secure.SPOOF_TRICKYSTORE_TARGET);
+        if (targets == null) return false;
+        boolean allowed = false;
+        try {
+            if (targets.trim().startsWith("[")) {
+                JSONArray entries = new JSONArray(targets);
+                for (int i = 0; i < entries.length(); i++) {
+                    JSONObject entry = entries.getJSONObject(i);
+                    for (String pkg : packages) {
+                        if (pkg.equals(entry.optString("package"))) {
+                            if ("SKIP".equalsIgnoreCase(entry.optString("mode"))) return false;
+                            allowed = true;
+                        }
+                    }
+                }
+            } else {
+                for (String raw : targets.split("\n")) {
+                    String target = raw.trim();
+                    if (target.isEmpty() || target.startsWith("#")) continue;
+                    boolean skipped = target.endsWith("-");
+                    if (skipped || target.endsWith("!") || target.endsWith("?")) {
+                        target = target.substring(0, target.length() - 1).trim();
+                    }
+                    for (String pkg : packages) {
+                        if (pkg.equals(target)) {
+                            if (skipped) return false;
+                            allowed = true;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            return false;
+        }
+        return allowed;
+    }
+
     private final class LocalService implements AxSpoofManagerInternal {
         @Override
         public String getPifConfig() {
@@ -269,7 +341,22 @@ public final class AxSpoofManagerService extends SystemService {
 
         @Override
         public String getTrickyStoreKeyBox() {
-            return getCached(Settings.Secure.SPOOF_TRICKYSTORE_KEYBOX);
+            if (!canReadTrickyStoreKeybox()) return null;
+            long token = Binder.clearCallingIdentity();
+            try {
+                if (mUserId == UserHandle.USER_SYSTEM && mDuckRkp != null) {
+                    return mDuckRkp.getKeybox();
+                }
+                return getCached(Settings.Secure.SPOOF_TRICKYSTORE_KEYBOX);
+            } finally {
+                Binder.restoreCallingIdentity(token);
+            }
+        }
+
+        @Override
+        public DuckRkpManager getDuckRkpManager() {
+            if (mDuckRkp == null) throw new IllegalStateException("RKP service is starting");
+            return mDuckRkp;
         }
 
         @Override

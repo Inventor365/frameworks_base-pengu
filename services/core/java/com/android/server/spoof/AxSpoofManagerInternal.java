@@ -27,4 +27,5 @@ public interface AxSpoofManagerInternal {
     String getTrickyStoreKeyBox();
 
     String getTrickyStorePatch();
+    com.android.server.security.rkp.DuckRkpManager getDuckRkpManager();
 }
