@@ -331,6 +331,8 @@ public class ActivityTaskSupervisor implements RecentTasks.Callbacks {
 
 // QTI_BEGIN: 2020-06-27: Core: Passing every activity state change to Servicetracker HAL.
     private IServicetracker mServicetracker;
+    // Not in VINTF (see isServicetrackerDeclared), so stop looking it up.
+    private boolean mServicetrackerUndeclared;
 
 // QTI_END: 2020-06-27: Core: Passing every activity state change to Servicetracker HAL.
     /** Common synchronization logic used to save things to disks. */
@@ -540,13 +542,27 @@ public class ActivityTaskSupervisor implements RecentTasks.Callbacks {
     }
 
 // QTI_BEGIN: 2020-06-27: Core: Passing every activity state change to Servicetracker HAL.
+    // Whether the servicetracker HIDL HAL is in VINTF; if not, it cannot appear
+    // later in this boot. Assume declared if hwservicemanager cannot tell.
+    private static boolean isServicetrackerDeclared() {
+        try {
+            return android.hidl.manager.V1_0.IServiceManager.getService().getTransport(
+                    IServicetracker.kInterfaceName, "default")
+                    != android.hidl.manager.V1_0.IServiceManager.Transport.EMPTY;
+        } catch (RemoteException | java.util.NoSuchElementException e) {
+            return true;
+        }
+    }
+
     public IServicetracker getServicetrackerInstance() {
+        if (mServicetrackerUndeclared) return null;
         if (ServiceManager.isDeclared(AIDL_SERVICE)) return null;
         if (mServicetracker == null) {
             try {
                 mServicetracker = IServicetracker.getService(false);
             } catch (java.util.NoSuchElementException e) {
                 // Service doesn't exist or cannot be opened logged below
+                mServicetrackerUndeclared = !isServicetrackerDeclared();
             } catch (RemoteException e) {
                 if (DEBUG_SERVICETRACKER) Slog.e(TAG, "Failed to get servicetracker interface", e);
                 return null;
