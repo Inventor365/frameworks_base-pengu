@@ -110,7 +110,8 @@ final class CapabilityController {
             @NonNull ProcessEdge edge) {
         final ProcessNode node = edge.getTarget();
         if (!node.hasForegroundServices()) {
-            return PROCESS_CAPABILITY_NONE;
+            return (roForegroundAudioControl() && node.hasActiveAudioPlayback())
+                    ? PROCESS_CAPABILITY_FOREGROUND_AUDIO_CONTROL : PROCESS_CAPABILITY_NONE;
         }
         // Grant BFSL for regular (non-short) FGS.
         @ProcessCapability int result = node.hasNonShortForegroundServices()
@@ -242,7 +243,7 @@ final class CapabilityController {
             edge.addCpuTimeReasons(CPU_TIME_REASON_OTHER);
             return PROCESS_CAPABILITY_CPU_TIME;
         }
-        if (node.hasForegroundServices()) {
+        if (node.hasForegroundServices() || node.hasActiveAudioPlayback()) {
             edge.addCpuTimeReasons(CPU_TIME_REASON_OTHER);
             return PROCESS_CAPABILITY_CPU_TIME;
         }

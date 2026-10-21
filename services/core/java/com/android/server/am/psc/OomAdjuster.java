@@ -2291,7 +2291,7 @@ public abstract class OomAdjuster {
             // Ensure that services get cpu time during start-up and tear-down.
             return CPU_TIME_REASON_OTHER;
         }
-        if (app.getServices().hasForegroundServices()) {
+        if (app.getServices().hasForegroundServices() || app.getHasActiveAudioPlayback()) {
             return CPU_TIME_REASON_OTHER;
         }
         if (app.getReceivers().isReceivingBroadcast()) {
