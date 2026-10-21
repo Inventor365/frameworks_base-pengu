@@ -564,6 +564,57 @@ private fun ContentScope.QuickSettingsLayout(
                                         contentDescription = "Volume settings",
                                     )
                                 }
+                            } else {
+                                // Without the audio details page, the round button next to the
+                                // slider mutes the stream, as the auto brightness button sits next
+                                // to the brightness slider.
+                                val muted =
+                                    volumeSliderState.icon?.resId.let {
+                                        it == R.drawable.ic_volume_off ||
+                                            it == R.drawable.ic_volume_media_bt_mute
+                                    }
+                                Spacer(Modifier.width(8.dp))
+                                IconButton(
+                                    modifier =
+                                        Modifier.size(
+                                            QuickSettingsShade.Dimensions.VolumeSliderDimensions.trackHeight
+                                        ),
+                                    colors =
+                                        IconButtonDefaults.iconButtonColors(
+                                            containerColor =
+                                                when {
+                                                    glass && muted -> Color.White
+                                                    glass -> LiquidGlassControl
+                                                    muted -> MaterialTheme.colorScheme.primary
+                                                    else ->
+                                                        MaterialTheme.colorScheme
+                                                            .surfaceContainerHighest
+                                                },
+                                            contentColor =
+                                                when {
+                                                    glass && muted -> LiquidGlassVolume
+                                                    glass -> Color.White
+                                                    muted -> MaterialTheme.colorScheme.onPrimary
+                                                    else -> MaterialTheme.colorScheme.onSurface
+                                                },
+                                        ),
+                                    onClick = {
+                                        volumeSliderViewModel.toggleMuted(volumeSliderState)
+                                    },
+                                ) {
+                                    Icon(
+                                        painterResource(
+                                            if (muted) R.drawable.ic_volume_off
+                                            else R.drawable.ic_volume_media
+                                        ),
+                                        contentDescription =
+                                            stringResource(
+                                                if (muted) R.string.volume_panel_hint_unmute
+                                                else R.string.volume_panel_hint_mute,
+                                                volumeSliderState.label,
+                                            ),
+                                    )
+                                }
                             }
                         }
                     }
