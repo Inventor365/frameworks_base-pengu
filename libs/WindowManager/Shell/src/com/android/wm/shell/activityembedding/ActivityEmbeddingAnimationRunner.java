@@ -332,9 +332,15 @@ class ActivityEmbeddingAnimationRunner {
             final int backgroundColor = getTransitionBackgroundColorIfSet(adapter.mChange,
                     adapter.mAnimation, 0 /* defaultColor */);
             if (backgroundColor != 0) {
-                // We only need to show one color.
-                addBackgroundToTransition(info.getRootLeash(), backgroundColor, startTransaction,
-                        finishTransaction);
+                // We only need to show one color. Keep it to the animating container, so a backdrop
+                // from the secondary pane does not paint over the primary pane of the split.
+                final Rect crop = new Rect(adapter.mChange.getEndAbsBounds());
+                crop.union(adapter.mChange.getStartAbsBounds());
+                final Point offset = info.getRoot(
+                        TransitionUtil.rootIndexFor(adapter.mChange, info)).getOffset();
+                crop.offset(-offset.x, -offset.y);
+                addBackgroundToTransition(info.getRootLeash(), backgroundColor,
+                        crop.isEmpty() ? null : crop, startTransaction, finishTransaction);
                 return;
             }
         }

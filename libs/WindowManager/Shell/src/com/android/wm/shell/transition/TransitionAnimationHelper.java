@@ -300,6 +300,18 @@ public class TransitionAnimationHelper {
     public static void addBackgroundToTransition(@NonNull SurfaceControl rootLeash,
             @ColorInt int backgroundColor, @NonNull SurfaceControl.Transaction startTransaction,
             @NonNull SurfaceControl.Transaction finishTransaction) {
+        addBackgroundToTransition(rootLeash, backgroundColor, null /* crop */, startTransaction,
+                finishTransaction);
+    }
+
+    /**
+     * Same as {@link #addBackgroundToTransition}, but limits the background to {@code crop}
+     * (in root leash coordinates) when it is not null.
+     */
+    public static void addBackgroundToTransition(@NonNull SurfaceControl rootLeash,
+            @ColorInt int backgroundColor, @Nullable Rect crop,
+            @NonNull SurfaceControl.Transaction startTransaction,
+            @NonNull SurfaceControl.Transaction finishTransaction) {
         if (backgroundColor == 0) {
             // No background color.
             return;
@@ -317,6 +329,9 @@ public class TransitionAnimationHelper {
                 .setLayer(animationBackgroundSurface, Integer.MIN_VALUE)
                 .setColor(animationBackgroundSurface, colorArray)
                 .show(animationBackgroundSurface);
+        if (crop != null) {
+            startTransaction.setCrop(animationBackgroundSurface, crop);
+        }
         finishTransaction.remove(animationBackgroundSurface);
     }
 
