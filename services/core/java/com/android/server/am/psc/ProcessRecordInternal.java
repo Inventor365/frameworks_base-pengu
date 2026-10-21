@@ -608,6 +608,16 @@ public abstract class ProcessRecordInternal {
     private boolean mHasOverlayUi;
 
     /**
+     * Is the process currently playing audible audio (see AudioPlaybackProcessTracker)?
+     * When true the process is treated like a media playback foreground service:
+     * Constants#PERCEPTIBLE_APP_ADJ and PROCESS_STATE_FOREGROUND_SERVICE at minimum, so
+     * it is never frozen, muted by audio hardening, cut off from the network or killed
+     * early while the user hears it.
+     */
+    @GuardedBy("mServiceLock")
+    private boolean mHasActiveAudioPlayback;
+
+    /**
      * Is the process currently running a remote animation? When true
      * the process will be set to use the
      * {@link Constants#SCHED_GROUP_TOP_APP} scheduling group to boost
@@ -1291,6 +1301,17 @@ public abstract class ProcessRecordInternal {
         return mHasOverlayUi;
     }
 
+    /** Sets whether the process is currently playing audible audio. */
+    @GuardedBy("mServiceLock")
+    public void setHasActiveAudioPlayback(boolean hasActiveAudioPlayback) {
+        mHasActiveAudioPlayback = hasActiveAudioPlayback;
+    }
+
+    @GuardedBy("mServiceLock")
+    public boolean getHasActiveAudioPlayback() {
+        return mHasActiveAudioPlayback;
+    }
+
     @GuardedBy("mServiceLock")
     public boolean isRunningRemoteAnimation() {
         return mRunningRemoteAnimation;
@@ -1824,6 +1845,9 @@ public abstract class ProcessRecordInternal {
             pw.print(prefix); pw.print("hasTopUi="); pw.print(getHasTopUi());
             pw.print(" hasOverlayUi="); pw.print(getHasOverlayUi());
             pw.print(" runningRemoteAnimation="); pw.println(mRunningRemoteAnimation);
+        }
+        if (mHasActiveAudioPlayback) {
+            pw.print(prefix); pw.println("hasActiveAudioPlayback=true");
         }
         if (mHasForegroundActivities || mRepForegroundActivities) {
             pw.print(prefix);

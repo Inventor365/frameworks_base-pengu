@@ -206,6 +206,10 @@ class ProcessNode extends GraphNode {
         return mProc.getServices().hasForegroundServices();
     }
 
+    boolean hasActiveAudioPlayback() {
+        return mProc.getHasActiveAudioPlayback();
+    }
+
     boolean hasNonShortForegroundServices() {
         return mProc.getServices().hasNonShortForegroundServices();
     }
