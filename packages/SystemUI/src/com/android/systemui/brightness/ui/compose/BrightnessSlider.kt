@@ -105,6 +105,7 @@ import com.android.systemui.brightness.ui.compose.InternalDimensions.ThumbTrackG
 import com.android.systemui.brightness.ui.viewmodel.BrightnessSliderViewModel
 import com.android.systemui.brightness.ui.viewmodel.Drag
 import com.android.systemui.common.shared.colors.SystemUISliderColors
+import com.android.systemui.qs.shared.style.LiquidGlassControl
 import com.android.systemui.common.shared.model.Icon
 import com.android.systemui.compose.modifiers.sysuiResTag
 import com.android.systemui.haptics.slider.SeekableSliderTrackerConfig
@@ -138,6 +139,7 @@ fun BrightnessSlider(
     showToast: () -> Unit = {},
     hapticsViewModelFactory: SliderHapticsViewModel.Factory,
     dimensions: BrightnessSliderDimensions = BrightnessSliderDimensions.Default,
+    glassAccent: Color? = null,
 ) {
     var value by remember(gammaValue) { mutableIntStateOf(gammaValue) }
     val animatedValue by
@@ -158,7 +160,17 @@ fun BrightnessSlider(
                 SeekableSliderTrackerConfig(),
             )
         }
-    val colors = SystemUISliderColors.Defaults
+    // Liquid Glass: a white fill on a glass track, with the icons in the accent colour.
+    val colors =
+        if (glassAccent == null) SystemUISliderColors.Defaults
+        else
+            SystemUISliderColors.Defaults.copy(
+                thumbColor = Color.White,
+                activeTrackColor = Color.White,
+                inactiveTrackColor = LiquidGlassControl,
+                activeTickColor = glassAccent,
+                inactiveTickColor = Color.White,
+            )
 
     // The value state is recreated every time gammaValue changes, so we recreate this derivedState
     // We have to use value as that's the value that changes when the user is dragging (gammaValue
@@ -352,7 +364,11 @@ fun BrightnessSlider(
 
         if (hasAutoBrightness) {
             Spacer(modifier = Modifier.width(8.dp))
-            drawAutoBrightnessButton(autoMode = autoMode, onIconClick = onIconClick)
+            drawAutoBrightnessButton(
+                autoMode = autoMode,
+                onIconClick = onIconClick,
+                glassAccent = glassAccent,
+            )
         }
     }
 
@@ -388,6 +404,7 @@ fun BrightnessSliderContainer(
     modifier: Modifier = Modifier,
     containerColors: ContainerColors,
     dimensions: BrightnessSliderDimensions = BrightnessSliderDimensions.Default,
+    glassAccent: Color? = null,
 ) {
     val gamma = viewModel.currentBrightness.value
     if (gamma == BrightnessSliderViewModel.initialValue.value) { // Ignore initial negative value.
@@ -433,6 +450,7 @@ fun BrightnessSliderContainer(
                 .sysuiResTag("brightness_slider")
     ) {
         BrightnessSlider(
+            glassAccent = glassAccent,
             enabled = enabled && !isRestricted,
             gammaValue = gamma,
             valueRange = viewModel.minBrightness.value..viewModel.maxBrightness.value,
@@ -550,20 +568,22 @@ object BrightnessSliderMotionTestKeys {
 private fun drawAutoBrightnessButton(
     autoMode: Boolean,
     onIconClick: suspend () -> Unit,
+    glassAccent: Color? = null,
 ) {
     val coroutineScope = rememberCoroutineScope()
     val backgroundColor by animateColorAsState(
         targetValue = if (autoMode) {
-            MaterialTheme.colorScheme.primary
+            if (glassAccent != null) Color.White else MaterialTheme.colorScheme.primary
         } else {
-            LocalAndroidColorScheme.current.surfaceEffect2
+            if (glassAccent != null) LiquidGlassControl
+            else LocalAndroidColorScheme.current.surfaceEffect2
         }
     )
     val iconTint by animateColorAsState(
         targetValue = if (autoMode) {
-            MaterialTheme.colorScheme.onPrimary
+            glassAccent ?: MaterialTheme.colorScheme.onPrimary
         } else {
-            MaterialTheme.colorScheme.onSurface
+            if (glassAccent != null) Color.White else MaterialTheme.colorScheme.onSurface
         }
     )
     val painterRes = if (autoMode) {

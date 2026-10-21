@@ -143,10 +143,15 @@ constructor(
         }
     }
 
-    private val showVolumeSlider = expandedAudioTileDetailsFeatureInteractor.isEnabled()
+    /** Whether AOSP's audio details (and the volume slider next to them) are enabled. */
+    val isVolumeDetailsEnabled = expandedAudioTileDetailsFeatureInteractor.isEnabled()
 
-    val volumeSliderViewModel =
-        if (showVolumeSlider && volumeSliderCoroutineScope != null)
+    /**
+     * The media volume slider. Built on first use, because besides the audio details feature a
+     * Quick Settings style that draws the stock layout shows it as well.
+     */
+    val volumeSliderViewModel by lazy {
+        if (volumeSliderCoroutineScope != null)
             audioStreamSliderViewModelFactory.create(
                 AudioStreamSliderViewModel.FactoryAudioStreamWrapper(
                     SliderType.Stream(AudioStream(AudioManager.STREAM_MUSIC)).stream
@@ -156,6 +161,7 @@ constructor(
         else {
             null
         }
+    }
 
     override suspend fun onActivated() {
         coroutineScope {
