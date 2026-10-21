@@ -16,6 +16,7 @@
 
 package com.android.systemui.media.controls.domain.pipeline.interactor
 
+import androidx.compose.runtime.snapshotFlow
 import android.app.PendingIntent
 import android.media.MediaDescription
 import android.media.session.MediaSession
@@ -73,10 +74,15 @@ constructor(
     deviceEntryInteractor: DeviceEntryInteractor,
 ) : MediaDataManager, CoreStartable {
 
-    /** Are there any media notifications active? */
+    /** Use the same source as the player, including sessions without a media notification. */
     val hasActiveMedia: StateFlow<Boolean> =
-        mediaPipelineRepository.currentUserEntries
-            .map { entries -> entries.any { it.value.active } }
+        (if (MediaControlsInComposeFlag.isEnabled) {
+                snapshotFlow { mediaRepository.currentMedia.any { it.isActive } }
+            } else {
+                mediaPipelineRepository.currentUserEntries.map { entries ->
+                    entries.any { it.value.active }
+                }
+            })
             .stateIn(
                 scope = applicationScope,
                 started = SharingStarted.WhileSubscribed(),
@@ -85,8 +91,11 @@ constructor(
 
     /** Are there any media entries, including inactive ones? */
     val hasAnyMedia: StateFlow<Boolean> =
-        mediaPipelineRepository.currentUserEntries
-            .map { entries -> entries.isNotEmpty() }
+        (if (MediaControlsInComposeFlag.isEnabled) {
+                snapshotFlow { mediaRepository.currentMedia.isNotEmpty() }
+            } else {
+                mediaPipelineRepository.currentUserEntries.map { entries -> entries.isNotEmpty() }
+            })
             .stateIn(
                 scope = applicationScope,
                 started = SharingStarted.WhileSubscribed(),
