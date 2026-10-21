@@ -592,6 +592,8 @@ public class DisplayPolicy {
                     new SystemGesturesPointerEventListener.Callbacks() {
 
                 private static final long MOUSE_GESTURE_DELAY_MS = 500;
+                // Top/bottom edges reveal the status bar and taskbar, so keep them snappy.
+                private static final long MOUSE_EDGE_REVEAL_DELAY_MS = 150;
 
                 private Runnable mOnSwipeFromLeft = this::onSwipeFromLeft;
                 private Runnable mOnSwipeFromTop = this::onSwipeFromTop;
@@ -891,7 +893,7 @@ public class DisplayPolicy {
                 @Override
                 public void onMouseHoverAtTop() {
                     mHandler.removeCallbacks(mOnSwipeFromTop);
-                    mHandler.postDelayed(mOnSwipeFromTop, MOUSE_GESTURE_DELAY_MS);
+                    mHandler.postDelayed(mOnSwipeFromTop, MOUSE_EDGE_REVEAL_DELAY_MS);
                 }
 
                 @Override
@@ -903,7 +905,7 @@ public class DisplayPolicy {
                 @Override
                 public void onMouseHoverAtBottom() {
                     mHandler.removeCallbacks(mOnSwipeFromBottom);
-                    mHandler.postDelayed(mOnSwipeFromBottom, MOUSE_GESTURE_DELAY_MS);
+                    mHandler.postDelayed(mOnSwipeFromBottom, MOUSE_EDGE_REVEAL_DELAY_MS);
                 }
 
                 @Override
