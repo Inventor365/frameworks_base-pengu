@@ -22,6 +22,7 @@
 
 package com.android.systemui.statusbar.pipeline.mobile.domain.interactor
 import android.content.Context
+import android.content.pm.PackageManager
 import android.telephony.ims.stub.ImsRegistrationImplBase.REGISTRATION_TECH_CROSS_SIM
 import android.telephony.ims.stub.ImsRegistrationImplBase.REGISTRATION_TECH_IWLAN
 import android.telephony.TelephonyDisplayInfo
@@ -535,9 +536,21 @@ class MobileIconInteractorImpl(
         }
     }
 
+    // CLO shows the anchor (LTE) for NR NSA and leaves the 5G icon to the modem's
+    // radio icon type from ExtTelephonyService (com.qti.phone). Without that
+    // package nothing can report it, so map NR NSA like AOSP does.
+    private val hasExtTelephonyService: Boolean by lazy {
+        try {
+            context.packageManager.getPackageInfo(EXT_TELEPHONY_PACKAGE, 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
+    }
+
     private fun getLookupKey(resolvedNetworkType: ResolvedNetworkType,
                              customizationInfo: MobileIconCustomizationMode): String {
-        return if (isNsa(resolvedNetworkType.networkType)) {
+        return if (isNsa(resolvedNetworkType.networkType) && hasExtTelephonyService) {
             if (customizationInfo.originNetworkType  == TelephonyManager.NETWORK_TYPE_UNKNOWN) {
                 MobileMappings.toIconKey(customizationInfo.voiceNetworkType)
             }else {
@@ -676,3 +689,6 @@ class MobileIconInteractorImpl(
             .stateIn(scope, SharingStarted.WhileSubscribed(), initial)
     }
 }
+
+/** Package that hosts ExtTelephonyService (FiveGServiceClient's radio icon source). */
+private const val EXT_TELEPHONY_PACKAGE = "com.qti.phone"
