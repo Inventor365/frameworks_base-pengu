@@ -738,8 +738,10 @@ public final class ServiceConfigAccessorImpl implements ServiceConfigAccessor {
 
     @Override
     public boolean isGeoDetectionEnabledForUsersByDefault() {
+        // Without telephony, location is the only automatic time zone source.
         return mServerFlags.getBoolean(
-                ServerFlags.KEY_LOCATION_TIME_ZONE_DETECTION_SETTING_ENABLED_DEFAULT, false);
+                ServerFlags.KEY_LOCATION_TIME_ZONE_DETECTION_SETTING_ENABLED_DEFAULT,
+                !isTelephonyTimeZoneDetectionFeatureSupported());
     }
 
     @Override
