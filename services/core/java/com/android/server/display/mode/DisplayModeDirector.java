@@ -588,13 +588,7 @@ public class DisplayModeDirector {
      * Delegates requestDisplayModes call to SystemRequestObserver
      */
     public void requestDisplayModes(IBinder token, int displayId, int[] modeIds) {
-        boolean vrrSupported;
-        synchronized (mLock) {
-            vrrSupported = isVrrSupportedLocked(displayId);
-        }
-        if (vrrSupported) {
-            mSystemRequestObserver.requestDisplayModes(token, displayId, modeIds);
-        }
+        mSystemRequestObserver.requestDisplayModes(token, displayId, modeIds);
     }
 
     /**
