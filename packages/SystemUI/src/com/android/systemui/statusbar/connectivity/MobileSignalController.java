@@ -22,6 +22,7 @@ import static android.telephony.TelephonyManager.UNKNOWN_CARRIER_ID;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.ContentObserver;
@@ -851,13 +852,33 @@ public class MobileSignalController extends SignalController<MobileState, Mobile
         client.unregisterListener(phoneId, mFiveGStateListener);
     }
 
+    // CLO shows the anchor (LTE) for NR NSA and leaves the 5G icon to the modem's
+    // radio icon type from ExtTelephonyService (com.qti.phone). Without that
+    // package nothing can report it, so map NR NSA like AOSP does.
+    private Boolean mHasExtTelephonyService;
+
+    private boolean hasExtTelephonyService() {
+        if (mHasExtTelephonyService == null) {
+            boolean installed;
+            try {
+                mContext.getPackageManager().getPackageInfo("com.qti.phone", 0);
+                installed = true;
+            } catch (PackageManager.NameNotFoundException e) {
+                installed = false;
+            }
+            mHasExtTelephonyService = installed;
+        }
+        return mHasExtTelephonyService;
+    }
+
     private MobileIconGroup getNetworkTypeIconGroup() {
         MobileIconGroup iconGroup = mDefaultIcons;
         int overrideNetworkType = mCurrentState.telephonyDisplayInfo.getOverrideNetworkType();
         String iconKey = null;
-        if (overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NONE
-                || overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE
-                || overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA ){
+        boolean nsaAsAnchor = hasExtTelephonyService()
+                && (overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE
+                || overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA);
+        if (overrideNetworkType == TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NONE || nsaAsAnchor) {
             int networkType = mCurrentState.telephonyDisplayInfo.getNetworkType();
             if (networkType == TelephonyManager.NETWORK_TYPE_UNKNOWN) {
                 networkType = mCurrentState.getVoiceNetworkType();
