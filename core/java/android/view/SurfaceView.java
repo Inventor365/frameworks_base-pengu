@@ -1489,7 +1489,12 @@ public class SurfaceView extends View implements ViewRootImpl.SurfaceChangedCall
         final boolean relativeZChanged = mSubLayer != mRequestedSubLayer;
         final boolean surfaceLifecycleStrategyChanged =
                 mSurfaceLifecycleStrategy != mRequestedSurfaceLifecycleStrategy;
-        final boolean hdrHeadroomChanged = mHdrHeadroom != mRequestedHdrHeadroom;
+        final Display display = getDisplay();
+        final boolean hdrRestricted = display != null
+                && !display.isHdrSdrRatioAvailable() && !display.isHdr();
+        final float effectiveHdrHeadroom = (hdrRestricted && mRequestedHdrHeadroom > 1.0f)
+                ? 1.0f : mRequestedHdrHeadroom;
+        final boolean hdrHeadroomChanged = mHdrHeadroom != effectiveHdrHeadroom;
         final boolean pictureProfileChanged = mRequestedPictureProfileHandle != null;
         final boolean blurRegionsChanged = mRequestedBlurRegionsChanged;
 
@@ -1536,7 +1541,7 @@ public class SurfaceView extends View implements ViewRootImpl.SurfaceChangedCall
 
                 final int previousSurfaceLifecycleStrategy = mSurfaceLifecycleStrategy;
                 mSurfaceLifecycleStrategy = mRequestedSurfaceLifecycleStrategy;
-                mHdrHeadroom = mRequestedHdrHeadroom;
+                mHdrHeadroom = effectiveHdrHeadroom;
 
                 // Picture profiles operate a bit differently. Since the picture profiles can also
                 // be changed when queueing buffers, SurfaceView can't be the single source

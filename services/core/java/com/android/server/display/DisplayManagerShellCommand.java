@@ -136,6 +136,14 @@ class DisplayManagerShellCommand extends ShellCommand {
                 return getSupportedHdrOutputTypes();
             case "get-active-mode":
                 return getActiveMode();
+            case "set-app-hdr-mode":
+                return setAppHdrMode();
+            case "get-app-hdr-mode":
+                return getAppHdrMode();
+            case "reset-app-hdr-modes":
+                return resetAppHdrModes();
+            case "list-app-hdr-modes":
+                return listAppHdrModes();
             default:
                 return handleDefaultCommands(cmd);
         }
@@ -280,6 +288,14 @@ class DisplayManagerShellCommand extends ShellCommand {
         pw.println("  get-active-mode DISPLAY_ID");
         pw.println("    Gets the current active display mode (resolution, refresh rate)");
         pw.println("    for the specified DISPLAY_ID.");
+        pw.println("  set-app-hdr-mode PACKAGE_NAME MODE");
+        pw.println("    Sets the per-application HDR playback mode (default|hdr|sdr or 0|1|2).");
+        pw.println("  get-app-hdr-mode PACKAGE_NAME");
+        pw.println("    Gets the per-application HDR playback mode for PACKAGE_NAME.");
+        pw.println("  reset-app-hdr-modes");
+        pw.println("    Resets all per-application HDR playback overrides to default.");
+        pw.println("  list-app-hdr-modes");
+        pw.println("    Lists all packages with non-default HDR playback modes.");
         pw.println();
         Intent.printIntentArgsHelp(pw, "");
     }
@@ -1210,5 +1226,88 @@ class DisplayManagerShellCommand extends ShellCommand {
             return 1;
         }
         return 0;
+    }
+
+    @SuppressLint("AndroidFrameworkRequiresPermission")
+    private int setAppHdrMode() {
+        final String packageName = getNextArg();
+        if (packageName == null) {
+            getErrPrintWriter().println("Error: Missing required argument PACKAGE_NAME.");
+            return 1;
+        }
+        final String modeText = getNextArg();
+        if (modeText == null) {
+            getErrPrintWriter().println("Error: Missing required argument MODE.");
+            return 1;
+        }
+        final int mode = parseAppHdrMode(modeText);
+        if (mode < 0) {
+            getErrPrintWriter().println("Error: Invalid MODE '" + modeText
+                    + "'. Use default (0), hdr (1), or sdr (2).");
+            return 1;
+        }
+        final DisplayManager dm = mService.getContext().getSystemService(DisplayManager.class);
+        dm.setAppHdrPlaybackMode(packageName, mode);
+        getOutPrintWriter().println("Set HDR playback mode for " + packageName + " to "
+                + AppHdrPolicyController.modeToString(mode) + " (" + mode + ")");
+        return 0;
+    }
+
+    @SuppressLint("AndroidFrameworkRequiresPermission")
+    private int getAppHdrMode() {
+        final String packageName = getNextArg();
+        if (packageName == null) {
+            getErrPrintWriter().println("Error: Missing required argument PACKAGE_NAME.");
+            return 1;
+        }
+        final DisplayManager dm = mService.getContext().getSystemService(DisplayManager.class);
+        final int mode = dm.getAppHdrPlaybackMode(packageName);
+        getOutPrintWriter().println(AppHdrPolicyController.modeToString(mode) + " (" + mode + ")");
+        return 0;
+    }
+
+    @SuppressLint("AndroidFrameworkRequiresPermission")
+    private int resetAppHdrModes() {
+        final DisplayManager dm = mService.getContext().getSystemService(DisplayManager.class);
+        dm.resetAllAppHdrPlaybackModes();
+        getOutPrintWriter().println("Reset all per-application HDR playback modes.");
+        return 0;
+    }
+
+    @SuppressLint("AndroidFrameworkRequiresPermission")
+    private int listAppHdrModes() {
+        final DisplayManager dm = mService.getContext().getSystemService(DisplayManager.class);
+        final String[] packages = dm.getAppHdrPlaybackPackages();
+        final PrintWriter pw = getOutPrintWriter();
+        if (packages.length == 0) {
+            pw.println("No per-application HDR playback overrides.");
+            return 0;
+        }
+        for (String pkg : packages) {
+            final int mode = dm.getAppHdrPlaybackMode(pkg);
+            pw.println(pkg + "=" + AppHdrPolicyController.modeToString(mode) + " (" + mode + ")");
+        }
+        return 0;
+    }
+
+    private static int parseAppHdrMode(String modeText) {
+        switch (modeText.toLowerCase(Locale.ROOT)) {
+            case "0":
+            case "default":
+                return DisplayManager.APP_HDR_PLAYBACK_MODE_DEFAULT;
+            case "1":
+            case "hdr":
+            case "hdr_allowed":
+            case "allow":
+                return DisplayManager.APP_HDR_PLAYBACK_MODE_HDR_ALLOWED;
+            case "2":
+            case "sdr":
+            case "sdr_only":
+            case "disable":
+            case "disabled":
+                return DisplayManager.APP_HDR_PLAYBACK_MODE_SDR_ONLY;
+            default:
+                return -1;
+        }
     }
 }
