@@ -402,6 +402,8 @@ public final class DisplayManagerService extends SystemService {
 
     private final ModeRequestManager mModeRequestManager;
 
+    private final AppHdrPolicyController mAppHdrPolicyController;
+
     // List of all currently registered display adapters.
     private final ArrayList<DisplayAdapter> mDisplayAdapters = new ArrayList<>();
 
@@ -776,6 +778,8 @@ public final class DisplayManagerService extends SystemService {
                 new PluginManager(context, new PluginProviderDependencyInjector() , mFlags);
         mSecondaryDisplayPolicy =
                 new SecondaryDisplayPolicy(mContext, () -> mInjector.canEnterDesktopMode(mContext));
+        mAppHdrPolicyController =
+                new AppHdrPolicyController(mContext, this::handleAppHdrPolicyChanged);
     }
 
     public void setupSchedulerPolicies() {
@@ -902,6 +906,7 @@ public final class DisplayManagerService extends SystemService {
                 dpc.onSwitchUser(newUserId, userSerial, newBrightness);
             });
             handleMinimalPostProcessingAllowedSettingChange();
+            mAppHdrPolicyController.onUserSwitching(mCurrentUserId);
 
             if (mFlags.isDisplayContentModeManagementEnabled()) {
                 if (updateMirrorBuiltInDisplaySettingLocked(
@@ -968,6 +973,7 @@ public final class DisplayManagerService extends SystemService {
             updateMinimalPostProcessingAllowedSettingLocked();
             updateUserDisabledHdrTypesFromSettingsLocked();
             updateUserPreferredDisplayModeSettingsLocked();
+            mAppHdrPolicyController.start(mCurrentUserId, mHandler);
             if (mIsHdrOutputControlEnabled) {
                 updateHdrConversionModeSettingsLocked();
             }
@@ -1303,6 +1309,11 @@ public final class DisplayManagerService extends SystemService {
                     Settings.Secure.getUriFor(
                         Settings.Secure.MINIMAL_POST_PROCESSING_ALLOWED), false, this);
 
+            mContext.getContentResolver().registerContentObserver(
+                    Settings.Secure.getUriFor(
+                            Settings.Secure.APP_HDR_PLAYBACK_POLICIES),
+                    false, this, UserHandle.USER_ALL);
+
             if (mFlags.isDisplayContentModeManagementEnabled()) {
                 mContext.getContentResolver().registerContentObserver(
                         Settings.Secure.getUriFor(
@@ -1322,6 +1333,12 @@ public final class DisplayManagerService extends SystemService {
             if (Settings.Secure.getUriFor(
                     Settings.Secure.MINIMAL_POST_PROCESSING_ALLOWED).equals(uri)) {
                 handleMinimalPostProcessingAllowedSettingChange();
+                return;
+            }
+
+            if (Settings.Secure.getUriFor(
+                    Settings.Secure.APP_HDR_PLAYBACK_POLICIES).equals(uri)) {
+                mAppHdrPolicyController.onSettingChanged();
                 return;
             }
 
@@ -1537,7 +1554,86 @@ public final class DisplayManagerService extends SystemService {
         overriddenInfo.copyFrom(info);
         applyFrameRateOverride(frameRateOverrides, overriddenInfo, callingUid);
         applyPresentationMaskingOverride(overriddenInfo, callingUid);
+        applyAppHdrPolicyOverride(overriddenInfo, callingUid);
         return overriddenInfo;
+    }
+
+    @VisibleForTesting
+    void applyAppHdrPolicyOverride(DisplayInfo info, int callingUid) {
+        if (!isApp(callingUid) || mAppHdrPolicyController == null) {
+            return;
+        }
+        final int mode = mAppHdrPolicyController.getModeForUid(callingUid);
+        if (mode == DisplayManager.APP_HDR_PLAYBACK_MODE_DEFAULT) {
+            return;
+        }
+        if (mode == DisplayManager.APP_HDR_PLAYBACK_MODE_SDR_ONLY) {
+            if (info.hdrCapabilities != null) {
+                info.hdrCapabilities = new Display.HdrCapabilities(
+                        EMPTY_ARRAY,
+                        info.hdrCapabilities.getDesiredMaxLuminance(),
+                        info.hdrCapabilities.getDesiredMaxAverageLuminance(),
+                        info.hdrCapabilities.getDesiredMinLuminance());
+            }
+            info.userDisabledHdrTypes = Display.HdrCapabilities.HDR_TYPES;
+            info.hdrSdrRatio = Float.NaN;
+            if (info.supportedModes != null && info.supportedModes.length > 0) {
+                final Display.Mode[] modes = new Display.Mode[info.supportedModes.length];
+                for (int i = 0; i < info.supportedModes.length; i++) {
+                    final Display.Mode m = info.supportedModes[i];
+                    modes[i] = new Display.Mode(
+                            m.getModeId(),
+                            m.getParentModeId(),
+                            m.getSfModeId(),
+                            m.getFlags(),
+                            m.getPhysicalWidth(),
+                            m.getPhysicalHeight(),
+                            m.getRefreshRate(),
+                            m.getVsyncRate(),
+                            m.getAlternativeRefreshRates(),
+                            EMPTY_ARRAY);
+                }
+                info.supportedModes = modes;
+            }
+        } else if (mode == DisplayManager.APP_HDR_PLAYBACK_MODE_HDR_ALLOWED) {
+            info.isForceSdr = false;
+            info.userDisabledHdrTypes = EMPTY_ARRAY;
+        }
+    }
+
+    private void handleAppHdrPolicyChanged() {
+        DisplayManagerGlobal.invalidateLocalDisplayInfoCaches();
+        synchronized (mSyncRoot) {
+            mLogicalDisplayMapper.forEachLocked(
+                    display -> {
+                        sendDisplayEventsIfEnabledLocked(display,
+                                DisplayManagerGlobal.EVENT_DISPLAY_BASIC_CHANGED
+                                        | DisplayManagerGlobal.EVENT_DISPLAY_HDR_SDR_RATIO_CHANGED);
+                    });
+            scheduleTraversalLocked(false);
+        }
+    }
+
+    @VisibleForTesting
+    AppHdrPolicyController getAppHdrPolicyController() {
+        return mAppHdrPolicyController;
+    }
+
+    void setAppHdrPlaybackModeInternal(@NonNull String packageName, int mode) {
+        mAppHdrPolicyController.setModeForPackage(packageName, mode);
+    }
+
+    int getAppHdrPlaybackModeInternal(@NonNull String packageName) {
+        return mAppHdrPolicyController.getModeForPackage(packageName);
+    }
+
+    void resetAllAppHdrPlaybackModesInternal() {
+        mAppHdrPolicyController.resetAllModes();
+    }
+
+    @NonNull
+    String[] getAppHdrPlaybackPackagesInternal() {
+        return mAppHdrPolicyController.getPackagesWithOverrides();
     }
 
     private void applyPresentationMaskingOverride(DisplayInfo info, int callingUid) {
@@ -4225,6 +4321,8 @@ public final class DisplayManagerService extends SystemService {
                 pw.println("  mHdrConversionMode=" + mHdrConversionMode);
             }
 
+            mAppHdrPolicyController.dump(ipw);
+
             pw.println();
             final int displayStateCount = mDisplayStates.size();
             pw.println("Display States: size=" + displayStateCount);
@@ -6394,6 +6492,12 @@ public final class DisplayManagerService extends SystemService {
             if (!mIsHdrOutputControlEnabled) {
                 return HDR_CONVERSION_MODE_UNSUPPORTED;
             }
+            final int callingUid = Binder.getCallingUid();
+            if (isApp(callingUid) && mAppHdrPolicyController != null
+                    && mAppHdrPolicyController.getModeForUid(callingUid)
+                            == DisplayManager.APP_HDR_PLAYBACK_MODE_SDR_ONLY) {
+                return HDR_CONVERSION_MODE_UNSUPPORTED;
+            }
             final long token = Binder.clearCallingIdentity();
             try {
                 return getHdrConversionModeInternal();
@@ -6406,6 +6510,12 @@ public final class DisplayManagerService extends SystemService {
         @Override // Binder call
         public int[] getSupportedHdrOutputTypes() {
             if (!mIsHdrOutputControlEnabled) {
+                return EMPTY_ARRAY;
+            }
+            final int callingUid = Binder.getCallingUid();
+            if (isApp(callingUid) && mAppHdrPolicyController != null
+                    && mAppHdrPolicyController.getModeForUid(callingUid)
+                            == DisplayManager.APP_HDR_PLAYBACK_MODE_SDR_ONLY) {
                 return EMPTY_ARRAY;
             }
             final long token = Binder.clearCallingIdentity();
@@ -6527,6 +6637,12 @@ public final class DisplayManagerService extends SystemService {
                 throw new IllegalArgumentException(
                         "Display ID does not have a config: " + displayId);
             }
+            final int callingUid = Binder.getCallingUid();
+            if (isApp(callingUid) && mAppHdrPolicyController != null
+                    && mAppHdrPolicyController.getModeForUid(callingUid)
+                            == DisplayManager.APP_HDR_PLAYBACK_MODE_SDR_ONLY) {
+                return 1;
+            }
             return ddc.getHdrBrightnessData() != null
                     ? ddc.getHdrBrightnessData().highestHdrSdrRatio : 1;
         }
@@ -6567,6 +6683,63 @@ public final class DisplayManagerService extends SystemService {
         public void setDisplayTopology(DisplayTopology topology) {
             setDisplayTopology_enforcePermission();
             mDisplayTopologyCoordinator.setTopology(topology);
+        }
+
+        @EnforcePermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
+        @Override // Binder call
+        public void setAppHdrPlaybackMode(@NonNull String packageName, int mode) {
+            setAppHdrPlaybackMode_enforcePermission();
+            if (TextUtils.isEmpty(packageName)) {
+                throw new IllegalArgumentException("packageName must not be empty");
+            }
+            if (!AppHdrPolicyController.isValidMode(mode)) {
+                throw new IllegalArgumentException("Invalid HDR playback mode: " + mode);
+            }
+            final long token = Binder.clearCallingIdentity();
+            try {
+                setAppHdrPlaybackModeInternal(packageName, mode);
+            } finally {
+                Binder.restoreCallingIdentity(token);
+            }
+        }
+
+        @EnforcePermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
+        @Override // Binder call
+        public int getAppHdrPlaybackMode(@NonNull String packageName) {
+            getAppHdrPlaybackMode_enforcePermission();
+            if (TextUtils.isEmpty(packageName)) {
+                throw new IllegalArgumentException("packageName must not be empty");
+            }
+            final long token = Binder.clearCallingIdentity();
+            try {
+                return getAppHdrPlaybackModeInternal(packageName);
+            } finally {
+                Binder.restoreCallingIdentity(token);
+            }
+        }
+
+        @EnforcePermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
+        @Override // Binder call
+        public void resetAllAppHdrPlaybackModes() {
+            resetAllAppHdrPlaybackModes_enforcePermission();
+            final long token = Binder.clearCallingIdentity();
+            try {
+                resetAllAppHdrPlaybackModesInternal();
+            } finally {
+                Binder.restoreCallingIdentity(token);
+            }
+        }
+
+        @EnforcePermission(android.Manifest.permission.WRITE_SECURE_SETTINGS)
+        @Override // Binder call
+        public String[] getAppHdrPlaybackPackages() {
+            getAppHdrPlaybackPackages_enforcePermission();
+            final long token = Binder.clearCallingIdentity();
+            try {
+                return getAppHdrPlaybackPackagesInternal();
+            } finally {
+                Binder.restoreCallingIdentity(token);
+            }
         }
     }
 
@@ -7169,6 +7342,13 @@ public final class DisplayManagerService extends SystemService {
             if (userId == mCurrentUserId) {
                 scheduleTopologiesReload(mCurrentUserId, /*isUserSwitching=*/ false);
             }
+        }
+
+        @Override
+        public int getAppHdrPlaybackModeForUid(int uid) {
+            return mAppHdrPolicyController != null
+                    ? mAppHdrPolicyController.getModeForUid(uid)
+                    : DisplayManager.APP_HDR_PLAYBACK_MODE_DEFAULT;
         }
 
         public void createFreeformLocked(String name, ILMOFreeformDisplayCallback callback,
