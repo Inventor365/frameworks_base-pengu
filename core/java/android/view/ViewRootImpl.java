@@ -2696,6 +2696,8 @@ public final class ViewRootImpl implements ViewParent,
             }
 
             if (mView != null && mDisplay.getDisplayId() == displayId) {
+                updateColorModeIfNeeded(mWindowAttributes.getColorMode(),
+                        mWindowAttributes.getDesiredHdrHeadroom());
                 final int oldDisplayState = mAttachInfo.mDisplayState;
                 final int newDisplayState = mDisplay.getState();
                 if (Trace.isTagEnabled(Trace.TRACE_TAG_WINDOW_MANAGER)) {
