@@ -84,6 +84,7 @@ import android.os.Process;
 import android.os.RemoteException;
 import android.os.SystemProperties;
 import android.os.UserHandle;
+import android.hardware.display.DisplayManager;
 import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
@@ -1920,6 +1921,14 @@ public class WindowProcessController extends ConfigurationContainer<Configuratio
         requestedOverrideConfig.windowConfiguration.setActivityType(ACTIVITY_TYPE_UNDEFINED);
         super.resolveOverrideConfiguration(newParentConfig);
         final Configuration resolvedConfig = getResolvedOverrideConfiguration();
+        if (mAtm.mWindowManager != null
+                && mAtm.mWindowManager.mDisplayManagerInternal != null
+                && mAtm.mWindowManager.mDisplayManagerInternal.getAppHdrPlaybackModeForUid(mUid)
+                        == DisplayManager.APP_HDR_PLAYBACK_MODE_SDR_ONLY) {
+            resolvedConfig.colorMode =
+                    (resolvedConfig.colorMode & ~Configuration.COLOR_MODE_HDR_MASK)
+                            | Configuration.COLOR_MODE_HDR_NO;
+        }
         // Activity has an independent ActivityRecord#mConfigurationSeq. If this process registers
         // activity configuration, its config seq shouldn't go backwards by activity configuration.
         // Otherwise if other places send wpc.getConfiguration() to client, the configuration may

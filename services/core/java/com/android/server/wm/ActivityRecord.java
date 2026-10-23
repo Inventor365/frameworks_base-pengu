@@ -299,6 +299,7 @@ import android.os.SystemProperties;
 // QTI_END: 2022-10-06: Core: Merge changes from topic "am-000f4089-22e1-4b8b-a1ba-7df6718ad762" into t-keystone-qcom-dev
 import android.os.Trace;
 import android.os.UserHandle;
+import android.hardware.display.DisplayManager;
 import android.service.contentcapture.ActivityEvent;
 import android.service.dreams.DreamActivity;
 import android.service.voice.IVoiceInteractionSession;
@@ -7948,6 +7949,13 @@ public final class ActivityRecord extends WindowToken {
         final Configuration resolvedConfig = getResolvedOverrideConfiguration();
 
         applyLocaleOverrideIfNeeded(resolvedConfig);
+        if (mWmService.mDisplayManagerInternal != null
+                && mWmService.mDisplayManagerInternal.getAppHdrPlaybackModeForUid(getUid())
+                        == DisplayManager.APP_HDR_PLAYBACK_MODE_SDR_ONLY) {
+            resolvedConfig.colorMode =
+                    (resolvedConfig.colorMode & ~Configuration.COLOR_MODE_HDR_MASK)
+                            | Configuration.COLOR_MODE_HDR_NO;
+        }
 
         if (isFixedRotationTransforming()) {
             // The resolved configuration is applied with rotated display configuration. If this
