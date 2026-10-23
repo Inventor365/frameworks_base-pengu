@@ -203,6 +203,7 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Region;
 import android.gui.TouchOcclusionMode;
+import android.hardware.display.DisplayManager;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Debug;
@@ -768,6 +769,11 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
     int mInteractionPriorityScore = 0;
 
     /**
+     * Cached desired max HDR headroom applied to {@link #mSurfaceControl} in SurfaceFlinger.
+     */
+    private float mDesiredMaxHdrHeadroom = 0.0f;
+
+    /**
      * This is the frame rate which is passed to SurfaceFlinger if the window set a
      * preferredDisplayModeId or is part of the high refresh rate deny list.
      * The variable is cached, so we do not send too many updates to SF.
@@ -1201,6 +1207,8 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         // All apps should be considered as occluding when computing TrustedPresentation Thresholds.
         getPendingTransaction().setCanOccludePresentation(mSurfaceControl,
                 canOccludePresentation());
+        mDesiredMaxHdrHeadroom = 0.0f;
+        updateHdrHeadroomClampIfNeeded();
     }
 
 
@@ -5447,6 +5455,20 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
         }
     }
 
+    private void updateHdrHeadroomClampIfNeeded() {
+        if (mSurfaceControl == null || mWmService.mDisplayManagerInternal == null) {
+            return;
+        }
+        final int mode = mWmService.mDisplayManagerInternal.getAppHdrPlaybackModeForUid(mOwnerUid);
+        final float desiredMaxHdrHeadroom =
+                (mode == DisplayManager.APP_HDR_PLAYBACK_MODE_SDR_ONLY) ? 1.0f : 0.0f;
+        if (mDesiredMaxHdrHeadroom != desiredMaxHdrHeadroom) {
+            getPendingTransaction().setDesiredMaxHdrHeadroom(
+                    mSurfaceControl, desiredMaxHdrHeadroom);
+            mDesiredMaxHdrHeadroom = desiredMaxHdrHeadroom;
+        }
+    }
+
     @Override
     void prepareSurfaces() {
         mIsDimming = false;
@@ -5455,6 +5477,7 @@ class WindowState extends WindowContainer<WindowState> implements WindowManagerP
             // Send information to SurfaceFlinger about the priority of the current window.
             updateFrameRateSelectionPriorityIfNeeded();
             updateSystemContentPriorityIfNeeded();
+            updateHdrHeadroomClampIfNeeded();
             if (isVisibleRequested()) {
                 updateScaleIfNeeded();
             }

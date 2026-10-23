@@ -10967,6 +10967,15 @@ public final class Settings {
                 "hdr_brightness_boost_level";
 
         /**
+         * Semicolon-separated list of per-application High Dynamic Range playback mode overrides
+         * in the format {@code packageName=mode;...}.
+         *
+         * @hide
+         */
+        public static final String APP_HDR_PLAYBACK_POLICIES =
+                "app_hdr_playback_policies";
+
+        /**
          * List of the enabled print services.
          *
          * N and beyond uses {@link #DISABLED_PRINT_SERVICES}. But this might be used in an upgrade

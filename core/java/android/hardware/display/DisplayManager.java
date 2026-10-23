@@ -711,6 +711,40 @@ public final class DisplayManager {
     public @interface HdrPreference {}
 
     /**
+     * Per-application HDR playback mode: follow system default HDR behavior.
+     * @hide
+     */
+    public static final int APP_HDR_PLAYBACK_MODE_DEFAULT = 0;
+
+    /**
+     * Per-application HDR playback mode: explicitly allow HDR playback and extended HDR headroom
+     * for the application.
+     * @hide
+     */
+    public static final int APP_HDR_PLAYBACK_MODE_HDR_ALLOWED = 1;
+
+    /**
+     * Per-application HDR playback mode: restrict the application to SDR-only capabilities and
+     * clamp window HDR headroom to 1.0x.
+     * @hide
+     */
+    public static final int APP_HDR_PLAYBACK_MODE_SDR_ONLY = 2;
+
+    /**
+     * Per-application HDR playback policy mode.
+     * @hide
+     */
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef(
+            prefix = {"APP_HDR_PLAYBACK_MODE_"},
+            value = {
+                APP_HDR_PLAYBACK_MODE_DEFAULT,
+                APP_HDR_PLAYBACK_MODE_HDR_ALLOWED,
+                APP_HDR_PLAYBACK_MODE_SDR_ONLY,
+            })
+    public @interface AppHdrPlaybackMode {}
+
+    /**
      * @hide
      */
     @LongDef(flag = true, prefix = {"EVENT_TYPE_"}, value = {
@@ -1843,6 +1877,54 @@ public final class DisplayManager {
     @HdrPreference
     public int getUserPreferredHdrMode(int displayId) {
         return mGlobal.getUserPreferredHdrMode(displayId);
+    }
+
+    /**
+     * Sets the per-application HDR playback mode for a given package.
+     *
+     * @param packageName The target application package name.
+     * @param mode The HDR playback mode to apply.
+     * @hide
+     */
+    @RequiresPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
+    public void setAppHdrPlaybackMode(
+            @NonNull String packageName, @AppHdrPlaybackMode int mode) {
+        mGlobal.setAppHdrPlaybackMode(packageName, mode);
+    }
+
+    /**
+     * Gets the per-application HDR playback mode for a given package.
+     *
+     * @param packageName The target application package name.
+     * @return The configured HDR playback mode, or {@link #APP_HDR_PLAYBACK_MODE_DEFAULT}.
+     * @hide
+     */
+    @RequiresPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
+    @AppHdrPlaybackMode
+    public int getAppHdrPlaybackMode(@NonNull String packageName) {
+        return mGlobal.getAppHdrPlaybackMode(packageName);
+    }
+
+    /**
+     * Resets all per-application HDR playback mode overrides back to
+     * {@link #APP_HDR_PLAYBACK_MODE_DEFAULT}.
+     *
+     * @hide
+     */
+    @RequiresPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
+    public void resetAllAppHdrPlaybackModes() {
+        mGlobal.resetAllAppHdrPlaybackModes();
+    }
+
+    /**
+     * Returns the package names that currently have a non-default HDR playback mode override.
+     *
+     * @hide
+     */
+    @RequiresPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
+    @NonNull
+    public String[] getAppHdrPlaybackPackages() {
+        return mGlobal.getAppHdrPlaybackPackages();
     }
 
     /**
