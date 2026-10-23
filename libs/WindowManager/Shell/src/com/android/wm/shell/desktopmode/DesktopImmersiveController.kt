@@ -499,9 +499,19 @@ class DesktopImmersiveController(
         val immersive = desktopUserRepositories.current.getTaskInFullImmersiveState(displayId)
         if (immersive == null) return 0
         val hideStatus = displayId !in topEdgeRevealedDisplays
-        val hideTaskbar = hideStatus && displayId !in taskbarRevealedDisplays
+        val hideTaskbar =
+            hideStatus && displayId !in taskbarRevealedDisplays && reservesTaskbarSpace(displayId)
         return (if (hideStatus) statusBars() else 0) or (if (hideTaskbar) navigationBars() else 0)
     }
+
+    /**
+     * Whether the taskbar takes space at the bottom of the display. One that takes none (the
+     * desktop dock, or a taskbar that auto-hides on the desktop) hides itself and slides back in on
+     * a bottom hover or swipe, as it does outside fullscreen. Hiding it here as well would take it
+     * away again on lift-off, before it has slid in.
+     */
+    private fun reservesTaskbarSpace(displayId: Int): Boolean =
+        (displayController.getDisplayLayout(displayId)?.stableInsets()?.bottom ?: 1) > 0
 
     private fun syncSystemBars(displayId: Int) {
         val displayToken = rootDisplayAreaOrganizer?.getDisplayTokenForDisplay(displayId) ?: return
