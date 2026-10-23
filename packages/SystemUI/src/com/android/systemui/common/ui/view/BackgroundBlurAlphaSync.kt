@@ -18,7 +18,9 @@ package com.android.systemui.common.ui.view
 
 import android.view.View
 import android.view.ViewTreeObserver
+import androidx.compose.ui.geometry.Rect
 import com.android.internal.graphics.drawable.BackgroundBlurDrawable
+import com.android.systemui.qs.shared.style.GlassBackdrop
 import kotlin.math.roundToInt
 import kotlinx.coroutines.DisposableHandle
 
@@ -33,8 +35,11 @@ import kotlinx.coroutines.DisposableHandle
  */
 class BackgroundBlurAlphaSync(
     private val view: View,
+    private val corner: () -> Float = { minOf(view.width, view.height) / 2f },
     private val drawable: () -> BackgroundBlurDrawable?,
 ) : ViewTreeObserver.OnPreDrawListener {
+    private val location = IntArray(2)
+    private var material = 0
 
     override fun onPreDraw(): Boolean {
         sync()
@@ -54,6 +59,30 @@ class BackgroundBlurAlphaSync(
         if (blur.alpha != blurAlpha) {
             blur.alpha = blurAlpha
         }
+        val cos = GlassBackdrop.cos.value
+        if (material != (if (cos) 1 else 0)) {
+            material = if (cos) 1 else 0
+            blur.setMaterial(material)
+        }
+        publish(cos && blur.isVisible && view.isShown, alpha)
+    }
+
+    private fun publish(shown: Boolean, alpha: Float) {
+        if (!shown) {
+            GlassBackdrop.update(this, null)
+            return
+        }
+        view.getLocationInWindow(location)
+        val left = location[0].toFloat()
+        val top = location[1].toFloat()
+        GlassBackdrop.update(
+            this,
+            GlassBackdrop.Region(
+                Rect(left, top, left + view.width, top + view.height),
+                corner(),
+                alpha.coerceIn(0f, 1f),
+            ),
+        )
     }
 
     /**
@@ -66,6 +95,7 @@ class BackgroundBlurAlphaSync(
         sync()
         return DisposableHandle {
             (if (observer.isAlive) observer else view.viewTreeObserver).removeOnPreDrawListener(this)
+            GlassBackdrop.update(this, null)
         }
     }
 }

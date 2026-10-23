@@ -41,6 +41,7 @@ import com.android.systemui.keyguard.ui.viewmodel.DeviceEntryForegroundViewModel
 import com.android.systemui.keyguard.ui.viewmodel.DeviceEntryIconViewModel
 import com.android.systemui.lifecycle.repeatWhenAttached
 import com.android.systemui.plugins.FalsingManager
+import com.android.systemui.qs.shared.style.GlassBackdrop
 import com.android.systemui.res.R
 import com.android.systemui.statusbar.VibratorHelper
 import com.android.systemui.util.kotlin.DisposableHandles
@@ -51,6 +52,7 @@ import kotlin.math.min
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DisposableHandle
+import kotlinx.coroutines.flow.combine
 
 object DeviceEntryIconViewBinder {
     private const val TAG = "DeviceEntryIconViewBinder"
@@ -319,9 +321,10 @@ object DeviceEntryIconViewBinder {
                         }
                     }
                     launch("$TAG#bgViewModel.color") {
-                        bgViewModel.color.collect { color ->
-                            bgView.imageTintList = ColorStateList.valueOf(color)
-                        }
+                        combine(bgViewModel.color, GlassBackdrop.cos) { color, cos ->
+                                if (cos) android.graphics.Color.TRANSPARENT else color
+                            }
+                            .collect { color -> bgView.imageTintList = ColorStateList.valueOf(color) }
                     }
                 }
             }

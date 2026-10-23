@@ -88,6 +88,9 @@ import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenEl
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementKeys.Shortcuts
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementProvider
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenScope
+import com.android.systemui.qs.shared.style.GlassBackdrop
+import com.android.systemui.qs.shared.style.LiquidGlassTune
+import com.android.systemui.qs.shared.style.glassBackdropRegion
 import com.android.systemui.res.R
 import com.android.systemui.shade.ShadeDisplayAware
 import com.android.systemui.statusbar.KeyguardIndicationController
@@ -201,6 +204,7 @@ constructor(
             )
 
         val alpha by alphaFlow.collectAsStateWithLifecycle(initialValue = 1f)
+        val cos by GlassBackdrop.cos.collectAsStateWithLifecycle()
 
         val painter =
             painterResource(
@@ -239,8 +243,8 @@ constructor(
                             alpha = if (quickAffordanceViewModel.isDimmed) DIM_ALPHA else alpha,
                             translationX = xAnimation.value.x,
                         )
-                        .drawBlurBehind(quickAffordanceViewModel, alpha)
-                        .shortcutBackground(quickAffordanceViewModel)
+                        .drawBlurBehind(quickAffordanceViewModel, alpha, cos)
+                        .shortcutBackground(quickAffordanceViewModel, alpha, cos)
                         .clickableShortcut(
                             expandable,
                             quickAffordanceViewModel,
@@ -297,6 +301,7 @@ constructor(
     private fun Modifier.drawBlurBehind(
         viewModel: KeyguardQuickAffordanceViewModel,
         alpha: Float,
+        cos: Boolean,
     ): Modifier {
         if (enableLockscreenBlur()) {
             val viewRootImpl = LocalView.current.viewRootImpl
@@ -308,10 +313,14 @@ constructor(
             val isBlurSupported by
                 windowRootViewBlurInteractor.isBlurCurrentlySupported.collectAsStateWithLifecycle()
 
-            if (isBlurSupported) {
+            if (isBlurSupported && !(cos && GlassBackdrop.drawing.value)) {
                 return drawBehind {
                     drawable.apply {
-                        setBlurRadius(blurRadius.roundToPx())
+                        setMaterial(if (cos) 1 else 0)
+                        setBlurRadius(
+                            if (cos) LiquidGlassTune.f("cos_blur", 62.0f).toInt()
+                            else blurRadius.roundToPx()
+                        )
                         setCornerRadius(cornerRadius.toPx())
                         val backgroundAlpha = if (viewModel.isDimmed) DIM_ALPHA else alpha
                         setAlpha((backgroundAlpha * 255).toInt())
@@ -335,7 +344,19 @@ constructor(
     }
 
     @Composable
-    private fun Modifier.shortcutBackground(viewModel: KeyguardQuickAffordanceViewModel): Modifier {
+    private fun Modifier.shortcutBackground(
+        viewModel: KeyguardQuickAffordanceViewModel,
+        alpha: Float,
+        cos: Boolean,
+    ): Modifier {
+        if (cos) {
+            return if (viewModel.isActivated) background(CosActiveShortcutColor, CircleShape)
+            else
+                glassBackdropRegion(
+                    dimensionResource(R.dimen.keyguard_affordance_fixed_height) / 2,
+                    if (viewModel.isDimmed) DIM_ALPHA else alpha,
+                )
+        }
         if (!viewModel.isSelected) {
             val isBlurSupported by
                 windowRootViewBlurInteractor.isBlurCurrentlySupported.collectAsStateWithLifecycle()
@@ -525,3 +546,5 @@ constructor(
 }
 
 private val ExpandedMediaShortcutColor = Color(0xFF2C2C2E).copy(alpha = 0.6f)
+
+private val CosActiveShortcutColor = Color(0xE6FFFFFF)
