@@ -443,6 +443,11 @@ class DesktopTasksController(
         desksOrganizer.setBackPressOnDeskListener { task ->
             minimizeTask(task, MinimizeReason.KEY_GESTURE)
         }
+        // A maximized window that closes itself (e.g. an app's own back/up button) leaves the
+        // wallpaper dimmed for good unless the scrim is checked again without it.
+        desktopTasksTransitionObserver.onClosingTaskRemoved = { displayId, userId, taskId ->
+            desktopScrimController.updateDesktopScrimIfNeeded(displayId, userId, taskId)
+        }
         desktopScrimController.onInit()
     }
 

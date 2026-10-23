@@ -69,6 +69,12 @@ class DesktopTasksTransitionObserver(
     private var currentProfileId: Int
     private val pendingUserBoundsChangeTransitions = mutableSetOf<IBinder>()
 
+    /**
+     * Called for each desktop task that closed by itself (e.g. its last activity finished) and is
+     * removed here, since such a close never reaches [DesktopTasksController.handleRequest].
+     */
+    var onClosingTaskRemoved: ((displayId: Int, userId: Int, taskId: Int) -> Unit)? = null
+
     init {
         if (desktopState.canEnterDesktopMode) {
             shellInit.addInitCallback(::onInit, this)
@@ -198,12 +204,14 @@ class DesktopTasksTransitionObserver(
         val wct = WindowContainerTransaction()
         // Keeping processes alive allows for faster (warm) future launches of the same apps.
         val killProcess = !Flags.skipKillProcessForDesktopTaskCoreCloseTransition()
+        val removedTasks = mutableListOf<TaskInfo>()
         info.changes
             .filter { it.mode == TRANSIT_CLOSE }
             .mapNotNull { it.taskInfo }
             .forEach { taskInfo ->
                 if (taskInfo.windowingMode != WINDOWING_MODE_FREEFORM) return@forEach
                 wct.removeTask(taskInfo.token, /* removeFromRecents= */ true, killProcess)
+                removedTasks.add(taskInfo)
                 ProtoLog.d(
                     WM_SHELL_DESKTOP_MODE,
                     "DesktopTasksTransitionObserver: removing closing task=%d fully",
@@ -212,6 +220,7 @@ class DesktopTasksTransitionObserver(
             }
 
         if (!wct.isEmpty) transitions.startTransition(TRANSIT_CLOSE, wct, null)
+        removedTasks.forEach { onClosingTaskRemoved?.invoke(it.displayId, it.userId, it.taskId) }
     }
 
     private fun updateWallpaperToken(info: TransitionInfo) {
