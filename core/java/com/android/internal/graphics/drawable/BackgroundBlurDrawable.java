@@ -65,6 +65,7 @@ public final class BackgroundBlurDrawable extends Drawable {
     // Confined to UiThread. The values are copied into a BlurRegion, which lives on
     // RenderThread to avoid interference with UiThread updates.
     private int mBlurRadius;
+    private int mMaterial;
     private float mCornerRadiusTLX;
 
     private float mCornerRadiusTLY;
@@ -156,6 +157,14 @@ public final class BackgroundBlurDrawable extends Drawable {
      */
     public void setXfermode(@Nullable Xfermode xfermode) {
         mPaint.setXfermode(xfermode);
+    }
+
+    public void setMaterial(int material) {
+        if (mMaterial != material) {
+            mMaterial = material;
+            invalidateSelf();
+            mAggregator.onBlurDrawableUpdated(this);
+        }
     }
 
     /**
@@ -507,6 +516,7 @@ public final class BackgroundBlurDrawable extends Drawable {
         public final float cornerRadiusBRY;
         public final float alpha;
         public final Rect rect;
+        public final int material;
 
         BlurRegion(BackgroundBlurDrawable drawable) {
             alpha = drawable.mAlpha / 255f;
@@ -520,13 +530,14 @@ public final class BackgroundBlurDrawable extends Drawable {
             cornerRadiusBRX = drawable.mCornerRadiusBRX;
             cornerRadiusBRY = drawable.mCornerRadiusBRY;
             rect = drawable.mRect;
+            material = drawable.mMaterial;
         }
 
         /**
          * Serializes this class into a float array that's more JNI friendly.
          */
         float[] toFloatArray() {
-            final float[] floatArray = new float[14];
+            final float[] floatArray = new float[15];
             floatArray[0] = blurRadius;
             floatArray[1] = alpha;
             floatArray[2] = rect.left;
@@ -541,6 +552,7 @@ public final class BackgroundBlurDrawable extends Drawable {
             floatArray[11] = cornerRadiusBLY;
             floatArray[12] = cornerRadiusBRX;
             floatArray[13] = cornerRadiusBRY;
+            floatArray[14] = material;
             return floatArray;
         }
 

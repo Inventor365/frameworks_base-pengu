@@ -210,6 +210,10 @@ constructor(
                     quickSettingsContainerViewModel.penguin?.wideOverlay(
                         quickSettingsContainerViewModel
                     ) == true,
+                cosPanel =
+                    quickSettingsContainerViewModel.penguin?.cosPanel(
+                        quickSettingsContainerViewModel
+                    ) == true,
                 statusBarHeightPx = contentViewModel.statusBarHeightPx,
                 enableTransparency = contentViewModel.isTransparencyEnabled,
                 onScrimClicked = {

@@ -77,6 +77,8 @@ interface QsPanels {
     @Composable fun tileStyle(): QsTileStyle?
 
     fun onScrimClicked(): Boolean = false
+
+    @Composable fun cosPanel(viewModel: QuickSettingsContainerViewModel): Boolean = false
 }
 
 interface QsEditMode {

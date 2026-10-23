@@ -605,18 +605,25 @@ val LocalGlassBlurAllowed = compositionLocalOf<() -> Boolean> { { true } }
 
 val LocalGlassBlurAlpha = compositionLocalOf<() -> Float> { { 1f } }
 
+val LocalGlassClipBottom = compositionLocalOf<() -> Float> { { Float.POSITIVE_INFINITY } }
+
 @Composable
-fun Modifier.glassBlurRegion(shape: Shape): Modifier {
+fun Modifier.glassBlurRegion(shape: Shape, material: Int = 0): Modifier {
     val view = LocalView.current
     val drawable = remember(view) { arrayOfNulls<BackgroundBlurDrawable>(1) }
     LiquidGlassTune.generation.value
-    val radius = LiquidGlassTune.f("tile_blur", 90.0f).toInt()
+    val radius =
+        if (material >= 5) LiquidGlassTune.f("cos_panel_blur", 62.0f).toInt()
+        else if (material != 0) LiquidGlassTune.f("cos_blur", 62.0f).toInt()
+        else LiquidGlassTune.f("tile_blur", 90.0f).toInt()
     val allowed = LocalGlassBlurAllowed.current
     SideEffect { if (radius <= 0) drawable[0]?.setVisible(false, false) }
     DisposableEffect(view) { onDispose { drawable[0]?.setVisible(false, false) } }
     if (radius <= 0) return this
     val visible = remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    val originY = remember { mutableStateOf(0f) }
     val fade = LocalGlassBlurAlpha.current
+    val clipBottom = LocalGlassClipBottom.current
     LaunchedEffect(fade, allowed) {
         androidx.compose.runtime.snapshotFlow { if (allowed()) fade().coerceIn(0f, 1f) else 0f }
             .collect { alpha ->
@@ -626,15 +633,35 @@ fun Modifier.glassBlurRegion(shape: Shape): Modifier {
             }
     }
     return onGloballyPositioned { coordinates ->
-            val bounds = coordinates.boundsInWindow()
-            val topLeft = coordinates.windowToLocal(bounds.topLeft)
-            val bottomRight = coordinates.windowToLocal(bounds.bottomRight)
+            val clipped = coordinates.boundsInWindow()
+            val origin = coordinates.positionInWindow()
+            originY.value = origin.y
+            val windowWidth = view.rootView.width.toFloat()
+            val windowHeight = view.rootView.height.toFloat()
+            val left =
+                if (clipped.left <= 0.5f) minOf(clipped.left, origin.x) else clipped.left
+            val top = if (clipped.top <= 0.5f) minOf(clipped.top, origin.y) else clipped.top
+            val right =
+                if (clipped.right >= windowWidth - 0.5f) {
+                    maxOf(clipped.right, origin.x + coordinates.size.width)
+                } else {
+                    clipped.right
+                }
+            val bottom =
+                if (clipped.bottom >= windowHeight - 0.5f) {
+                    maxOf(clipped.bottom, origin.y + coordinates.size.height)
+                } else {
+                    clipped.bottom
+                }
+            val topLeft = coordinates.windowToLocal(Offset(left, top))
+            val bottomRight = coordinates.windowToLocal(Offset(right, bottom))
             visible.value =
                 androidx.compose.ui.geometry.Rect(topLeft, bottomRight)
                     .intersect(androidx.compose.ui.geometry.Rect(Offset.Zero, coordinates.size.toSize()))
         }
         .drawBehind {
-            val shown = visible.value ?: androidx.compose.ui.geometry.Rect(Offset.Zero, size)
+            val full = visible.value ?: androidx.compose.ui.geometry.Rect(Offset.Zero, size)
+            val shown = full.copy(bottom = minOf(full.bottom, clipBottom() - originY.value))
             val alpha = fade().coerceIn(0f, 1f)
             if (!allowed() || alpha < 0.01f || shown.width < 1f || shown.height < 1f) {
                 drawable[0]?.setVisible(false, false)
@@ -653,9 +680,10 @@ fun Modifier.glassBlurRegion(shape: Shape): Modifier {
                     else -> 0f
                 }
             blur.setVisible(true, false)
+            blur.setMaterial(material)
             blur.setColor(0)
             blur.setBlurRadius(radius)
-            blur.setCornerRadius(corner)
+            blur.setCornerRadius(minOf(corner, shown.height / 2f))
             blur.setAlpha((alpha * 255).toInt())
             blur.setBounds(
                 shown.left.toInt(),

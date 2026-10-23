@@ -16,6 +16,10 @@
 
 package com.android.systemui.shade.ui.composable
 
+import com.android.systemui.qs.shared.style.glassBlurRegion
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.isSystemInDarkTheme
 import android.annotation.SuppressLint
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -79,6 +83,7 @@ fun ContentScope.OverlayShade(
         },
     header: @Composable () -> Unit,
     wide: Boolean = false,
+    cosPanel: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val isFullWidth = LocalSceneContainerPreloadedResources.current.isFullWidthShade
@@ -93,7 +98,19 @@ fun ContentScope.OverlayShade(
         }
 
     Box(modifier) {
-        OverlayScrim(showBackgroundColor = enableTransparency, onClicked = onScrimClicked)
+        OverlayScrim(
+            showBackgroundColor = enableTransparency && !cosPanel,
+            onClicked = onScrimClicked,
+        )
+        if (cosPanel) {
+            Spacer(
+                Modifier.fillMaxSize()
+                    .glassBlurRegion(
+                        RectangleShape,
+                        material = if (isSystemInDarkTheme()) 5 else 6,
+                    )
+            )
+        }
 
         Box(
             modifier =
@@ -107,6 +124,7 @@ fun ContentScope.OverlayShade(
         ) {
             Panel(
                 enableTransparency = enableTransparency,
+                cosPanel = cosPanel,
                 spec = panelSpec,
                 modifier =
                     Modifier.overscroll(verticalOverscrollEffect)
@@ -184,6 +202,7 @@ fun ContentScope.OverlayShade(
 @Composable
 private fun ContentScope.Panel(
     enableTransparency: Boolean,
+    cosPanel: Boolean = false,
     spec: VerticalExpandContainerSpec,
     modifier: Modifier = Modifier,
     header: (@Composable () -> Unit)?,
@@ -193,7 +212,11 @@ private fun ContentScope.Panel(
         modifier =
             modifier
                 .disableSwipesWhenScrolling()
-                .verticalExpandContainerBackground(Colors.panelBackground(enableTransparency), spec)
+                .verticalExpandContainerBackground(
+                    if (cosPanel) Color.Transparent
+                    else Colors.panelBackground(enableTransparency),
+                    spec,
+                )
     ) {
         Column {
             header?.invoke()
