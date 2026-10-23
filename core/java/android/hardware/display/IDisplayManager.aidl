@@ -294,4 +294,20 @@ interface IDisplayManager {
     // Set the display topology
     @EnforcePermission("MANAGE_DISPLAYS")
     void setDisplayTopology(in DisplayTopology topology);
+
+    // Sets the per-application HDR playback mode for a package
+    @EnforcePermission("WRITE_SECURE_SETTINGS")
+    void setAppHdrPlaybackMode(String packageName, int mode);
+
+    // Gets the per-application HDR playback mode for a package
+    @EnforcePermission("WRITE_SECURE_SETTINGS")
+    int getAppHdrPlaybackMode(String packageName);
+
+    // Resets all per-application HDR playback mode overrides to default
+    @EnforcePermission("WRITE_SECURE_SETTINGS")
+    void resetAllAppHdrPlaybackModes();
+
+    // Returns the package names that currently have a non-default HDR playback mode override
+    @EnforcePermission("WRITE_SECURE_SETTINGS")
+    String[] getAppHdrPlaybackPackages();
 }
