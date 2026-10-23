@@ -40,8 +40,9 @@ import com.android.systemui.keyguard.ui.viewmodel.DeviceEntryBackgroundViewModel
 import com.android.systemui.keyguard.ui.viewmodel.DeviceEntryForegroundViewModel
 import com.android.systemui.keyguard.ui.viewmodel.DeviceEntryIconViewModel
 import com.android.systemui.lifecycle.repeatWhenAttached
+import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.CosFeatures
 import com.android.systemui.plugins.FalsingManager
-import com.android.systemui.qs.shared.style.GlassBackdrop
 import com.android.systemui.res.R
 import com.android.systemui.statusbar.VibratorHelper
 import com.android.systemui.util.kotlin.DisposableHandles
@@ -321,7 +322,10 @@ object DeviceEntryIconViewBinder {
                         }
                     }
                     launch("$TAG#bgViewModel.color") {
-                        combine(bgViewModel.color, GlassBackdrop.cos) { color, cos ->
+                        combine(
+                                bgViewModel.color,
+                                CosFeatures.state(view.context, CosFeature.LockscreenGlass),
+                            ) { color, cos ->
                                 if (cos) android.graphics.Color.TRANSPARENT else color
                             }
                             .collect { color -> bgView.imageTintList = ColorStateList.valueOf(color) }

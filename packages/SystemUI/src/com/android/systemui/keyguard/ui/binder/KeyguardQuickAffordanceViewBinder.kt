@@ -48,8 +48,9 @@ import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.keyguard.ui.viewmodel.KeyguardQuickAffordanceHapticViewModel
 import com.android.systemui.keyguard.ui.viewmodel.KeyguardQuickAffordanceViewModel
 import com.android.systemui.lifecycle.repeatWhenAttached
+import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.CosFeatures
 import com.android.systemui.plugins.FalsingManager
-import com.android.systemui.qs.shared.style.GlassBackdrop
 import com.android.systemui.res.R
 import com.android.systemui.statusbar.VibratorHelper
 import com.android.systemui.util.doOnEnd
@@ -158,7 +159,7 @@ constructor(
                             combine(
                                 windowRootViewBlurInteractor.isBlurCurrentlySupported,
                                 viewModel,
-                                GlassBackdrop.cos,
+                                CosFeatures.state(view.context, CosFeature.LockscreenGlass),
                                 { isSupported, viewModel, cos ->
                                     updateBackground(viewModel, view, isSupported, cos)
                                 },
@@ -269,7 +270,7 @@ constructor(
             viewModel,
             view,
             windowRootViewBlurInteractor.isBlurCurrentlySupported.value,
-            GlassBackdrop.cos.value,
+            CosFeatures.isOn(view.context, CosFeature.LockscreenGlass),
         )
 
         view

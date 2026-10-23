@@ -20,6 +20,8 @@ import android.view.View
 import android.view.ViewTreeObserver
 import androidx.compose.ui.geometry.Rect
 import com.android.internal.graphics.drawable.BackgroundBlurDrawable
+import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.CosFeatures
 import com.android.systemui.qs.shared.style.GlassBackdrop
 import kotlin.math.roundToInt
 import kotlinx.coroutines.DisposableHandle
@@ -59,7 +61,7 @@ class BackgroundBlurAlphaSync(
         if (blur.alpha != blurAlpha) {
             blur.alpha = blurAlpha
         }
-        val cos = GlassBackdrop.cos.value
+        val cos = CosFeatures.state(view.context, CosFeature.LockscreenGlass).value
         if (material != (if (cos) 1 else 0)) {
             material = if (cos) 1 else 0
             blur.setMaterial(material)

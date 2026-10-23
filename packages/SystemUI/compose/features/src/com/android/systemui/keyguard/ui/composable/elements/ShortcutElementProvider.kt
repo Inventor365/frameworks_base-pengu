@@ -81,7 +81,9 @@ import com.android.systemui.keyguard.ui.binder.KeyguardBottomAreaVibrations
 import com.android.systemui.keyguard.ui.viewmodel.KeyguardQuickAffordanceHapticViewModel
 import com.android.systemui.keyguard.ui.viewmodel.KeyguardQuickAffordanceViewModel
 import com.android.systemui.keyguard.ui.viewmodel.KeyguardQuickAffordancesCombinedViewModel
+import com.android.systemui.penguin.CosFeature
 import com.android.systemui.penguin.LockscreenPlayer
+import com.android.systemui.penguin.rememberCosFeature
 import com.android.systemui.plugins.FalsingManager
 import com.android.systemui.plugins.keyguard.ui.composable.elements.BaseLockscreenElement.ElementSource
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElement
@@ -204,7 +206,7 @@ constructor(
             )
 
         val alpha by alphaFlow.collectAsStateWithLifecycle(initialValue = 1f)
-        val cos by GlassBackdrop.cos.collectAsStateWithLifecycle()
+        val cos = rememberCosFeature(CosFeature.LockscreenGlass)
 
         val painter =
             painterResource(

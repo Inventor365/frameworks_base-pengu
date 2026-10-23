@@ -17,11 +17,8 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
-import kotlinx.coroutines.flow.MutableStateFlow
 
 object GlassBackdrop {
-    val cos = MutableStateFlow(false)
-
     data class Region(val bounds: Rect, val corner: Float, val alpha: Float)
 
     val regions = mutableStateMapOf<Any, Region>()
