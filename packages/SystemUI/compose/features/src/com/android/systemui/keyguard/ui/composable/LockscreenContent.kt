@@ -65,6 +65,7 @@ import com.android.systemui.keyguard.ui.viewmodel.LockscreenContentViewModel
 import com.android.systemui.keyguard.ui.viewmodel.LockscreenFrontScrimViewModel
 import com.android.systemui.keyguard.ui.viewmodel.ViewStateAccessor
 import com.android.systemui.lifecycle.rememberViewModel
+import com.android.systemui.penguin.LockscreenClockFace
 import com.android.systemui.penguin.LockscreenPlayer
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementContext
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementKeys
@@ -92,6 +93,7 @@ class LockscreenContent(
     private val clockInteractor: KeyguardClockInteractor,
     private val interactionJankMonitor: InteractionJankMonitor,
     private val player: LockscreenPlayer? = null,
+    private val clockFace: LockscreenClockFace? = null,
 ) {
     @Composable
     fun ContentScope.Content(modifier: Modifier = Modifier) {
@@ -187,7 +189,15 @@ class LockscreenContent(
         val covered = { overlaid { true } }
         val shaded = { overlaid { it != Overlays.Bouncer } }
         val glass = liquidGlassEnabled()
+        val fluidClock = clockFace?.isEnabled == true
+        val cosUnlock = clockFace?.cosUnlock == true
         val screenCorner = LocalScreenCornerRadius.current
+        val toGone = {
+            ((layoutState.currentTransition as? TransitionState.Transition.ChangeScene)
+                    ?.takeIf { it.fromContent == contentKey && it.toContent == Scenes.Gone }
+                    ?.progress ?: 0f)
+                .coerceIn(0f, 1f)
+        }
         val unlocking = {
             val toGone =
                 (layoutState.currentTransition as? TransitionState.Transition.ChangeScene)
@@ -216,7 +226,7 @@ class LockscreenContent(
         )
         Box(
             Modifier.fillMaxSize()
-                .thenIf(glass) {
+                .thenIf(glass && !cosUnlock) {
                     Modifier.glassUnlockSheet(unlocking, screenCorner)
                         .glassPressTracker(LockscreenClockPress)
                 }
@@ -244,6 +254,12 @@ class LockscreenContent(
                     LockscreenElementContext(nonAuthUI = Modifier.nonAuthUI(viewModel)),
                 )
             }
+        }
+        if (fluidClock) {
+            clockFace?.Overlay(
+                alpha = { min(viewModel.alpha, contentAlphaAnimatable.value) * (1f - covered()) },
+                unlocking = toGone,
+            )
         }
         LockscreenFrontScrim(lockscreenFrontScrimViewModel)
     }

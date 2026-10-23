@@ -37,6 +37,7 @@ import com.android.compose.modifiers.thenIf
 import com.android.systemui.customization.clocks.R as clocksR
 import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.keyguard.ui.viewmodel.KeyguardClockViewModel
+import com.android.systemui.penguin.LockscreenClockFace
 import com.android.systemui.plugins.keyguard.VRectF
 import com.android.systemui.plugins.keyguard.ui.composable.elements.BaseLockscreenElement.ElementSource
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElement
@@ -51,6 +52,7 @@ import com.android.systemui.qs.shared.style.glassPressTarget
 import com.android.systemui.qs.shared.style.liquidGlassEnabled
 import com.android.systemui.res.R
 import com.android.systemui.shade.ShadeDisplayAware
+import java.util.Optional
 import javax.inject.Inject
 
 @SysUISingleton
@@ -60,7 +62,10 @@ class ClockRegionElementProvider
 constructor(
     @ShadeDisplayAware private val context: Context,
     private val keyguardClockViewModel: KeyguardClockViewModel,
+    clockFace: Optional<LockscreenClockFace>,
 ) : LockscreenElementProvider {
+    private val clockFace = clockFace.orElse(null)
+
     override val elements: List<LockscreenElement> by lazy {
         listOf(SmallClockRegionElement(), LargeClockRegionElement())
     }
@@ -72,6 +77,10 @@ constructor(
 
         @Composable
         override fun LockscreenScope<ElementContentScope>.LockscreenElement() {
+            if (clockFace?.isEnabled == true) {
+                clockFace.Placeholder(large = false, Modifier)
+                return
+            }
             val glass = liquidGlassEnabled()
             val shouldDateWeatherBeBelowSmallClock: Boolean by
                 keyguardClockViewModel.shouldDateWeatherBeBelowSmallClock
@@ -129,6 +138,10 @@ constructor(
 
         @Composable
         override fun LockscreenScope<ElementContentScope>.LockscreenElement() {
+            if (clockFace?.isEnabled == true) {
+                clockFace.Placeholder(large = true, Modifier.fillMaxSize())
+                return
+            }
             val glass = liquidGlassEnabled()
             val shouldDateWeatherBeBelowLargeClock: Boolean by
                 keyguardClockViewModel.shouldDateWeatherBeBelowLargeClock

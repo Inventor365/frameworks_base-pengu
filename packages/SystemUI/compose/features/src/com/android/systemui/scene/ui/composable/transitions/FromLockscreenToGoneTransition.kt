@@ -59,3 +59,21 @@ fun TransitionBuilder.aodToGoneTransition() {
 
     fractionRange(end = 0.2f) { fade(LockscreenElementKeys.Root) }
 }
+
+fun TransitionBuilder.lockscreenToGoneCosTransition() {
+    spec = tween(durationMillis = 450, easing = Easings.Emphasized)
+    fractionRange(end = 0.33f) {
+        fade(LockscreenElementKeys.Region.Lower)
+        fade(LockscreenElementKeys.LockIcon)
+        fade(LockscreenElementKeys.AmbientIndicationArea)
+        fade(LockscreenElementKeys.SettingsMenu)
+        fade(LockscreenElementKeys.BehindScrim)
+        fade(LockscreenElementKeys.MediaCarousel)
+        fade(LockscreenElementKeys.Notifications.Stack)
+        fade(LockscreenElementKeys.Smartspace.Cards)
+        fade(LockscreenElementKeys.Smartspace.DWA.LargeClock.Above)
+        fade(LockscreenElementKeys.Smartspace.DWA.LargeClock.Below)
+        fade(LockscreenElementKeys.Smartspace.DWA.SmallClock.Column)
+        fade(LockscreenElementKeys.Smartspace.DWA.SmallClock.Row)
+    }
+}

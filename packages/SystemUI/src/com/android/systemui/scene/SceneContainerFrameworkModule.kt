@@ -23,6 +23,7 @@ import com.android.internal.widget.LockPatternUtils
 import com.android.systemui.CoreStartable
 import com.android.systemui.Flags.startOnGoneSceneIfNoLockscreen
 import com.android.systemui.notifications.ui.composable.NotificationsShadeSessionModule
+import com.android.systemui.penguin.LockscreenClockFace
 import com.android.systemui.res.R
 import com.android.systemui.scene.domain.SceneDomainModule
 import com.android.systemui.scene.domain.interactor.DualShadeEducationInteractorModule
@@ -113,6 +114,7 @@ interface SceneContainerFrameworkModule {
             context: Context,
             lockPatternUtils: LockPatternUtils,
             shadeMotion: Optional<ShadeMotion>,
+            clockFace: Optional<LockscreenClockFace>,
         ): SceneContainerConfig {
             // Include the shade and quick settings scenes if:
             // 1. Dual Shade is disabled, or
@@ -166,7 +168,8 @@ interface SceneContainerFrameworkModule {
                             putAll(arrayOf(Scenes.Shade to 4, Scenes.QuickSettings to 5))
                         }
                     },
-                transitionsBuilder = SceneContainerTransitions(shadeMotion.orElse(null)),
+                transitionsBuilder =
+                    SceneContainerTransitions(shadeMotion.orElse(null), clockFace.orElse(null)),
             )
         }
     }

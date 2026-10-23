@@ -42,6 +42,7 @@ import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.dagger.qualifiers.Main
 import com.android.systemui.flags.FeatureFlags
 import com.android.systemui.flags.Flags
+import com.android.systemui.penguin.LockscreenClockFace
 import com.android.systemui.plugins.BcSmartspaceDataPlugin
 import com.android.systemui.shared.recents.utilities.Utilities
 import com.android.systemui.shared.system.ActivityManagerWrapper
@@ -55,6 +56,7 @@ import com.android.systemui.statusbar.phone.BiometricUnlockController.MODE_WAKE_
 import com.android.systemui.statusbar.policy.KeyguardStateController
 import com.android.wm.shell.shared.compat.AnimatedSurface
 import dagger.Lazy
+import java.util.Optional
 import javax.inject.Inject
 
 const val TAG = "KeyguardUnlock"
@@ -164,7 +166,12 @@ constructor(
     private val notificationShadeWindowController: NotificationShadeWindowController,
     private val powerManager: PowerManager,
     private val wallpaperManager: WallpaperManager,
+    clockFace: Optional<LockscreenClockFace> = Optional.empty(),
 ) : KeyguardStateController.Callback, ISysuiUnlockAnimationController.Stub() {
+    private val clockFace = clockFace.orElse(null)
+
+    private var handingOffClock = false
+
 
     interface KeyguardUnlockAnimationListener {
         /**
@@ -600,6 +607,7 @@ constructor(
         }
 
         surfacesBehind = surfaces
+        handingOffClock = clockFace?.cosUnlock == true && isSupportedLauncherUnderneath()
         this.openingWallpapers = openingWallpapers
         this.closingWallpapers = closingWallpapers
         surfaceBehindRemoteAnimationStartTime = startTime
@@ -954,6 +962,7 @@ constructor(
                 // If the screen has turned back off, the unlock animation is going to be cancelled,
                 // so set the surface alpha to 0f so it's no longer visible.
                 !powerManager.isInteractive -> 0f
+                handingOffClock -> 1f
                 else -> surfaceBehindAlpha
             }
 
@@ -968,17 +977,18 @@ constructor(
                 // If we're dismissing via swipe to the Launcher, we'll play in-window scale
                 // animations, so don't also scale the window.
                 if (
-                    keyguardStateController.isDismissingFromSwipe &&
-                        willUnlockWithInWindowLauncherAnimations
+                    handingOffClock ||
+                        (keyguardStateController.isDismissingFromSwipe &&
+                            willUnlockWithInWindowLauncherAnimations)
                 ) {
                     scaleFactor = 1f
                 }
 
-                // Translate up from the bottom.
                 surfaceBehindMatrix.setTranslate(
                     surface.endState.bounds.left,
                     surface.endState.bounds.top +
-                        surfaceHeight * SURFACE_BEHIND_START_TRANSLATION_Y * (1f - amount),
+                        if (handingOffClock) 0f
+                        else surfaceHeight * SURFACE_BEHIND_START_TRANSLATION_Y * (1f - amount),
                 )
 
                 // Scale up from a point at the center-bottom of the surface.

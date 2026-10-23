@@ -29,6 +29,7 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
+import android.os.Process
 import android.util.Log
 import com.android.app.tracing.coroutines.runBlockingTraced as runBlocking
 import com.android.systemui.application.ContentProviderContextAvailableCallback
@@ -36,6 +37,7 @@ import com.android.systemui.application.ContentProviderContextInitializer
 import com.android.systemui.biometrics.domain.interactor.FingerprintPropertyInteractor
 import com.android.systemui.dagger.qualifiers.Main
 import com.android.systemui.keyguard.domain.interactor.KeyguardQuickAffordanceInteractor
+import com.android.systemui.keyguard.ui.preview.HomeClockRenderer
 import com.android.systemui.keyguard.ui.preview.KeyguardRemotePreviewManager
 import com.android.systemui.shade.domain.interactor.ShadeModeInteractor
 import com.android.systemui.shared.customization.data.content.CustomizationProviderContract as Contract
@@ -49,6 +51,7 @@ class CustomizationProvider : ContentProvider(), ContentProviderContextInitializ
     @Inject lateinit var shadeModeInteractor: Lazy<ShadeModeInteractor>
     @Inject lateinit var fingerprintPropertyInteractor: Lazy<FingerprintPropertyInteractor>
     @Inject lateinit var previewManager: Lazy<KeyguardRemotePreviewManager>
+    @Inject lateinit var homeClockRenderer: Lazy<HomeClockRenderer>
     @Inject @Main lateinit var mainDispatcher: CoroutineDispatcher
 
     private var contextAvailableCallback: ContentProviderContextAvailableCallback? = null
@@ -183,6 +186,14 @@ class CustomizationProvider : ContentProvider(), ContentProviderContextInitializ
     }
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        if (method == HomeClockRenderer.METHOD) {
+            val trusted =
+                requireContext()
+                    .packageManager
+                    .checkSignatures(Process.myUid(), Binder.getCallingUid()) ==
+                    PackageManager.SIGNATURE_MATCH
+            return if (trusted && extras != null) homeClockRenderer.get().open(extras) else null
+        }
         return if (
             requireContext()
                 .checkPermission(

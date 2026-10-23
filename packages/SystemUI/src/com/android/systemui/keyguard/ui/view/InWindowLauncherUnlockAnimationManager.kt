@@ -22,15 +22,21 @@ import android.graphics.Rect
 import android.os.DeadObjectException
 import android.util.Log
 import android.view.View
+import com.android.systemui.clocks.ClockStyle
 import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.dagger.qualifiers.Application
 import com.android.systemui.keyguard.domain.interactor.InWindowLauncherUnlockAnimationInteractor
+import com.android.systemui.keyguard.domain.interactor.KeyguardClockInteractor
+import com.android.systemui.keyguard.shared.model.ClockSize
 import com.android.systemui.keyguard.ui.binder.InWindowLauncherAnimationViewBinder
 import com.android.systemui.keyguard.ui.viewmodel.InWindowLauncherAnimationViewModel
+import com.android.systemui.penguin.LockscreenClockFace
 import com.android.systemui.shared.system.smartspace.ILauncherUnlockAnimationController
 import com.android.systemui.shared.system.smartspace.ISysuiUnlockAnimationController
 import com.android.systemui.shared.system.smartspace.SmartspaceState
+import java.util.Optional
 import javax.inject.Inject
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 
 private val TAG = InWindowLauncherUnlockAnimationManager::class.simpleName
@@ -50,7 +56,13 @@ constructor(
     val interactor: InWindowLauncherUnlockAnimationInteractor,
     val viewModel: InWindowLauncherAnimationViewModel,
     @Application val scope: CoroutineScope,
+    clockFace: Optional<LockscreenClockFace>,
+    private val clockInteractor: KeyguardClockInteractor,
 ) : ISysuiUnlockAnimationController.Stub() {
+    private val clockFace = clockFace.orElse(null)
+
+    private var handedOffClock: View? = null
+    private var handedOffAlpha = 1f
 
     /**
      * The smartspace view on the lockscreen. This is used to perform the shared element animation
@@ -112,11 +124,7 @@ constructor(
         launcherAnimationController?.let { launcher ->
             if (!preparedForUnlock) {
                 try {
-                    launcher.prepareForUnlock(
-                        false,
-                        Rect(),
-                        0,
-                    ) // Smartspace animation is not supported. See b/293894758 for context.
+                    prepareLauncher(launcher)
                 } catch (e: DeadObjectException) {
                     Log.e(TAG, "Failed to call launcher.prepareForUnlock()", e)
                     return
@@ -125,6 +133,76 @@ constructor(
                 manualUnlockAmount = null
             }
         }
+    }
+
+    private fun prepareLauncher(launcher: ILauncherUnlockAnimationController) {
+        val handoff = handoff()
+        launcher.prepareForUnlock(
+            handoff != null,
+            handoff?.bounds ?: Rect(),
+            handoff?.fontHeight ?: 0,
+        )
+    }
+
+    private fun handoff(): LockscreenClockFace.Handoff? {
+        val face = clockFace ?: return null
+        if (!face.cosUnlock) return null
+        ClockStyle.showing()?.clockView?.let { return handoff(it, 0) }
+        face.handoff()?.let { return it }
+        if (face.isEnabled) return null
+        val large = clockInteractor.clockSize.value == ClockSize.LARGE
+        val clock = clockInteractor.currentClock.value ?: return null
+        return handoff((if (large) clock.largeClock else clock.smallClock).view, if (large) 0 else -1)
+    }
+
+    private fun handoff(view: View, fontHeight: Int): LockscreenClockFace.Handoff? {
+        if (!view.isAttachedToWindow || !view.isShown || view.width == 0) return null
+        val origin = IntArray(2).also { view.getLocationOnScreen(it) }
+        var scaleX = 1f
+        var scaleY = 1f
+        var v: View? = view
+        while (v != null) {
+            scaleX *= v.scaleX
+            scaleY *= v.scaleY
+            v = v.parent as? View
+        }
+        val bounds =
+            Rect(
+                origin[0],
+                origin[1],
+                origin[0] + (view.width * scaleX).roundToInt(),
+                origin[1] + (view.height * scaleY).roundToInt(),
+            )
+        return LockscreenClockFace.Handoff(bounds, fontHeight)
+    }
+
+    private fun handOff() {
+        val face = clockFace ?: return
+        ClockStyle.showing()?.clockView?.let {
+            hide(it)
+            return
+        }
+        if (face.isEnabled) {
+            face.onHandedOff()
+            return
+        }
+        val clock = clockInteractor.currentClock.value ?: return
+        val view =
+            (if (clockInteractor.clockSize.value == ClockSize.LARGE) clock.largeClock
+                else clock.smallClock)
+                .view
+        hide(view)
+    }
+
+    private fun hide(view: View) {
+        if (handedOffClock == null) handedOffAlpha = view.alpha
+        view.alpha = 0f
+        handedOffClock = view
+    }
+
+    private fun restoreClock() {
+        handedOffClock?.alpha = handedOffAlpha
+        handedOffClock = null
     }
 
     /** Ensures that the launcher is either fully visible, or animating to be fully visible. */
@@ -163,9 +241,19 @@ constructor(
         duration: Long = UNLOCK_ANIMATION_DURATION,
         startDelay: Long = UNLOCK_START_DELAY,
     ) {
+        if (unlocked && interactor.startedUnlockAnimation.value) return
+        val handoff = handoff() != null
+        val alreadyPrepared = preparedForUnlock
+        if (!preparedForUnlock && handoff) {
+            prepareForUnlock()
+        }
         if (preparedForUnlock) {
             try {
                 launcherAnimationController?.let { launcher ->
+                    if (handoff) {
+                        if (alreadyPrepared) prepareLauncher(launcher)
+                        handOff()
+                    }
                     launcher.playUnlockAnimation(unlocked, duration, startDelay)
                     interactor.setStartedUnlockAnimation(true)
                 }
@@ -186,6 +274,7 @@ constructor(
      * play the animation next time we unlock.
      */
     fun clearStartedUnlockAnimation() {
+        restoreClock()
         interactor.setStartedUnlockAnimation(false)
     }
 

@@ -1,5 +1,6 @@
 package com.android.systemui.scene.ui.composable
 
+import com.android.systemui.penguin.LockscreenClockFace
 import com.android.systemui.penguin.ShadeMotion
 import android.content.res.Resources
 import com.android.compose.animation.scene.DefaultInterruptionHandler
@@ -44,6 +45,7 @@ import com.android.systemui.scene.ui.composable.transitions.lockscreenToBouncerT
 import com.android.systemui.scene.ui.composable.transitions.lockscreenToCommunalSystemTransition
 import com.android.systemui.scene.ui.composable.transitions.lockscreenToCommunalUserTransition
 import com.android.systemui.scene.ui.composable.transitions.lockscreenToDreamTransition
+import com.android.systemui.scene.ui.composable.transitions.lockscreenToGoneCosTransition
 import com.android.systemui.scene.ui.composable.transitions.lockscreenToGoneTransition
 import com.android.systemui.scene.ui.composable.transitions.lockscreenToGoneGlassTransition
 import com.android.systemui.scene.ui.composable.transitions.bouncerToLockscreenGlassTransition
@@ -81,6 +83,7 @@ import com.android.systemui.shade.ui.composable.Shade
  */
 class SceneContainerTransitions(
     override val shadeMotion: ShadeMotion? = null,
+    private val clockFace: LockscreenClockFace? = null,
 ) : SceneContainerTransitionsBuilder {
     override fun build(
         shadeExpansionMotion: VerticalExpandContainerSpec,
@@ -233,7 +236,11 @@ class SceneContainerTransitions(
                 lockscreenToQuickSettingsSceneTransition()
             }
             from(Scenes.Lockscreen, to = Scenes.Gone) {
-                if (liquidGlass) lockscreenToGoneGlassTransition() else lockscreenToGoneTransition()
+                when {
+                    clockFace?.cosUnlock == true -> lockscreenToGoneCosTransition()
+                    liquidGlass -> lockscreenToGoneGlassTransition()
+                    else -> lockscreenToGoneTransition()
+                }
             }
             from(
                 Scenes.Lockscreen,

@@ -58,6 +58,11 @@ class ClockStyle @JvmOverloads constructor(
     private val random = java.util.Random()
 
     private var currentClockView: View? = null
+
+    var forHome = false
+
+    val clockView: View?
+        get() = currentClockView
     private var clockStub: ViewStub? = null
     private var clockContainer: ViewGroup? = null
 
@@ -172,6 +177,7 @@ class ClockStyle @JvmOverloads constructor(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        if (!forHome) attached.add(this)
         if (callbacksRegistered) return
 
         tunerService.addTunable(
@@ -192,12 +198,12 @@ class ClockStyle @JvmOverloads constructor(
             CLOCK_GRADIENT_ANCHOR_Y_KEY,
             CLOCK_GRADIENT_RADIUS_KEY,
         )
-        statusBarStateController.addCallback(statusBarStateListener)
+        if (!forHome) statusBarStateController.addCallback(statusBarStateListener)
         if (albumArtColorEnabled) {
             MediaSessionManager.get().addListener(mediaDataListener)
         }
 
-        isDozing = statusBarStateController.isDozing
+        isDozing = !forHome && statusBarStateController.isDozing
         if (isDozing) {
             applyClockAlpha()
             applyClockColors()
@@ -219,6 +225,7 @@ class ClockStyle @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        attached.remove(this)
         if (!callbacksRegistered) return
 
         statusBarStateController.removeCallback(statusBarStateListener)
@@ -880,6 +887,11 @@ class ClockStyle @JvmOverloads constructor(
     }
 
     companion object {
+        private val attached = ArrayList<ClockStyle>()
+
+        @JvmStatic
+        fun showing(): ClockStyle? = attached.firstOrNull { it.isShown && it.clockView != null }
+
         private val CLOCK_LAYOUTS = intArrayOf(
             0,
             R.layout.keyguard_clock_oos,            // 1

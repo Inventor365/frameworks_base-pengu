@@ -12,6 +12,8 @@ import dagger.Module
 interface PenguinHooksModule {
     @BindsOptionalOf fun depthSubject(): DepthSubject
 
+    @BindsOptionalOf fun lockscreenClockFace(): LockscreenClockFace
+
     @BindsOptionalOf fun lockscreenPlayer(): LockscreenPlayer
 
     @BindsOptionalOf fun powerMenuLayout(): PowerMenuLayout
