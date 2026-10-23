@@ -600,6 +600,19 @@ public abstract class DisplayManagerInternal {
     public abstract long getDisplayGroupFlags(int groupId);
 
     /**
+     * Returns the per-application HDR playback mode for the given application UID.
+     *
+     * @param uid The application UID to query.
+     * @return One of {@link DisplayManager#APP_HDR_PLAYBACK_MODE_DEFAULT},
+     *         {@link DisplayManager#APP_HDR_PLAYBACK_MODE_HDR_ALLOWED}, or
+     *         {@link DisplayManager#APP_HDR_PLAYBACK_MODE_SDR_ONLY}.
+     */
+    @DisplayManager.AppHdrPlaybackMode
+    public int getAppHdrPlaybackModeForUid(int uid) {
+        return DisplayManager.APP_HDR_PLAYBACK_MODE_DEFAULT;
+    }
+
+    /**
      * Describes a request for overriding the brightness of a single display.
      */
     public static class DisplayBrightnessOverrideRequest {

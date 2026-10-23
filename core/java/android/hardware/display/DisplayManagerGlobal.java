@@ -1633,6 +1633,68 @@ public final class DisplayManagerGlobal {
     }
 
     /**
+     * @see DisplayManager#setAppHdrPlaybackMode(String, int)
+     * @hide
+     */
+    @RequiresPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
+    public void setAppHdrPlaybackMode(
+            @NonNull String packageName, @DisplayManager.AppHdrPlaybackMode int mode) {
+        if (packageName == null) {
+            throw new IllegalArgumentException("packageName must not be null");
+        }
+        try {
+            mDm.setAppHdrPlaybackMode(packageName, mode);
+        } catch (RemoteException ex) {
+            throw ex.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * @see DisplayManager#getAppHdrPlaybackMode(String)
+     * @hide
+     */
+    @RequiresPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
+    @DisplayManager.AppHdrPlaybackMode
+    public int getAppHdrPlaybackMode(@NonNull String packageName) {
+        if (packageName == null) {
+            throw new IllegalArgumentException("packageName must not be null");
+        }
+        try {
+            return mDm.getAppHdrPlaybackMode(packageName);
+        } catch (RemoteException ex) {
+            throw ex.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * @see DisplayManager#resetAllAppHdrPlaybackModes()
+     * @hide
+     */
+    @RequiresPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
+    public void resetAllAppHdrPlaybackModes() {
+        try {
+            mDm.resetAllAppHdrPlaybackModes();
+        } catch (RemoteException ex) {
+            throw ex.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * @see DisplayManager#getAppHdrPlaybackPackages()
+     * @hide
+     */
+    @RequiresPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
+    @NonNull
+    public String[] getAppHdrPlaybackPackages() {
+        try {
+            final String[] pkgs = mDm.getAppHdrPlaybackPackages();
+            return pkgs != null ? pkgs : new String[0];
+        } catch (RemoteException ex) {
+            throw ex.rethrowFromSystemServer();
+        }
+    }
+
+    /**
      * @see DisplayManager#getDisplayTopology
      */
     @Nullable
