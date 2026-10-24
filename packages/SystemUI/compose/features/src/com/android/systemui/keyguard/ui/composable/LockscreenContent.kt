@@ -49,10 +49,10 @@ import androidx.compose.ui.unit.dp
 import com.android.compose.animation.scene.ContentScope
 import com.android.compose.animation.scene.OverlayKey
 import com.android.compose.animation.scene.content.state.TransitionState
+import com.android.compose.modifiers.thenIf
 import com.android.internal.jank.Cuj
 import com.android.internal.jank.Cuj.CujType
 import com.android.internal.jank.InteractionJankMonitor
-import com.android.compose.modifiers.thenIf
 import com.android.systemui.common.ui.compose.windowinsets.LocalScreenCornerRadius
 import com.android.systemui.compose.modifiers.sysuiResTag
 import com.android.systemui.keyguard.domain.interactor.KeyguardClockInteractor
@@ -74,6 +74,7 @@ import com.android.systemui.qs.shared.style.glassPressTracker
 import com.android.systemui.qs.shared.style.liquidGlassEnabled
 import com.android.systemui.scene.shared.model.Overlays
 import com.android.systemui.scene.shared.model.Scenes
+import com.android.systemui.scene.ui.composable.transitions.LockscreenToGoneCosFadeEnd
 import kotlin.math.min
 import kotlinx.coroutines.flow.first
 import platform.test.motion.compose.values.MotionTestValueKey
@@ -223,6 +224,9 @@ class LockscreenContent(
             },
             covered = covered,
             unlocking = { if (glass) unlocking() else 0f },
+            cardAlpha = {
+                if (cosUnlock) 1f - (toGone() / LockscreenToGoneCosFadeEnd).coerceIn(0f, 1f) else 1f
+            },
         )
         Box(
             Modifier.fillMaxSize()

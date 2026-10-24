@@ -27,7 +27,13 @@ interface LockscreenPlayer {
         modifier: Modifier,
     )
 
-    @Composable fun ExpandedArt(alpha: () -> Float, covered: () -> Float, unlocking: () -> Float)
+    @Composable
+    fun ExpandedArt(
+        alpha: () -> Float,
+        covered: () -> Float,
+        unlocking: () -> Float,
+        cardAlpha: () -> Float,
+    )
 
     @Composable
     fun ColumnScope.SmallClockColumn(

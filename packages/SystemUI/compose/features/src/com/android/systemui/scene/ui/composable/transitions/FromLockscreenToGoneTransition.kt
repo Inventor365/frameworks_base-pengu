@@ -60,9 +60,11 @@ fun TransitionBuilder.aodToGoneTransition() {
     fractionRange(end = 0.2f) { fade(LockscreenElementKeys.Root) }
 }
 
+const val LockscreenToGoneCosFadeEnd = 0.33f
+
 fun TransitionBuilder.lockscreenToGoneCosTransition() {
     spec = tween(durationMillis = 450, easing = Easings.Emphasized)
-    fractionRange(end = 0.33f) {
+    fractionRange(end = LockscreenToGoneCosFadeEnd) {
         fade(LockscreenElementKeys.Region.Lower)
         fade(LockscreenElementKeys.LockIcon)
         fade(LockscreenElementKeys.AmbientIndicationArea)
