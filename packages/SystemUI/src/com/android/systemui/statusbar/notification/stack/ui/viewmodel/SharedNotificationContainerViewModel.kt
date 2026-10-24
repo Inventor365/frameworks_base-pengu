@@ -19,6 +19,7 @@ package com.android.systemui.statusbar.notification.stack.ui.viewmodel
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.Configuration
 import android.view.View
 import android.view.WindowInsets.Type.defaultVisible
 import androidx.annotation.VisibleForTesting
@@ -323,8 +324,14 @@ constructor(
                                 }
                             }
 
+                        val sideways =
+                            shadeMode is Dual &&
+                                !isFullWidthShade &&
+                                configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+                                configuration.smallestScreenWidthDp < 600
+
                         val (marginStart, marginEnd) =
-                            if (shadeMode is Single) {
+                            if (shadeMode is Single || sideways) {
                                 marginHorizontal to marginHorizontal
                             } else {
                                 when (horizontalAlignment) {
@@ -344,9 +351,12 @@ constructor(
                             }
 
                         val horizontalPosition =
-                            when (horizontalAlignment) {
-                                Alignment.Start -> HorizontalPosition.EdgeToMiddle(maxWidth)
-                                Alignment.End -> HorizontalPosition.MiddleToEdge(maxWidth)
+                            when {
+                                sideways -> HorizontalPosition.EdgeToEdge
+                                horizontalAlignment == Alignment.Start ->
+                                    HorizontalPosition.EdgeToMiddle(maxWidth)
+                                horizontalAlignment == Alignment.End ->
+                                    HorizontalPosition.MiddleToEdge(maxWidth)
                                 else -> HorizontalPosition.EdgeToEdge
                             }
 

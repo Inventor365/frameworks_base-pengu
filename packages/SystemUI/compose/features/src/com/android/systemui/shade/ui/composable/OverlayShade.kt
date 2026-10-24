@@ -17,6 +17,7 @@
 package com.android.systemui.shade.ui.composable
 
 import android.annotation.SuppressLint
+import android.content.res.Configuration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -104,7 +105,7 @@ fun ContentScope.OverlayShade(
     content: @Composable () -> Unit,
 ) {
     val isFullWidth = LocalSceneContainerPreloadedResources.current.isFullWidthShade
-    val spanWide = wide && !isFullWidth
+    val spanWide = (wide || isLandscapeSplitShade()) && !isFullWidth
     val panelSpec = rememberShadeExpansionMotion(isFullWidth)
     val panelCornerRadiusPx = with(LocalDensity.current) { panelSpec.radius.toPx() }
     val panelAlignment =
@@ -283,6 +284,14 @@ private fun ContentScope.Panel(
             content()
         }
     }
+}
+
+@Composable
+fun isLandscapeSplitShade(): Boolean {
+    val configuration = LocalConfiguration.current
+    return !LocalSceneContainerPreloadedResources.current.isFullWidthShade &&
+        configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+        configuration.smallestScreenWidthDp < 600
 }
 
 @Composable

@@ -122,6 +122,7 @@ import com.android.systemui.scene.ui.composable.Overlay
 import com.android.systemui.shade.ui.composable.ChipHighlightModel
 import com.android.systemui.shade.ui.composable.CosTileTipHeader
 import com.android.systemui.shade.ui.composable.OverlayShade
+import com.android.systemui.shade.ui.composable.isLandscapeSplitShade
 import com.android.systemui.shade.ui.composable.OverlayShadeHeader
 import com.android.systemui.shade.ui.composable.QuickSettingsOverlayHeader
 import com.android.systemui.shade.ui.composable.QuickSettingsOverlayPrivacyChip
@@ -426,14 +427,19 @@ private fun ContentScope.QuickSettingsLayout(
     audioDetailsViewModelFactory: AudioDetailsViewModel.Factory,
     modifier: Modifier = Modifier,
 ) {
+    val stockOverlay = qsContainerViewModel.penguin?.stockOverlay(qsContainerViewModel) == true
+    val scrollsWhole =
+        qsContainerViewModel.penguin != null && !stockOverlay && isLandscapeSplitShade()
+    val wholeScroll = rememberScrollState()
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.padding(horizontal = QuickSettingsShade.Dimensions.HorizontalPadding),
+        modifier =
+            modifier
+                .thenIf(scrollsWhole) { Modifier.verticalScroll(wholeScroll) }
+                .padding(horizontal = QuickSettingsShade.Dimensions.HorizontalPadding),
     ) {
         val toolbarViewModel =
             rememberViewModel("QuickSettingsLayout") { toolbarViewModelFactory.create() }
-        val stockOverlay =
-            qsContainerViewModel.penguin?.stockOverlay(qsContainerViewModel) == true
         val penguinTop =
             !stockOverlay &&
                 qsContainerViewModel.penguin?.run {
