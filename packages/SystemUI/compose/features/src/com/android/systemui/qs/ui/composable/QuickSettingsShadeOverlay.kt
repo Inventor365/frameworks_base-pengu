@@ -153,7 +153,7 @@ constructor(
 
     override val userActions: Flow<Map<UserAction, UserActionResult>> = actionsViewModel.actions
 
-    override val alwaysCompose: Boolean = false
+    override val alwaysCompose: Boolean = true
 
     override suspend fun activate(): Nothing {
         actionsViewModel.activate()
@@ -161,6 +161,11 @@ constructor(
 
     @Composable
     override fun ContentScope.Content(modifier: Modifier) {
+        val shown = isAlwaysComposedContentVisible()
+        val besideNotifications =
+            rememberCosFeature(CosFeature.Shade) &&
+                Overlays.NotificationsShade in layoutState.currentOverlays
+        if (!shown && !besideNotifications) return
         val coroutineScope = rememberCoroutineScope()
         val contentViewModel =
             rememberViewModel("QuickSettingsShadeOverlayContent", key = coroutineScope) {
@@ -276,11 +281,13 @@ constructor(
                     )
                 }
             }
-            SnoozableHeadsUpNotificationPlaceholder(
-                tag = "QSShadeOverlay",
-                stackScrollView = notificationStackScrollView.get(),
-                viewModel = hunPlaceholderViewModel,
-            )
+            if (shown) {
+                SnoozableHeadsUpNotificationPlaceholder(
+                    tag = "QSShadeOverlay",
+                    stackScrollView = notificationStackScrollView.get(),
+                    viewModel = hunPlaceholderViewModel,
+                )
+            }
         }
     }
 }

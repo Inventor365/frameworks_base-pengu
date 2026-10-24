@@ -119,6 +119,7 @@ import com.android.systemui.shade.ui.composable.ShadeScene.Companion.SplitShadeI
 import com.android.systemui.shade.ui.viewmodel.ShadeHeaderViewModel
 import com.android.systemui.shade.ui.viewmodel.ShadeSceneContentViewModel
 import com.android.systemui.shade.ui.viewmodel.ShadeUserActionsViewModel
+import com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout
 import com.android.systemui.statusbar.notification.stack.ui.view.NotificationScrollView
 import com.android.systemui.statusbar.notification.stack.ui.viewmodel.NotificationsPlaceholderViewModel
 import dagger.Lazy
@@ -244,6 +245,14 @@ private fun ContentScope.ShadeScene(
                 }
             }
         }
+
+    val shadeMode = viewModel.shadeMode
+    LaunchedEffect(notificationStackScrollView, shadeMode) {
+        if (shadeMode !is ShadeMode.Dual) {
+            (notificationStackScrollView as? NotificationStackScrollLayout)
+                ?.setCosSwitchTranslation(0f)
+        }
+    }
 
     if (viewModel.shadeMode is ShadeMode.Split) {
         SplitShade(

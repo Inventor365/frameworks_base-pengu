@@ -542,8 +542,14 @@ constructor(
 
             // Only enforce falsing if moving from the lockscreen scene to new content.
             val fromLockscreenScene = currentScene == Scenes.Lockscreen
+            val shades = setOf(Overlays.NotificationsShade, Overlays.QuickSettingsShade)
+            val betweenShades =
+                content in shades &&
+                    sceneInteractor.transitionState.currentOverlays.any {
+                        it in shades && it != content
+                    }
 
-            !fromLockscreenScene || !isFalseTouch
+            !fromLockscreenScene || betweenShades || !isFalseTouch
         } ?: true
     }
 

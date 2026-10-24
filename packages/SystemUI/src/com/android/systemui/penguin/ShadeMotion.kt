@@ -9,6 +9,9 @@ import androidx.compose.foundation.OverscrollFactory
 import androidx.compose.runtime.Composable
 import com.android.compose.animation.scene.SceneTransitionsBuilder
 import com.android.compose.animation.scene.TransitionBuilder
+import com.android.compose.animation.scene.TransitionKey
+
+val CosShadeSwitch = TransitionKey("CosShadeSwitch")
 
 interface ShadeMotion {
     @Composable fun key(): Any?

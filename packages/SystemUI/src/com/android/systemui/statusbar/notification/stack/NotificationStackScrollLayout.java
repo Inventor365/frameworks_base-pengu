@@ -6980,10 +6980,24 @@ public class NotificationStackScrollLayout
         }
     }
 
+    private float mCosSwitchShift;
+
+    public void setCosSwitchTranslation(float translationX) {
+        mCosSwitchShift = translationX;
+        setTranslationX(translationX);
+        invalidate();
+    }
+
     private void applyClipToCanvas(Canvas canvas) {
         if (mShouldUseRoundedRectClipping) {
             // clip by the positive path if it is defined
-            canvas.clipPath(mRoundedClipPath);
+            if (mCosSwitchShift != 0f) {
+                canvas.translate(-mCosSwitchShift, 0f);
+                canvas.clipPath(mRoundedClipPath);
+                canvas.translate(mCosSwitchShift, 0f);
+            } else {
+                canvas.clipPath(mRoundedClipPath);
+            }
         }
         if (mShouldUseNegativeRoundedRectClipping) {
             // subtract the negative path if it is defined

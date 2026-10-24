@@ -16,13 +16,19 @@
 
 package com.android.systemui.qs.ui.viewmodel
 
+import android.content.Context
 import com.android.compose.animation.scene.Back
 import com.android.compose.animation.scene.Swipe
 import com.android.compose.animation.scene.UserAction
 import com.android.compose.animation.scene.UserActionResult
 import com.android.compose.animation.scene.UserActionResult.HideOverlay
+import com.android.compose.animation.scene.UserActionResult.ReplaceByOverlay
 import com.android.compose.animation.scene.UserActionResult.ShowOverlay
 import com.android.compose.animation.scene.UserActionResult.ShowOverlay.HideCurrentOverlays
+import com.android.systemui.dagger.qualifiers.Application
+import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.CosFeatures
+import com.android.systemui.penguin.CosShadeSwitch
 import com.android.systemui.qs.panels.ui.viewmodel.EditModeViewModel
 import com.android.systemui.scene.shared.model.Overlays
 import com.android.systemui.scene.ui.viewmodel.SceneContainerArea.BottomEdge
@@ -31,16 +37,21 @@ import com.android.systemui.scene.ui.viewmodel.SceneContainerArea.TopEdgeStartHa
 import com.android.systemui.scene.ui.viewmodel.UserActionsViewModel
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 /** Models the UI state for the user actions for navigating to other scenes or overlays. */
 class QuickSettingsShadeOverlayActionsViewModel
 @AssistedInject
-constructor(private val editModeViewModel: EditModeViewModel) : UserActionsViewModel() {
+constructor(
+    private val editModeViewModel: EditModeViewModel,
+    @Application private val context: Context,
+) : UserActionsViewModel() {
 
     override suspend fun hydrateActions(setActions: (Map<UserAction, UserActionResult>) -> Unit) {
-        editModeViewModel.isEditing
-            .map { isEditing ->
+        combine(editModeViewModel.isEditing, CosFeatures.state(context, CosFeature.Shade)) {
+                isEditing,
+                cosShade ->
                 val hideQuickSettings = HideOverlay(Overlays.QuickSettingsShade)
                 buildMap {
                     if (isEditing) {
@@ -52,6 +63,12 @@ constructor(private val editModeViewModel: EditModeViewModel) : UserActionsViewM
                         put(Swipe.Up, hideQuickSettings)
                     }
 
+                    if (cosShade && !isEditing) {
+                        put(
+                            Swipe.End,
+                            ReplaceByOverlay(Overlays.NotificationsShade, transitionKey = CosShadeSwitch),
+                        )
+                    }
                     put(
                         Swipe.Down(fromSource = StartHalf),
                         ShowOverlay(

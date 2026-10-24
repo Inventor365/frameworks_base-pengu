@@ -67,6 +67,8 @@ import com.android.systemui.classifier.FalsingCollector;
 import com.android.systemui.dagger.SysUISingleton;
 import com.android.systemui.dump.DumpManager;
 import com.android.systemui.media.controls.ui.controller.KeyguardMediaController;
+import com.android.systemui.penguin.CosFeature;
+import com.android.systemui.penguin.CosFeatures;
 import com.android.systemui.plugins.ActivityStarter;
 import com.android.systemui.plugins.FalsingManager;
 import com.android.systemui.plugins.statusbar.NotificationMenuRowPlugin;
@@ -75,7 +77,10 @@ import com.android.systemui.plugins.statusbar.NotificationSwipeActionHelper;
 import com.android.systemui.plugins.statusbar.StatusBarStateController;
 import com.android.systemui.power.domain.interactor.PowerInteractor;
 import com.android.systemui.res.R;
+import com.android.systemui.penguin.ShadeMotionKt;
+import com.android.systemui.scene.domain.interactor.SceneInteractor;
 import com.android.systemui.scene.shared.flag.SceneContainerFlag;
+import com.android.systemui.scene.shared.model.Overlays;
 import com.android.systemui.scene.ui.view.WindowRootView;
 import com.android.systemui.shade.QSHeaderBoundsProvider;
 import com.android.systemui.shade.ShadeController;
@@ -179,6 +184,7 @@ public class NotificationStackScrollLayoutController implements Dumpable {
     private final UiEventLogger mUiEventLogger;
     private final VisibilityLocationProviderDelegator mVisibilityLocationProviderDelegator;
     private final ShadeController mShadeController;
+    private final dagger.Lazy<SceneInteractor> mSceneInteractor;
     private final Provider<WindowRootView> mWindowRootView;
     private final KeyguardMediaController mKeyguardMediaController;
     private final SysuiStatusBarStateController mStatusBarStateController;
@@ -627,6 +633,30 @@ public class NotificationStackScrollLayoutController implements Dumpable {
                     return mView.onKeyguard();
                 }
 
+                private boolean mSwipeStartedBesideCards;
+
+                private boolean cosSwitchAvailable() {
+                    return SceneContainerFlag.isEnabled() && !mView.onKeyguard()
+                            && CosFeatures.isOn(mView.getContext(), CosFeature.Shade)
+                            && mSceneInteractor.get().getCurrentOverlays().getValue()
+                                    .contains(Overlays.NotificationsShade);
+                }
+
+                @Override
+                public boolean canSwipeInDirection(View v, float delta) {
+                    if (!cosSwitchAvailable()) {
+                        return true;
+                    }
+                    final boolean towardsQuickSettings = mView.isLayoutRtl() ? delta > 0 : delta < 0;
+                    if (towardsQuickSettings && !mSwipeStartedBesideCards) {
+                        mSwipeStartedBesideCards = true;
+                        mSceneInteractor.get().replaceOverlay(Overlays.NotificationsShade,
+                                Overlays.QuickSettingsShade, "COS card swipe",
+                                ShadeMotionKt.getCosShadeSwitch());
+                    }
+                    return !towardsQuickSettings;
+                }
+
                 @Override
                 public View getChildAtPosition(MotionEvent ev) {
                     View child = mView.getChildAtPosition(
@@ -636,6 +666,12 @@ public class NotificationStackScrollLayoutController implements Dumpable {
                             false /* ignoreDecors */,
                             !SceneContainerFlag.isEnabled() /* ignoreWidth */);
 
+                    if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                        mSwipeStartedBesideCards = child == null && cosSwitchAvailable();
+                    }
+                    if (mSwipeStartedBesideCards) {
+                        return null;
+                    }
                     // Verify the MotionEvent x,y are actually inside the touch area of the shelf,
                     // since the shelf may be animated down to a collapsed size on keyguard.
                     if (child instanceof NotificationShelf shelf) {
@@ -857,6 +893,7 @@ public class NotificationStackScrollLayoutController implements Dumpable {
             VisibilityLocationProviderDelegator visibilityLocationProviderDelegator,
             NotificationListViewBinder viewBinder,
             ShadeController shadeController,
+            dagger.Lazy<SceneInteractor> sceneInteractor,
             Provider<WindowRootView> windowRootView,
             InteractionJankMonitor jankMonitor,
             StackStateLogger stackLogger,
@@ -912,6 +949,7 @@ public class NotificationStackScrollLayoutController implements Dumpable {
         mUiEventLogger = uiEventLogger;
         mVisibilityLocationProviderDelegator = visibilityLocationProviderDelegator;
         mShadeController = shadeController;
+        mSceneInteractor = sceneInteractor;
         mWindowRootView = windowRootView;
         mNotificationTargetsHelper = notificationTargetsHelper;
         mSecureSettings = secureSettings;

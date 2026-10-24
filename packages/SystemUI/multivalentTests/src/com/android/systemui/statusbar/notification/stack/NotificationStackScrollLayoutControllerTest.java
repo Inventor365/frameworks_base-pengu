@@ -937,6 +937,7 @@ public class NotificationStackScrollLayoutControllerTest extends SysuiTestCase {
                 mVisibilityLocationProviderDelegator,
                 mViewBinder,
                 mShadeController,
+                () -> mock(com.android.systemui.scene.domain.interactor.SceneInteractor.class),
                 mWindowRootView,
                 mKosmos.getInteractionJankMonitor(),
                 mStackLogger,

@@ -440,6 +440,11 @@ val liquidGlassOn: Boolean
     @ReadOnlyComposable
     get() = LiquidGlass.enabled(LocalContext.current).value.also { LiquidGlassTune.generation.value }
 
+val liquidGlassCos: Boolean
+    @Composable
+    @ReadOnlyComposable
+    get() = liquidGlassOn && LiquidGlass.cosStyle(LocalContext.current).value
+
 val LiquidGlassSurface: Color
     get() = Color(LiquidGlassTune.color("surface", 0x3AFFFFFF))
 

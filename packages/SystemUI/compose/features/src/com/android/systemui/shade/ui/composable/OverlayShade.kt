@@ -16,15 +16,13 @@
 
 package com.android.systemui.shade.ui.composable
 
-import com.android.systemui.qs.shared.style.glassBlurRegion
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.isSystemInDarkTheme
 import android.annotation.SuppressLint
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,15 +33,28 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.overscroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.approachLayout
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -51,16 +62,21 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.android.compose.animation.scene.ContentScope
 import com.android.compose.animation.scene.ElementKey
 import com.android.compose.animation.scene.LowestZIndexContentPicker
+import com.android.compose.animation.scene.content.state.TransitionState
 import com.android.compose.modifiers.thenIf
 import com.android.mechanics.behavior.VerticalExpandContainerSpec
 import com.android.mechanics.behavior.verticalExpandContainerBackground
 import com.android.mechanics.compose.modifier.motionDriver
+import com.android.systemui.penguin.CosShadeSwitch
+import com.android.systemui.qs.shared.style.glassBlurRegion
 import com.android.systemui.qs.ui.composable.TileRevealFlag
 import com.android.systemui.res.R
+import com.android.systemui.scene.shared.model.Overlays
 import com.android.systemui.scene.ui.composable.LocalSceneContainerPreloadedResources
 import com.android.systemui.shade.ui.ShadeColors.shadePanel
 import com.android.systemui.shade.ui.ShadeColors.shadePanelScrimBehind
@@ -68,6 +84,7 @@ import com.android.systemui.shade.ui.composable.OverlayShade.Colors
 import com.android.systemui.shade.ui.composable.OverlayShade.Dimensions
 import com.android.systemui.shade.ui.composable.OverlayShade.rememberShadeExpansionMotion
 import kotlin.math.min
+import kotlinx.coroutines.flow.onCompletion
 
 /** Renders a lightweight shade UI container, as an overlay. */
 @Composable
@@ -97,20 +114,62 @@ fun ContentScope.OverlayShade(
             else -> Alignment.TopStart
         }
 
-    Box(modifier) {
+    val switchMotion = remember { CosSwitchMotion() }
+    LaunchedEffect(switchMotion) { switchMotion.drive() }
+    val layoutDirection = LocalLayoutDirection.current
+    var width by remember { mutableIntStateOf(0) }
+    var windowTop by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(layoutState, contentKey, layoutDirection) {
+        val side =
+            (if (contentKey == Overlays.NotificationsShade) -1f else 1f) *
+                (if (layoutDirection == LayoutDirection.Rtl) -1f else 1f)
+        snapshotFlow {
+                val transition =
+                    layoutState.currentTransition as? TransitionState.Transition.ReplaceOverlay
+                if (transition == null || transition.key != CosShadeSwitch) {
+                    null
+                } else {
+                    val shown =
+                        if (contentKey == transition.fromContent) transition.progress
+                        else 1f - transition.progress
+                    Pair(side * width * shown, transition.isUserInputOngoing)
+                }
+            }
+            .onCompletion {
+                switchMotion.active = false
+                switchMotion.offset = 0f
+                switchMotion.dragging = false
+            }
+            .collect { state ->
+                switchMotion.active = state != null
+                switchMotion.offset = state?.first ?: 0f
+                switchMotion.dragging = state?.second ?: false
+            }
+    }
+    Box(
+        modifier
+            .onGloballyPositioned {
+                width = it.size.width
+                windowTop = it.positionInWindow().y
+            }
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.type == PointerEventType.Press) {
+                            event.changes.firstOrNull()?.let {
+                                switchMotion.fingerY = windowTop + it.position.y
+                            }
+                        }
+                    }
+                }
+            }
+    ) {
+      CompositionLocalProvider(LocalCosSwitchMotion provides switchMotion) {
         OverlayScrim(
             showBackgroundColor = enableTransparency && !cosPanel,
             onClicked = onScrimClicked,
         )
-        if (cosPanel) {
-            Spacer(
-                Modifier.fillMaxSize()
-                    .glassBlurRegion(
-                        RectangleShape,
-                        material = if (isSystemInDarkTheme()) 5 else 6,
-                    )
-            )
-        }
 
         Box(
             modifier =
@@ -196,6 +255,7 @@ fun ContentScope.OverlayShade(
         if (!isFullWidth) {
             header()
         }
+      }
     }
 }
 

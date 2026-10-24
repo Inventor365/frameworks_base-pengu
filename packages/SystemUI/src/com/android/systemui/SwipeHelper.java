@@ -369,7 +369,9 @@ public class SwipeHelper implements Gefingerpoken, Dumpable {
                         if (mTouchedView instanceof ExpandableNotificationRow row) {
                             mTouchedView = mCallback.getSwipeTarget(row);
                         }
-                        if (mCallback.canChildBeDragged(mTouchedView)) {
+                        if (!mCallback.canSwipeInDirection(mTouchedView, delta)) {
+                            mTouchedView = null;
+                        } else if (mCallback.canChildBeDragged(mTouchedView)) {
                             mIsSwiping = true;
                             mCallback.setMagneticAndRoundableTargets(mTouchedView);
                             mCallback.onBeginDrag(mTouchedView);
@@ -952,6 +954,10 @@ public class SwipeHelper implements Gefingerpoken, Dumpable {
 
     public interface Callback {
         View getChildAtPosition(MotionEvent ev);
+
+        default boolean canSwipeInDirection(View v, float delta) {
+            return true;
+        }
 
         boolean canChildBeDismissed(View v);
 

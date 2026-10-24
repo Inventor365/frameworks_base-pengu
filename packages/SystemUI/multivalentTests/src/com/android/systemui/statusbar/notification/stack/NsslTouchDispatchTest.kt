@@ -650,6 +650,7 @@ private class TestController(nssl: NotificationStackScrollLayout, private val si
         /* visibilityLocationProviderDelegator = */ mock(),
         /* viewBinder = */ mock(),
         /* shadeController = */ mock(),
+        /* sceneInteractor = */ { mock() },
         /* windowRootView = */ mock(),
         /* jankMonitor = */ mock(),
         /* stackLogger = */ mock(),

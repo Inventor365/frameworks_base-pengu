@@ -16,13 +16,19 @@
 
 package com.android.systemui.notifications.ui.viewmodel
 
+import android.content.Context
 import com.android.compose.animation.scene.Back
 import com.android.compose.animation.scene.Swipe
 import com.android.compose.animation.scene.UserAction
 import com.android.compose.animation.scene.UserActionResult
 import com.android.compose.animation.scene.UserActionResult.HideOverlay
+import com.android.compose.animation.scene.UserActionResult.ReplaceByOverlay
 import com.android.compose.animation.scene.UserActionResult.ShowOverlay
 import com.android.compose.animation.scene.UserActionResult.ShowOverlay.HideCurrentOverlays
+import com.android.systemui.dagger.qualifiers.Application
+import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.CosFeatures
+import com.android.systemui.penguin.CosShadeSwitch
 import com.android.systemui.scene.shared.model.Overlays
 import com.android.systemui.scene.ui.viewmodel.SceneContainerArea.EndHalf
 import com.android.systemui.scene.ui.viewmodel.SceneContainerArea.TopEdgeEndHalf
@@ -31,26 +37,39 @@ import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 
 /** Models the UI state for the user actions for navigating to other scenes or overlays. */
-class NotificationsShadeOverlayActionsViewModel @AssistedInject constructor() :
-    UserActionsViewModel() {
+class NotificationsShadeOverlayActionsViewModel
+@AssistedInject
+constructor(@Application private val context: Context) : UserActionsViewModel() {
 
     override suspend fun hydrateActions(setActions: (Map<UserAction, UserActionResult>) -> Unit) {
-        setActions(
-            mapOf(
-                Swipe.Up to HideOverlay(Overlays.NotificationsShade),
-                Back to HideOverlay(Overlays.NotificationsShade),
-                Swipe.Down(fromSource = EndHalf) to
-                    ShowOverlay(
-                        Overlays.QuickSettingsShade,
-                        hideCurrentOverlays = HideCurrentOverlays.Some(Overlays.NotificationsShade),
-                    ),
-                Swipe.Down(fromSource = TopEdgeEndHalf) to
-                    ShowOverlay(
-                        Overlays.QuickSettingsShade,
-                        hideCurrentOverlays = HideCurrentOverlays.Some(Overlays.NotificationsShade),
-                    ),
-            )
+        CosFeatures.state(context, CosFeature.Shade).collect { cosShade ->
+            setActions(actions(cosShade))
+        }
+    }
+
+    private fun actions(cosShade: Boolean): Map<UserAction, UserActionResult> = buildMap {
+        put(Swipe.Up, HideOverlay(Overlays.NotificationsShade))
+        put(Back, HideOverlay(Overlays.NotificationsShade))
+        put(
+            Swipe.Down(fromSource = EndHalf),
+            ShowOverlay(
+                Overlays.QuickSettingsShade,
+                hideCurrentOverlays = HideCurrentOverlays.Some(Overlays.NotificationsShade),
+            ),
         )
+        put(
+            Swipe.Down(fromSource = TopEdgeEndHalf),
+            ShowOverlay(
+                Overlays.QuickSettingsShade,
+                hideCurrentOverlays = HideCurrentOverlays.Some(Overlays.NotificationsShade),
+            ),
+        )
+        if (cosShade) {
+            put(
+                Swipe.Start,
+                ReplaceByOverlay(Overlays.QuickSettingsShade, transitionKey = CosShadeSwitch),
+            )
+        }
     }
 
     @AssistedFactory
