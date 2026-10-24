@@ -75,6 +75,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.compose.PlatformSliderDefaults
 import com.android.systemui.common.shared.colors.SystemUISliderColors
+import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.rememberCosFeature
 import com.android.systemui.qs.shared.style.LiquidGlassBrightness
 import com.android.systemui.qs.shared.style.LiquidGlassControl
 import com.android.systemui.qs.shared.style.LiquidGlassVolume
@@ -118,6 +120,7 @@ import com.android.systemui.scene.shared.model.Overlays
 import com.android.systemui.scene.ui.composable.LocalSceneContainerPreloadedResources
 import com.android.systemui.scene.ui.composable.Overlay
 import com.android.systemui.shade.ui.composable.ChipHighlightModel
+import com.android.systemui.shade.ui.composable.CosTileTipHeader
 import com.android.systemui.shade.ui.composable.OverlayShade
 import com.android.systemui.shade.ui.composable.OverlayShadeHeader
 import com.android.systemui.shade.ui.composable.QuickSettingsOverlayHeader
@@ -249,13 +252,21 @@ constructor(
                         ) != false
                     if (contentViewModel.showHeader && penguinStatusBar) {
                         val headerViewModel = quickSettingsContainerViewModel.shadeHeaderViewModel
-                        OverlayShadeHeader(
-                            viewModel = headerViewModel,
-                            notificationsHighlight = headerViewModel.inactiveChipHighlight,
-                            quickSettingsHighlight = ChipHighlightModel.Strong,
-                            showClock = true,
-                            modifier = Modifier.element(QuickSettingsShade.Elements.StatusBar),
-                        )
+                        val header: @Composable (Modifier) -> Unit = { modifier ->
+                            OverlayShadeHeader(
+                                viewModel = headerViewModel,
+                                notificationsHighlight = headerViewModel.inactiveChipHighlight,
+                                quickSettingsHighlight = ChipHighlightModel.Strong,
+                                showClock = true,
+                                modifier = modifier,
+                            )
+                        }
+                        val element = Modifier.element(QuickSettingsShade.Elements.StatusBar)
+                        if (rememberCosFeature(CosFeature.QuickSettings)) {
+                            CosTileTipHeader(element) { header(Modifier) }
+                        } else {
+                            header(element)
+                        }
                     }
                 },
             ) {
