@@ -888,6 +888,7 @@ public class WindowManagerService extends IWindowManager.Stub
         private final Uri mMaximumObscuringOpacityForTouchUri = Settings.Global.getUriFor(
                 Settings.Global.MAXIMUM_OBSCURING_OPACITY_FOR_TOUCH);
         private final Uri mLiquidGlassUri = Settings.Secure.getUriFor(LIQUID_GLASS_SETTING);
+        private final Uri mBlurStyleUri = Settings.Secure.getUriFor(BLUR_STYLE_SETTING);
         private final Uri mMirrorBuiltInDisplayUri =
                 Settings.Secure.getUriFor(Settings.Secure.MIRROR_BUILT_IN_DISPLAY);
         private final Uri mDevelopmentOverrideDesktopExperienceUri = Settings.Global.getUriFor(
@@ -939,6 +940,7 @@ public class WindowManagerService extends IWindowManager.Stub
             resolver.registerContentObserver(mMirrorBuiltInDisplayUri, false, this,
                     UserHandle.USER_ALL);
             resolver.registerContentObserver(mLiquidGlassUri, false, this, UserHandle.USER_ALL);
+            resolver.registerContentObserver(mBlurStyleUri, false, this, UserHandle.USER_ALL);
         }
 
         @Override
@@ -952,7 +954,7 @@ public class WindowManagerService extends IWindowManager.Stub
                 return;
             }
 
-            if (mLiquidGlassUri.equals(uri)) {
+            if (mLiquidGlassUri.equals(uri) || mBlurStyleUri.equals(uri)) {
                 syncLiquidGlass(mContext.getContentResolver());
                 return;
             }
@@ -7920,11 +7922,17 @@ public class WindowManagerService extends IWindowManager.Stub
 
     private static final String LIQUID_GLASS_SETTING = "penguin_liquid_glass";
     private static final String LIQUID_GLASS_PROPERTY = "persist.sys.penguin.liquid_glass";
+    private static final String BLUR_STYLE_SETTING = "penguin_blur_style";
+    private static final String BLUR_STYLE_PROPERTY = "persist.sys.penguin.blur_style";
 
     private static void syncLiquidGlass(ContentResolver resolver) {
         final boolean on = Settings.Secure.getIntForUser(resolver, LIQUID_GLASS_SETTING, 0,
                 UserHandle.USER_CURRENT) != 0;
-        SystemProperties.set(LIQUID_GLASS_PROPERTY, on ? "1" : "0");
+        final int style = Settings.Secure.getIntForUser(resolver, BLUR_STYLE_SETTING,
+                on ? 2 : 1, UserHandle.USER_CURRENT);
+        final int effectiveStyle = on ? 2 : style;
+        SystemProperties.set(LIQUID_GLASS_PROPERTY, effectiveStyle == 2 ? "1" : "0");
+        SystemProperties.set(BLUR_STYLE_PROPERTY, Integer.toString(effectiveStyle));
     }
 
     private static final String DEX_GLASS_PROPERTY = "sys.penguin.liquid_glass.dex";

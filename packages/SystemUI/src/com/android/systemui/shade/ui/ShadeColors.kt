@@ -17,6 +17,7 @@
 package com.android.systemui.shade.ui
 
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import com.android.internal.graphics.ColorUtils
 import com.android.systemui.qs.shared.style.LiquidGlass
@@ -24,9 +25,16 @@ import com.android.systemui.qs.shared.style.LiquidGlassTune
 import com.android.systemui.res.R
 
 object ShadeColors {
-    private val LIQUID_GLASS_DIM get() = LiquidGlassTune.color("dim", 0x52000000)
+    private val LIQUID_GLASS_DIM get() = LiquidGlassTune.color("dim", 0x58000000)
     private val LIQUID_GLASS_SCRIM get() = LiquidGlassTune.color("scrim", 0x8C000000.toInt())
-    private val LIQUID_GLASS_PANEL get() = LiquidGlassTune.color("panel", 0x14000000)
+    private val LIQUID_GLASS_PANEL_LIGHT get() = LiquidGlassTune.color("panel", 0x18000000)
+    private val LIQUID_GLASS_PANEL_DARK get() = LiquidGlassTune.color("panel_dark", 0x3808080C)
+
+    private fun isDark(context: Context): Boolean {
+        val nightMode =
+            context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+        return nightMode == Configuration.UI_MODE_NIGHT_YES
+    }
 
     /**
      * Calculate notification shade panel color.
@@ -42,7 +50,7 @@ object ShadeColors {
             if (withScrim && LiquidGlass.enabled(context).value) {
                 LIQUID_GLASS_DIM
             } else if (LiquidGlass.enabled(context).value) {
-                LIQUID_GLASS_PANEL
+                if (isDark(context)) LIQUID_GLASS_PANEL_DARK else LIQUID_GLASS_PANEL_LIGHT
             } else if (withScrim) {
                 ColorUtils.compositeColors(
                     shadePanelStandard(context),
