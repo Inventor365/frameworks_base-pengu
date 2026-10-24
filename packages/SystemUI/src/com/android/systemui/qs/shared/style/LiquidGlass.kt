@@ -71,8 +71,39 @@ import kotlinx.coroutines.launch
 
 object LiquidGlass {
     private const val SETTING = "penguin_liquid_glass"
+    private const val STYLE_SETTING = "penguin_liquid_glass_style"
 
     private var state: State<Boolean>? = null
+    private var cosState: State<Boolean>? = null
+
+    fun cosStyle(context: Context): State<Boolean> =
+        cosState
+            ?: synchronized(this) {
+                cosState
+                    ?: run {
+                        val resolver = context.applicationContext.contentResolver
+                        val read = {
+                            Settings.Secure.getIntForUser(
+                                resolver,
+                                STYLE_SETTING,
+                                0,
+                                UserHandle.USER_CURRENT,
+                            ) == 1
+                        }
+                        val value = mutableStateOf(read())
+                        resolver.registerContentObserver(
+                            Settings.Secure.getUriFor(STYLE_SETTING),
+                            false,
+                            object : ContentObserver(Handler(Looper.getMainLooper())) {
+                                override fun onChange(selfChange: Boolean) {
+                                    value.value = read()
+                                }
+                            },
+                            UserHandle.USER_ALL,
+                        )
+                        value.also { cosState = it }
+                    }
+            }
 
     fun enabled(context: Context): State<Boolean> =
         state
@@ -604,7 +635,17 @@ fun Modifier.glassPress(): Modifier = liquidGlassPress(liquidGlassEnabled())
 
 @Composable
 fun Modifier.glassRim(shape: Shape, strength: Float = 1f): Modifier =
-    if (liquidGlassEnabled()) glassBlurRegion(shape).liquidGlassRim(shape, strength) else this
+    when {
+        !liquidGlassEnabled() -> this
+        liquidGlassCosStyle() -> glassBlurRegion(shape)
+        else -> glassBlurRegion(shape).liquidGlassRim(shape, strength)
+    }
+
+@Composable
+fun liquidGlassCosStyle(): Boolean {
+    val context = LocalContext.current
+    return remember(context) { LiquidGlass.cosStyle(context) }.value
+}
 
 val LocalGlassBlurAllowed = compositionLocalOf<() -> Boolean> { { true } }
 
