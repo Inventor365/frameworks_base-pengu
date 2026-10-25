@@ -88,9 +88,12 @@ import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.compose.animation.scene.ContentKey
 import com.android.compose.animation.scene.ContentScope
+import com.android.compose.animation.scene.ElementContentPicker
 import com.android.compose.animation.scene.ElementKey
 import com.android.compose.animation.scene.HeadsUpContentPicker
+import com.android.compose.animation.scene.HighestZIndexContentPicker
 import com.android.compose.animation.scene.SceneTransitionLayoutState
+import com.android.compose.animation.scene.content.state.TransitionState
 import com.android.compose.gesture.effect.OffsetOverscrollEffect
 import com.android.compose.gesture.effect.rememberOffsetOverscrollEffect
 import com.android.compose.modifiers.onUnplaced
@@ -108,6 +111,7 @@ import com.android.systemui.notifications.ui.YSpace
 import com.android.systemui.res.R
 import com.android.systemui.scene.session.ui.composable.SaveableSession
 import com.android.systemui.scene.session.ui.composable.sessionCoroutineScope
+import com.android.systemui.scene.shared.model.Overlays
 import com.android.systemui.scene.shared.model.Scenes
 import com.android.systemui.shade.ui.ShadeColors
 import com.android.systemui.statusbar.notification.shared.NsslTouchDispatchFix
@@ -140,7 +144,8 @@ object Notifications {
          * If you change the contentPicker of this element, consider also changing
          * [StackPlaceholderContentPicker].
          */
-        val StackPlaceholder = ElementKey("StackPlaceholder")
+        val StackPlaceholder =
+            ElementKey("StackPlaceholder", contentPicker = ShadeSwitchStackPicker)
         /**
          * The [ElementKey] identifying the space reserved for the top HUN. This key only links to
          * an empty box sized to the height of Notifications (placeholder), so STL transitions are
@@ -835,3 +840,24 @@ internal fun LayoutCoordinates.rawBoundsInWindow(): YSpace {
 
     return YSpace(top, bottom)
 }
+
+private object ShadeSwitchStackPicker : ElementContentPicker {
+    override fun contentDuringTransition(
+        element: ElementKey,
+        transition: TransitionState.Transition,
+        fromContentZIndex: Long,
+        toContentZIndex: Long,
+    ): ContentKey {
+        val shades = setOf(transition.fromContent, transition.toContent)
+        if (Overlays.NotificationsShade in shades && Overlays.QuickSettingsShade in shades) {
+            return Overlays.NotificationsShade
+        }
+        return HighestZIndexContentPicker.contentDuringTransition(
+            element,
+            transition,
+            fromContentZIndex,
+            toContentZIndex,
+        )
+    }
+}
+

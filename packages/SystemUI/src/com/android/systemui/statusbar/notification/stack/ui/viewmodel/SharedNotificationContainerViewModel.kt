@@ -97,6 +97,7 @@ import com.android.systemui.log.table.logDiffsForTable
 import com.android.systemui.media.controls.domain.pipeline.MediaDataManager
 import com.android.systemui.media.controls.shared.model.MediaData
 import com.android.systemui.notifications.ui.NotificationPlaceholderStateStorage
+import com.android.systemui.penguin.isCosShadeSwitch
 import com.android.systemui.res.R
 import com.android.systemui.scene.domain.interactor.SceneInteractor
 import com.android.systemui.scene.shared.flag.SceneContainerFlag
@@ -631,8 +632,15 @@ constructor(
                                     } else {
                                         // On a narrow screen, the QS shade overlaps with
                                         // lockscreen notifications. Fade them out as the QS
-                                        // shade expands.
-                                        emitAll(shadeInteractor.qsExpansion.map { 1f - it })
+                                        emitAll(
+                                            combine(
+                                                shadeInteractor.qsExpansion,
+                                                sceneInteractor.transitionStateFlow,
+                                            ) { qsExpansion, state ->
+                                                if (state.isCosShadeSwitch()) 1f
+                                                else 1f - qsExpansion
+                                            }
+                                        )
                                     }
                                 }
                     }

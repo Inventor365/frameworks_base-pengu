@@ -7,11 +7,15 @@ package com.android.systemui.penguin
 
 import androidx.compose.foundation.OverscrollFactory
 import androidx.compose.runtime.Composable
+import com.android.compose.animation.scene.ObservableTransitionState
 import com.android.compose.animation.scene.SceneTransitionsBuilder
 import com.android.compose.animation.scene.TransitionBuilder
 import com.android.compose.animation.scene.TransitionKey
 
 val CosShadeSwitch = TransitionKey("CosShadeSwitch")
+
+fun ObservableTransitionState.isCosShadeSwitch(): Boolean =
+    this is ObservableTransitionState.Transition && key == CosShadeSwitch
 
 interface ShadeMotion {
     @Composable fun key(): Any?

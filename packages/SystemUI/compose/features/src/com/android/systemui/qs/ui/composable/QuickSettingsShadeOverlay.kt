@@ -44,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -76,6 +77,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android.compose.PlatformSliderDefaults
 import com.android.systemui.common.shared.colors.SystemUISliderColors
 import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.CosShadeSwitch
 import com.android.systemui.penguin.rememberCosFeature
 import com.android.systemui.qs.shared.style.LiquidGlassBrightness
 import com.android.systemui.qs.shared.style.LiquidGlassControl
@@ -211,6 +213,18 @@ constructor(
 
         LaunchedEffectWithLifecycle(key1 = Unit) { contentViewModel.detectShadeModeChanges() }
 
+        val cosSwitching by
+            remember(layoutState) {
+                derivedStateOf {
+                    (layoutState.currentTransition as? TransitionState.Transition)?.key ==
+                        CosShadeSwitch
+                }
+            }
+        var panelShape by remember { mutableStateOf<ShadeScrimShape?>(null) }
+        LaunchedEffect(cosSwitching, panelShape) {
+            contentViewModel.onPanelShapeInWindowChanged(panelShape.takeUnless { cosSwitching })
+        }
+
         Box(
             modifier =
                 modifier
@@ -238,13 +252,12 @@ constructor(
                 },
                 onBackgroundPlaced = { bounds, topCornerRadius, bottomCornerRadius ->
                     contentViewModel.onShadeOverlayBoundsChanged(bounds)
-                    contentViewModel.onPanelShapeInWindowChanged(
+                    panelShape =
                         ShadeScrimShape(
                             bounds = ShadeScrimBounds(bounds),
                             topRadius = topCornerRadius.roundToInt(),
                             bottomRadius = bottomCornerRadius.roundToInt(),
                         )
-                    )
                 },
                 header = {
                     val penguinStatusBar =

@@ -20,6 +20,7 @@ import com.android.compose.animation.scene.ObservableTransitionState.Idle
 import com.android.compose.animation.scene.ObservableTransitionState.Transition
 import com.android.compose.animation.scene.SceneKey
 import com.android.systemui.dagger.SysUISingleton
+import com.android.systemui.penguin.isCosShadeSwitch
 import com.android.systemui.scene.domain.interactor.SceneInteractor
 import com.android.systemui.scene.shared.model.Overlays
 import com.android.systemui.scene.shared.model.Scenes
@@ -79,7 +80,8 @@ constructor(
                 is Transition.OverlayTransition ->
                     flowOf(
                         transitionState.currentScene in keyguardScenes &&
-                            transitionState.fromContent != Overlays.NotificationsShade
+                            transitionState.fromContent != Overlays.NotificationsShade &&
+                            !transitionState.isCosShadeSwitch()
                     )
             }
         }

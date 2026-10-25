@@ -29,8 +29,10 @@ import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import com.android.compose.animation.scene.ContentScope
+import com.android.compose.animation.scene.content.state.TransitionState
 import com.android.compose.modifiers.onUnplaced
 import com.android.systemui.notifications.ui.composable.Notifications.Elements
+import com.android.systemui.penguin.CosShadeSwitch
 import com.android.systemui.statusbar.notification.stack.ui.viewmodel.NotificationsPlaceholderViewModel
 
 /**
@@ -75,7 +77,12 @@ internal fun ContentScope.StackPlaceholder(
                     viewModel.resetStackScale()
                 }
                 .drawBehind {
-                    viewModel.setStackAlpha(Elements.StackPlaceholder.currentAlpha())
+                    val switching =
+                        (layoutState.currentTransition as? TransitionState.Transition)?.key ==
+                            CosShadeSwitch
+                    viewModel.setStackAlpha(
+                        if (switching) 1f else Elements.StackPlaceholder.currentAlpha()
+                    )
                     viewModel.setStackScale(Elements.StackPlaceholder.currentScale())
                 }
     ) {

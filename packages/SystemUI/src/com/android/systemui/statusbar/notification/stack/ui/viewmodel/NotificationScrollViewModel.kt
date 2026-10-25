@@ -38,6 +38,7 @@ import com.android.systemui.keyguard.domain.interactor.KeyguardInteractor
 import com.android.systemui.lifecycle.ExclusiveActivatable
 import com.android.systemui.notifications.ui.NotificationPlaceholderStateStorage
 import com.android.systemui.notifications.ui.YSpace
+import com.android.systemui.penguin.isCosShadeSwitch
 import com.android.systemui.res.R
 import com.android.systemui.scene.domain.interactor.SceneInteractor
 import com.android.systemui.scene.shared.flag.SceneContainerFlag
@@ -197,6 +198,7 @@ constructor(
     ): Flow<Float> =
         when {
             currentScene.showsNotifications() -> flowOf(1f)
+            transitionState.isCosShadeSwitch() -> flowOf(1f)
             transitionState.isTransitioningFromOrTo(Overlays.NotificationsShade) ->
                 shadeInteractor.shadeExpansion
             Overlays.NotificationsShade in currentOverlays -> flowOf(1f)
@@ -204,7 +206,13 @@ constructor(
         }
 
     val qsExpandFraction: Flow<Float> =
-        shadeInteractor.qsExpansion.dumpWhileCollecting("qsExpandFraction")
+        combine(shadeInteractor.qsExpansion, sceneInteractor.transitionStateFlow) {
+                qsExpansion,
+                state ->
+                if (state.isCosShadeSwitch()) 0f else qsExpansion
+            }
+            .distinctUntilChanged()
+            .dumpWhileCollecting("qsExpandFraction")
 
     /**
      * Level of height suppression state. Higher suppressionLevel number represents stricter
