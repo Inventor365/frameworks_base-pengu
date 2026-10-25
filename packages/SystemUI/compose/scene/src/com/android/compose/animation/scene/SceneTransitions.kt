@@ -190,6 +190,8 @@ internal interface TransformationSpec {
      */
     val progressSpec: AnimationSpec<Float>?
 
+    val releaseSpec: AnimationSpec<Float>?
+
     /**
      * The distance it takes for this transition to animate from 0% to 100% when it is driven by a
      * [UserAction].
@@ -248,6 +250,7 @@ internal class TransitionSpecImpl(
                 val reverse = transformationSpec.invoke(transition)
                 TransformationSpecImpl(
                     progressSpec = reverse.progressSpec,
+                    releaseSpec = reverse.releaseSpec,
                     distance = reverse.distance,
                     intrinsicDirection = reverse.intrinsicDirection?.reversed(),
                     transformationMatchers =
@@ -284,6 +287,7 @@ internal class DefaultTransitionSpec(
  */
 internal class TransformationSpecImpl(
     override val progressSpec: AnimationSpec<Float>?,
+    override val releaseSpec: AnimationSpec<Float>? = null,
     override val distance: UserActionDistance?,
     override val intrinsicDirection: SwipeDirection?,
     override val transformationMatchers: List<TransformationMatcher>,

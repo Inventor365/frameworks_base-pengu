@@ -142,6 +142,7 @@ private class SceneTransitionsBuilderImpl : SceneTransitionsBuilder {
         val impl = TransitionBuilderImpl(transition).apply(builder)
         return TransformationSpecImpl(
             progressSpec = impl.spec,
+            releaseSpec = impl.releaseSpec,
             distance = impl.distance,
             intrinsicDirection = impl.intrinsicDirection,
             transformationMatchers = impl.transformationMatchers,
@@ -232,6 +233,7 @@ internal abstract class BaseTransitionBuilderImpl : BaseTransitionBuilder {
 internal class TransitionBuilderImpl(override val transition: TransitionState.Transition) :
     BaseTransitionBuilderImpl(), TransitionBuilder {
     override var spec: AnimationSpec<Float>? = null
+    override var releaseSpec: AnimationSpec<Float>? = null
     override var distance: UserActionDistance? = null
     override var cuj: Int? = null
     override var cujTag: String? = null

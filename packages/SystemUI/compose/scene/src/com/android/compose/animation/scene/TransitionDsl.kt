@@ -146,6 +146,8 @@ interface TransitionBuilder : BaseTransitionBuilder {
      */
     var spec: AnimationSpec<Float>?
 
+    var releaseSpec: AnimationSpec<Float>?
+
     /**
      * Hints at the intrinsic, "design intent" direction of the transition.
      *

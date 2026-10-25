@@ -462,7 +462,9 @@ internal class SwipeAnimation<T : ContentKey>(
                     targetOffset,
                     initialVelocity,
                     decayAnimationSpec,
-                    spec ?: layoutState.motionScheme.slowSpatialSpec(),
+                    spec
+                        ?: contentTransition.transformationSpec.releaseSpec
+                        ?: layoutState.motionScheme.slowSpatialSpec(),
                 )
 
             val consumed = initialVelocity - animationResult.endState.velocity
