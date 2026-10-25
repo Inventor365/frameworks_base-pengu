@@ -2995,6 +2995,10 @@ public class WallpaperManagerService extends IWallpaperManager.Stub
                 int userId = mCurrentUserId != UserHandle.USER_NULL
                         ? mCurrentUserId : UserHandle.USER_SYSTEM;
                 WallpaperData wallpaper = mWallpaperMap.get(userId);
+                if (wallpaper == null) {
+                    Slog.e(TAG, "setWallpaperDimAmountForUid: wallpaper is null");
+                    return;
+                }
                 if (displayId < 0) {
                     WallpaperData lockWallpaper = mLockWallpaperMap.get(userId);
 
