@@ -618,12 +618,11 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                shadeMotion?.run { toNotificationsShade(1.0, true) }
-                    ?: lockscreenToNotificationsShadeTransition(
-                        useSharedElementTransitions = true,
-                        shadeExpansionMotion = shadeExpansionMotion,
-                        revealHaptics = revealHaptics,
-                    )
+                lockscreenToNotificationsShadeTransition(
+                    useSharedElementTransitions = true,
+                    shadeExpansionMotion = shadeExpansionMotion,
+                    revealHaptics = revealHaptics,
+                )
             }
             from(
                 Scenes.Lockscreen,
@@ -632,13 +631,12 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                shadeMotion?.run { toNotificationsShade(0.9, true) }
-                    ?: lockscreenToNotificationsShadeTransition(
-                        durationScale = 0.9,
-                        useSharedElementTransitions = true,
-                        shadeExpansionMotion = shadeExpansionMotion,
-                        revealHaptics = revealHaptics,
-                    )
+                lockscreenToNotificationsShadeTransition(
+                    durationScale = 0.9,
+                    useSharedElementTransitions = true,
+                    shadeExpansionMotion = shadeExpansionMotion,
+                    revealHaptics = revealHaptics,
+                )
             }
             from(
                 Scenes.Lockscreen,
@@ -646,11 +644,10 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                shadeMotion?.run { toQuickSettingsShade(1.0) }
-                    ?: lockscreenToQuickSettingsOverlayTransition(
-                        shadeExpansionMotion = shadeExpansionMotion,
-                        revealHaptics = revealHaptics,
-                    )
+                lockscreenToQuickSettingsOverlayTransition(
+                    shadeExpansionMotion = shadeExpansionMotion,
+                    revealHaptics = revealHaptics,
+                )
             }
             from(
                 Scenes.Lockscreen,
@@ -659,12 +656,11 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                shadeMotion?.run { toQuickSettingsShade(0.9) }
-                    ?: lockscreenToQuickSettingsOverlayTransition(
-                        durationScale = 0.9,
-                        shadeExpansionMotion = shadeExpansionMotion,
-                        revealHaptics = revealHaptics,
-                    )
+                lockscreenToQuickSettingsOverlayTransition(
+                    durationScale = 0.9,
+                    shadeExpansionMotion = shadeExpansionMotion,
+                    revealHaptics = revealHaptics,
+                )
             }
             from(
                 Overlays.NotificationsShade,
@@ -673,12 +669,11 @@ class SceneContainerTransitions(
                 cujTag = TAG_COLLAPSE,
             ) {
                 reversed {
-                    shadeMotion?.run { toNotificationsShade(1.0, false) }
-                        ?: lockscreenToNotificationsShadeTransition(
-                            useSharedElementTransitions = false,
-                            shadeExpansionMotion = shadeExpansionMotion,
-                            revealHaptics = revealHaptics,
-                        )
+                    lockscreenToNotificationsShadeTransition(
+                        useSharedElementTransitions = false,
+                        shadeExpansionMotion = shadeExpansionMotion,
+                        revealHaptics = revealHaptics,
+                    )
                 }
             }
             from(
@@ -689,13 +684,12 @@ class SceneContainerTransitions(
                 cujTag = TAG_COLLAPSE,
             ) {
                 reversed {
-                    shadeMotion?.run { toNotificationsShade(0.9, false) }
-                        ?: lockscreenToNotificationsShadeTransition(
-                            durationScale = 0.9,
-                            useSharedElementTransitions = false,
-                            shadeExpansionMotion = shadeExpansionMotion,
-                            revealHaptics = revealHaptics,
-                        )
+                    lockscreenToNotificationsShadeTransition(
+                        durationScale = 0.9,
+                        useSharedElementTransitions = false,
+                        shadeExpansionMotion = shadeExpansionMotion,
+                        revealHaptics = revealHaptics,
+                    )
                 }
             }
             from(
@@ -704,13 +698,12 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_COLLAPSE,
             ) {
-                shadeMotion?.run { fromQuickSettingsShade() }
-                    ?: reversed {
-                        lockscreenToQuickSettingsOverlayTransition(
-                            shadeExpansionMotion = shadeExpansionMotion,
-                            revealHaptics = revealHaptics,
-                        )
-                    }
+                reversed {
+                    lockscreenToQuickSettingsOverlayTransition(
+                        shadeExpansionMotion = shadeExpansionMotion,
+                        revealHaptics = revealHaptics,
+                    )
+                }
             }
             from(
                 Overlays.QuickSettingsShade,
@@ -719,14 +712,13 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_COLLAPSE,
             ) {
-                shadeMotion?.run { fromQuickSettingsShade() }
-                    ?: reversed {
-                        lockscreenToQuickSettingsOverlayTransition(
-                            durationScale = 0.9,
-                            shadeExpansionMotion = shadeExpansionMotion,
-                            revealHaptics = revealHaptics,
-                        )
-                    }
+                reversed {
+                    lockscreenToQuickSettingsOverlayTransition(
+                        durationScale = 0.9,
+                        shadeExpansionMotion = shadeExpansionMotion,
+                        revealHaptics = revealHaptics,
+                    )
+                }
             }
         }
     }

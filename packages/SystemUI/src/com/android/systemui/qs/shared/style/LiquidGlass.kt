@@ -6,7 +6,6 @@
 package com.android.systemui.qs.shared.style
 
 import android.content.Context
-import android.content.res.Configuration
 import android.content.res.Resources
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -71,71 +70,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 object LiquidGlass {
-    const val SETTING = "penguin_liquid_glass"
-    const val BLUR_STYLE_SETTING = "penguin_blur_style"
-
-    const val BLUR_STYLE_STANDARD = 0
-    const val BLUR_STYLE_IOS_FROSTED = 1
-    const val BLUR_STYLE_LIQUID_GLASS = 2
+    private const val SETTING = "penguin_liquid_glass"
 
     private var state: State<Boolean>? = null
-    private var styleState: State<Int>? = null
-
-    fun blurStyle(context: Context): State<Int> =
-        styleState
-            ?: synchronized(this) {
-                styleState
-                    ?: run {
-                        val resolver = context.applicationContext.contentResolver
-                        val read = {
-                            val lg =
-                                Settings.Secure.getIntForUser(
-                                    resolver,
-                                    SETTING,
-                                    0,
-                                    UserHandle.USER_CURRENT,
-                                ) != 0
-                            val style =
-                                Settings.Secure.getIntForUser(
-                                    resolver,
-                                    BLUR_STYLE_SETTING,
-                                    if (lg) BLUR_STYLE_LIQUID_GLASS else BLUR_STYLE_IOS_FROSTED,
-                                    UserHandle.USER_CURRENT,
-                                )
-                            if (lg) BLUR_STYLE_LIQUID_GLASS else style.coerceIn(0, 2)
-                        }
-                        val value = mutableStateOf(read())
-                        val observer =
-                            object : ContentObserver(Handler(Looper.getMainLooper())) {
-                                override fun onChange(selfChange: Boolean) {
-                                    value.value = read()
-                                }
-                            }
-                        resolver.registerContentObserver(
-                            Settings.Secure.getUriFor(SETTING),
-                            false,
-                            observer,
-                            UserHandle.USER_ALL,
-                        )
-                        resolver.registerContentObserver(
-                            Settings.Secure.getUriFor(BLUR_STYLE_SETTING),
-                            false,
-                            observer,
-                            UserHandle.USER_ALL,
-                        )
-                        value.also { styleState = it }
-                    }
-            }
-
-    @JvmStatic fun getBlurStyle(context: Context): Int = blurStyle(context).value
-
-    @JvmStatic
-    fun isFrostedBlur(context: Context): Boolean =
-        blurStyle(context).value == BLUR_STYLE_IOS_FROSTED
-
-    @JvmStatic
-    fun isIosBlurActive(context: Context): Boolean =
-        blurStyle(context).value != BLUR_STYLE_STANDARD
 
     fun enabled(context: Context): State<Boolean> =
         state
@@ -144,40 +81,19 @@ object LiquidGlass {
                     ?: run {
                         val resolver = context.applicationContext.contentResolver
                         val read = {
-                            val lg =
-                                Settings.Secure.getIntForUser(
-                                    resolver,
-                                    SETTING,
-                                    0,
-                                    UserHandle.USER_CURRENT,
-                                ) != 0
-                            val style =
-                                Settings.Secure.getIntForUser(
-                                    resolver,
-                                    BLUR_STYLE_SETTING,
-                                    if (lg) BLUR_STYLE_LIQUID_GLASS else BLUR_STYLE_IOS_FROSTED,
-                                    UserHandle.USER_CURRENT,
-                                )
-                            lg || style == BLUR_STYLE_LIQUID_GLASS
+                            Settings.Secure.getIntForUser(resolver, SETTING, 0, UserHandle.USER_CURRENT) !=
+                                0
                         }
                         val value = mutableStateOf(read())
                         LiquidGlassTune.start()
-                        val observer =
+                        resolver.registerContentObserver(
+                            Settings.Secure.getUriFor(SETTING),
+                            false,
                             object : ContentObserver(Handler(Looper.getMainLooper())) {
                                 override fun onChange(selfChange: Boolean) {
                                     value.value = read()
                                 }
-                            }
-                        resolver.registerContentObserver(
-                            Settings.Secure.getUriFor(SETTING),
-                            false,
-                            observer,
-                            UserHandle.USER_ALL,
-                        )
-                        resolver.registerContentObserver(
-                            Settings.Secure.getUriFor(BLUR_STYLE_SETTING),
-                            false,
-                            observer,
+                            },
                             UserHandle.USER_ALL,
                         )
                         value.also { state = it }
@@ -193,40 +109,10 @@ object LiquidGlass {
 
     private const val NOTIFICATION_GAP_DP = 8
 
-    private fun isDark(context: Context?): Boolean {
-        if (context == null) return true
-        val nightMode =
-            context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        return nightMode == Configuration.UI_MODE_NIGHT_YES
-    }
+    @JvmStatic fun viewSurface(): Int = LiquidGlassTune.color("view_surface", 0x1CFFFFFF)
 
     @JvmStatic
-    @JvmOverloads
-    fun viewSurface(context: Context? = null, hasSlabBlur: Boolean = false): Int {
-        return if (isDark(context)) {
-            if (hasSlabBlur) {
-                LiquidGlassTune.color("view_surface_dark_slab", 0x7A18181C)
-            } else {
-                LiquidGlassTune.color("view_surface_dark", 0xA61A1A1E.toInt())
-            }
-        } else {
-            if (hasSlabBlur) {
-                LiquidGlassTune.color("view_surface", 0x42FFFFFF)
-            } else {
-                LiquidGlassTune.color("view_surface_light", 0xC4F4F4F8.toInt())
-            }
-        }
-    }
-
-    @JvmStatic
-    @JvmOverloads
-    fun headsUpSurface(context: Context? = null): Int {
-        return if (isDark(context)) {
-            LiquidGlassTune.color("headsup_surface_dark", 0xDB1C1C20.toInt())
-        } else {
-            LiquidGlassTune.color("headsup_surface_light", 0xE0F5F5F9.toInt())
-        }
-    }
+    fun headsUpSurface(): Int = LiquidGlassTune.color("headsup_surface", 0x33FFFFFF)
 
     @JvmStatic
     fun lockscreenSurface(): Int = LiquidGlassTune.color("lockscreen_surface", 0x8C1C1C1E.toInt())
@@ -709,150 +595,76 @@ private val PressSpring = spring<Float>(dampingRatio = 0.62f, stiffness = 520f)
 private fun <T> releaseSpring() = spring<T>(dampingRatio = 0.38f, stiffness = Spring.StiffnessMediumLow)
 
 @Composable
-fun iosBlurStyle(): Int {
-    val context = LocalContext.current
-    LiquidGlassTune.generation.value
-    return remember(context) { LiquidGlass.blurStyle(context) }.value
-}
-
-@Composable
 fun Modifier.glassPress(): Modifier = liquidGlassPress(liquidGlassEnabled())
 
 @Composable
-fun Modifier.glassRim(shape: Shape, strength: Float = 1f): Modifier {
-    val style = iosBlurStyle()
-    return when (style) {
-        LiquidGlass.BLUR_STYLE_LIQUID_GLASS ->
-            glassBlurRegion(shape).liquidGlassRim(shape, strength)
-        LiquidGlass.BLUR_STYLE_IOS_FROSTED ->
-            glassBlurRegion(shape).liquidGlassRim(shape, strength * 0.42f)
-        else -> this
-    }
-}
+fun Modifier.glassRim(shape: Shape, strength: Float = 1f): Modifier =
+    if (liquidGlassEnabled()) glassBlurRegion(shape).liquidGlassRim(shape, strength) else this
 
 val LocalGlassBlurAllowed = compositionLocalOf<() -> Boolean> { { true } }
 
 val LocalGlassBlurAlpha = compositionLocalOf<() -> Float> { { 1f } }
 
-private class BlurRegionCache {
-    var drawable: BackgroundBlurDrawable? = null
-    var appliedLeft = Int.MIN_VALUE
-    var appliedTop = Int.MIN_VALUE
-    var appliedRight = Int.MIN_VALUE
-    var appliedBottom = Int.MIN_VALUE
-    var appliedRadius = -1
-    var appliedCorner = -1f
-    var appliedAlpha = -1
-    var appliedVisible = false
-}
-
 @Composable
 fun Modifier.glassBlurRegion(shape: Shape): Modifier {
     val view = LocalView.current
-    val cache = remember(view) { BlurRegionCache() }
+    val drawable = remember(view) { arrayOfNulls<BackgroundBlurDrawable>(1) }
     LiquidGlassTune.generation.value
     val radius = LiquidGlassTune.f("tile_blur", 90.0f).toInt()
     val allowed = LocalGlassBlurAllowed.current
-    SideEffect {
-        if (radius <= 0 && cache.appliedVisible) {
-            cache.drawable?.setVisible(false, false)
-            cache.appliedVisible = false
-        }
-    }
-    DisposableEffect(view) {
-        onDispose {
-            cache.drawable?.setVisible(false, false)
-            cache.appliedVisible = false
-        }
-    }
+    SideEffect { if (radius <= 0) drawable[0]?.setVisible(false, false) }
+    DisposableEffect(view) { onDispose { drawable[0]?.setVisible(false, false) } }
     if (radius <= 0) return this
+    val visible = remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val fade = LocalGlassBlurAlpha.current
-    val isBlurActive by
-        remember(fade, allowed) {
-            androidx.compose.runtime.derivedStateOf { allowed() && fade() >= 0.01f }
-        }
     LaunchedEffect(fade, allowed) {
-        androidx.compose.runtime.snapshotFlow {
-                if (allowed()) (fade().coerceIn(0f, 1f) * 255f).roundToInt() else 0
-            }
-            .collect { intAlpha ->
-                val blur = cache.drawable ?: return@collect
-                if (intAlpha <= 2) {
-                    if (cache.appliedVisible) {
-                        blur.setVisible(false, false)
-                        cache.appliedVisible = false
-                    }
-                } else {
-                    if (!cache.appliedVisible) {
-                        blur.setVisible(true, false)
-                        cache.appliedVisible = true
-                    }
-                    if (cache.appliedAlpha != intAlpha) {
-                        blur.setAlpha(intAlpha)
-                        cache.appliedAlpha = intAlpha
-                    }
-                }
+        androidx.compose.runtime.snapshotFlow { if (allowed()) fade().coerceIn(0f, 1f) else 0f }
+            .collect { alpha ->
+                val blur = drawable[0] ?: return@collect
+                if (alpha < 0.01f) blur.setVisible(false, false)
+                else blur.setAlpha((alpha * 255).toInt())
             }
     }
-    return drawBehind {
-        val active = isBlurActive
-        val w = size.width.toInt()
-        val h = size.height.toInt()
-        if (!active || w < 1 || h < 1) {
-            if (cache.appliedVisible) {
-                cache.drawable?.setVisible(false, false)
-                cache.appliedVisible = false
-            }
-            return@drawBehind
+    return onGloballyPositioned { coordinates ->
+            val bounds = coordinates.boundsInWindow()
+            val topLeft = coordinates.windowToLocal(bounds.topLeft)
+            val bottomRight = coordinates.windowToLocal(bounds.bottomRight)
+            visible.value =
+                androidx.compose.ui.geometry.Rect(topLeft, bottomRight)
+                    .intersect(androidx.compose.ui.geometry.Rect(Offset.Zero, coordinates.size.toSize()))
         }
-        val root = view.viewRootImpl ?: return@drawBehind
-        val blur =
-            cache.drawable
-                ?: root.createBackgroundBlurDrawable().also {
-                    it.setXfermode(null)
-                    it.setColor(0)
-                    cache.drawable = it
-                }
-        val corner =
-            when (val outline = shape.createOutline(size, layoutDirection, this)) {
-                is Outline.Rounded -> outline.roundRect.topLeftCornerRadius.x
-                else -> 0f
+        .drawBehind {
+            val shown = visible.value ?: androidx.compose.ui.geometry.Rect(Offset.Zero, size)
+            val alpha = fade().coerceIn(0f, 1f)
+            if (!allowed() || alpha < 0.01f || shown.width < 1f || shown.height < 1f) {
+                drawable[0]?.setVisible(false, false)
+                return@drawBehind
             }
-        if (!cache.appliedVisible) {
+            val root = view.viewRootImpl ?: return@drawBehind
+            val blur =
+                drawable[0]
+                    ?: root.createBackgroundBlurDrawable().also {
+                        it.setXfermode(null)
+                        drawable[0] = it
+                    }
+            val corner =
+                when (val outline = shape.createOutline(size, layoutDirection, this)) {
+                    is Outline.Rounded -> outline.roundRect.topLeftCornerRadius.x
+                    else -> 0f
+                }
             blur.setVisible(true, false)
-            cache.appliedVisible = true
-        }
-        if (cache.appliedRadius != radius) {
+            blur.setColor(0)
             blur.setBlurRadius(radius)
-            cache.appliedRadius = radius
-        }
-        if (abs(cache.appliedCorner - corner) > 0.25f) {
             blur.setCornerRadius(corner)
-            cache.appliedCorner = corner
+            blur.setAlpha((alpha * 255).toInt())
+            blur.setBounds(
+                shown.left.toInt(),
+                shown.top.toInt(),
+                shown.right.toInt(),
+                shown.bottom.toInt(),
+            )
+            drawIntoCanvas { blur.draw(it.nativeCanvas) }
         }
-        val currentFade =
-            androidx.compose.runtime.snapshots.Snapshot.withoutReadObservation {
-                if (allowed()) fade().coerceIn(0f, 1f) else 0f
-            }
-        val intAlpha = (currentFade * 255f).roundToInt().coerceAtLeast(3)
-        if (cache.appliedAlpha != intAlpha) {
-            blur.setAlpha(intAlpha)
-            cache.appliedAlpha = intAlpha
-        }
-        if (
-            cache.appliedLeft != 0 ||
-                cache.appliedTop != 0 ||
-                cache.appliedRight != w ||
-                cache.appliedBottom != h
-        ) {
-            blur.setBounds(0, 0, w, h)
-            cache.appliedLeft = 0
-            cache.appliedTop = 0
-            cache.appliedRight = w
-            cache.appliedBottom = h
-        }
-        drawIntoCanvas { blur.draw(it.nativeCanvas) }
-    }
 }
 
 object LiquidGlassGlyphs {

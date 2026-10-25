@@ -81,7 +81,6 @@ public class NotificationBackgroundView extends View implements Dumpable,
     private final ColorStateList mLightColoredStatefulColors;
     private final ColorStateList mDarkColoredStatefulColors;
     private int mNormalColor;
-    private int mOpaqueColor;
     private final int convexR = 9;
     private final int concaveR = 22;
     private BackgroundBlurDrawable mBackgroundBlurDrawable;
@@ -101,20 +100,13 @@ public class NotificationBackgroundView extends View implements Dumpable,
                 R.color.notification_state_color_light);
         mDarkColoredStatefulColors = getResources().getColorStateList(
                 R.color.notification_state_color_dark);
-        reloadNormalColors();
-        mFocusOverlayStroke = getResources().getDimension(R.dimen.notification_focus_stroke_width);
-    }
-
-    private void reloadNormalColors() {
         if (notificationRowTransparency()) {
             mNormalColor = SurfaceEffectColors.surfaceEffect1(getContext());
-            mOpaqueColor = mContext.getColor(
-                    com.android.internal.R.color.materialColorSurfaceContainer);
-        } else {
+        } else  {
             mNormalColor = mContext.getColor(
                     com.android.internal.R.color.materialColorSurfaceContainerHigh);
-            mOpaqueColor = mNormalColor;
         }
+        mFocusOverlayStroke = getResources().getDimension(R.dimen.notification_focus_stroke_width);
     }
 
     @Override
@@ -326,7 +318,6 @@ public class NotificationBackgroundView extends View implements Dumpable,
      * the notion of a background independently of the regular View background..
      */
     public void setCustomBackground(Drawable background) {
-        reloadNormalColors();
         if (mBackground != null) {
             mBackground.setCallback(null);
             unscheduleDrawable(mBackground);
@@ -420,16 +411,9 @@ public class NotificationBackgroundView extends View implements Dumpable,
         return ((LayerDrawable) mBackground).getDrawable(1);
     }
 
-    private boolean isUntintedColor(int tintColor) {
-        return tintColor == 0 || tintColor == mNormalColor || tintColor == mOpaqueColor;
-    }
-
     private int surfaceFor(int tintColor) {
-        if (!isUntintedColor(tintColor) || !LiquidGlass.isEnabled(getContext())) return tintColor;
-        if (mHeadsUpGlass) {
-            return LiquidGlass.headsUpSurface(getContext());
-        }
-        return LiquidGlass.viewSurface(getContext(), mBackgroundBlurDrawable != null);
+        if (tintColor != mNormalColor || !LiquidGlass.isEnabled(getContext())) return tintColor;
+        return mHeadsUpGlass ? LiquidGlass.headsUpSurface() : LiquidGlass.viewSurface();
     }
 
     private boolean glassOnBlur() {
@@ -446,7 +430,7 @@ public class NotificationBackgroundView extends View implements Dumpable,
 
     public void setTint(int tintColor) {
         Drawable baseLayer = getBaseBackgroundLayer();
-        final int surface = glassOnBlur() && isUntintedColor(tintColor)
+        final int surface = glassOnBlur() && tintColor == mNormalColor
                 ? Color.TRANSPARENT : surfaceFor(tintColor);
         if (notificationRowTransparency()) {
             ((GradientDrawable) baseLayer.mutate()).setColor(surface);

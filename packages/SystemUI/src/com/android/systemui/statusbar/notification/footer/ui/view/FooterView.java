@@ -345,10 +345,9 @@ public class FooterView extends StackScrollerDecorView {
             scHigh = 0;
         }
         if (LiquidGlass.isEnabled(mContext)) {
-            final int viewSurface = LiquidGlass.viewSurface(mContext, false);
             final ColorFilter glass = new PorterDuffColorFilter(
-                    viewSurface | 0xFF000000, SRC_ATOP);
-            final int glassAlpha = Color.alpha(viewSurface);
+                    LiquidGlass.viewSurface() | 0xFF000000, SRC_ATOP);
+            final int glassAlpha = Color.alpha(LiquidGlass.viewSurface());
             for (Drawable bg : new Drawable[] {clearAllBg, settingsBg, historyBg}) {
                 bg.setColorFilter(glass);
                 bg.setAlpha(glassAlpha);
