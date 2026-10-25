@@ -22,6 +22,7 @@ import static com.android.systemui.util.ColorUtilKt.hexColorString;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Path;
@@ -44,6 +45,8 @@ import com.android.internal.graphics.drawable.BackgroundBlurDrawable;
 import com.android.internal.util.ContrastColorUtil;
 import com.android.systemui.Dumpable;
 import com.android.systemui.common.shared.colors.SurfaceEffectColors;
+import com.android.systemui.penguin.CosFeature;
+import com.android.systemui.penguin.CosFeatures;
 import com.android.systemui.qs.shared.style.LiquidGlass;
 import com.android.systemui.res.R;
 import com.android.systemui.statusbar.notification.shared.NotificationAddXOnHoverToDismiss;
@@ -259,7 +262,8 @@ public class NotificationBackgroundView extends View implements Dumpable,
     private final RectF mGlassBounds = new RectF();
 
     private void drawGlassRim(Canvas canvas, Rect bounds) {
-        if (bounds == null || !LiquidGlass.isEnabled(getContext())) {
+        if (bounds == null || !LiquidGlass.isEnabled(getContext())
+                || (mCosMaterial != 0 && mBackgroundBlurDrawable != null)) {
             return;
         }
         mGlassBounds.set(bounds);
@@ -371,6 +375,7 @@ public class NotificationBackgroundView extends View implements Dumpable,
                                 mBackgroundBlurDrawable.setXfermode(null);
                                 mBackgroundBlurDrawable.setCallback(
                                         NotificationBackgroundView.this);
+                                updateCosMaterial();
                                 setTint(mTintColor != 0 ? mTintColor : mNormalColor);
                                 if (mBlurRegionSuppressed) {
                                     mBackgroundBlurDrawable.setAlpha(0);
@@ -422,15 +427,36 @@ public class NotificationBackgroundView extends View implements Dumpable,
 
     private boolean mHeadsUpGlass;
 
+    private int mCosMaterial;
+
     public void setHeadsUpGlass(boolean headsUp) {
         if (mHeadsUpGlass == headsUp) return;
         mHeadsUpGlass = headsUp;
+        updateCosMaterial();
         setTint(mTintColor);
     }
 
+    private void updateCosMaterial() {
+        mCosMaterial = 0;
+        if (mBackgroundBlurDrawable == null) return;
+        if (CosFeatures.isOn(getContext(), CosFeature.Shade)) {
+            final boolean dark = (getResources().getConfiguration().uiMode
+                    & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+            mCosMaterial = mHeadsUpGlass ? (dark ? 9 : 10) : (dark ? 7 : 8);
+        }
+        mBackgroundBlurDrawable.setMaterial(mCosMaterial);
+        mBackgroundBlurDrawable.setBlurRadius(mCosMaterial >= 9
+                ? Math.round(COS_HEADS_UP_BLUR_DP * getResources().getDisplayMetrics().density)
+                : getResources().getDimensionPixelSize(
+                        R.dimen.notification_background_blur_radius));
+    }
+
+    private static final float COS_HEADS_UP_BLUR_DP = 14f;
+
     public void setTint(int tintColor) {
         Drawable baseLayer = getBaseBackgroundLayer();
-        final int surface = glassOnBlur() && tintColor == mNormalColor
+        final boolean cos = mCosMaterial != 0 && tintColor == mNormalColor;
+        final int surface = cos || (glassOnBlur() && tintColor == mNormalColor)
                 ? Color.TRANSPARENT : surfaceFor(tintColor);
         if (notificationRowTransparency()) {
             ((GradientDrawable) baseLayer.mutate()).setColor(surface);
@@ -439,7 +465,7 @@ public class NotificationBackgroundView extends View implements Dumpable,
             baseLayer.setTint(surface);
         }
         if (mBackgroundBlurDrawable != null) {
-            mBackgroundBlurDrawable.setColor(surfaceFor(tintColor));
+            mBackgroundBlurDrawable.setColor(cos ? Color.TRANSPARENT : surfaceFor(tintColor));
         }
         mTintColor = tintColor;
         setStatefulColors();

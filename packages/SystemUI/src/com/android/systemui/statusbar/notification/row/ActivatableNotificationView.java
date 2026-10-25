@@ -371,7 +371,11 @@ public abstract class ActivatableNotificationView extends ExpandableOutlineView 
     protected boolean usesBlurredBackground() {
         return usesTransparentBackground() && lockscreenBlurForNotifications()
                 && mBgTint == NO_COLOR
-                && mOnKeyguard;
+                && (mOnKeyguard || blursAsHeadsUp());
+    }
+
+    protected boolean blursAsHeadsUp() {
+        return false;
     }
 
     protected boolean usesTransparentBackground() {
