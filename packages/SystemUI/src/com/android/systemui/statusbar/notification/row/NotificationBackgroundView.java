@@ -418,7 +418,16 @@ public class NotificationBackgroundView extends View implements Dumpable,
 
     private int surfaceFor(int tintColor) {
         if (tintColor != mNormalColor || !LiquidGlass.isEnabled(getContext())) return tintColor;
-        return mHeadsUpGlass ? LiquidGlass.headsUpSurface() : LiquidGlass.viewSurface();
+        if (mHeadsUpGlass) return LiquidGlass.headsUpSurface();
+        // The COS shade is dark glass in both themes; its light theme keeps dark and accent
+        // notification text, which needs a light frost behind it to stay readable.
+        return isCosLightShade() ? COS_LIGHT_CARD_FROST : LiquidGlass.viewSurface();
+    }
+
+    private boolean isCosLightShade() {
+        return CosFeatures.isOn(getContext(), CosFeature.Shade)
+                && (getResources().getConfiguration().uiMode
+                        & Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES;
     }
 
     private boolean glassOnBlur() {
@@ -452,12 +461,20 @@ public class NotificationBackgroundView extends View implements Dumpable,
     }
 
     private static final float COS_HEADS_UP_BLUR_DP = 14f;
+    private static final int COS_LIGHT_CARD_MATERIAL = 8;
+    private static final int COS_LIGHT_CARD_FROST = 0xA6F2F2F2;
 
     public void setTint(int tintColor) {
         Drawable baseLayer = getBaseBackgroundLayer();
         final boolean cos = mCosMaterial != 0 && tintColor == mNormalColor;
-        final int surface = cos || (glassOnBlur() && tintColor == mNormalColor)
-                ? Color.TRANSPARENT : surfaceFor(tintColor);
+        // The light COS card glass was measured over COS's bright shade, but this shade is dark
+        // glass in both themes. A light frost keeps the light theme's dark and accent text
+        // readable on it, as on a heads-up card.
+        final int surface = cos
+                ? (mCosMaterial == COS_LIGHT_CARD_MATERIAL ? COS_LIGHT_CARD_FROST
+                        : Color.TRANSPARENT)
+                : glassOnBlur() && tintColor == mNormalColor
+                        ? Color.TRANSPARENT : surfaceFor(tintColor);
         if (notificationRowTransparency()) {
             ((GradientDrawable) baseLayer.mutate()).setColor(surface);
         } else {

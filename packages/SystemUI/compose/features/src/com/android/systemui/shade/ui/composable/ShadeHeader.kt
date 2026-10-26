@@ -17,6 +17,7 @@
 
 package com.android.systemui.shade.ui.composable
 
+import android.content.res.Configuration
 import android.content.res.Configuration.ORIENTATION_PORTRAIT
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import androidx.annotation.ColorInt
@@ -51,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -488,7 +490,37 @@ fun ContentScope.OverlayShadeHeader(
 }
 
 @Composable
-fun ContentScope.ShadeStatusRow(viewModel: ShadeHeaderViewModel, modifier: Modifier = Modifier) {
+fun ContentScope.ShadeStatusRow(
+    viewModel: ShadeHeaderViewModel,
+    modifier: Modifier = Modifier,
+    onDarkGlass: Boolean = false,
+) {
+    if (!onDarkGlass) {
+        ShadeStatusRowContent(viewModel, modifier, batteryTextColor = null)
+        return
+    }
+    // On a panel that is dark glass in both themes (ColorOS), the carrier text, status icons
+    // and battery all take their dark-theme colours, as they read the system dark mode.
+    val configuration = LocalConfiguration.current
+    val darkConfiguration =
+        remember(configuration) {
+            Configuration(configuration).apply {
+                uiMode =
+                    (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                        Configuration.UI_MODE_NIGHT_YES
+            }
+        }
+    CompositionLocalProvider(LocalConfiguration provides darkConfiguration) {
+        ShadeStatusRowContent(viewModel, modifier, batteryTextColor = Color.White)
+    }
+}
+
+@Composable
+private fun ContentScope.ShadeStatusRowContent(
+    viewModel: ShadeHeaderViewModel,
+    modifier: Modifier,
+    batteryTextColor: Color?,
+) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         ShadeCarrierGroup(viewModel = viewModel)
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
@@ -500,7 +532,16 @@ fun ContentScope.ShadeStatusRow(viewModel: ShadeHeaderViewModel, modifier: Modif
                 backgroundColor = Color.Transparent.toArgb(),
             )
         }
-        BatteryInfo(viewModel = viewModel, showIcon = true, useExpandedFormat = false)
+        if (batteryTextColor != null) {
+            BatteryInfo(
+                viewModel = viewModel,
+                showIcon = true,
+                useExpandedFormat = false,
+                textColor = batteryTextColor,
+            )
+        } else {
+            BatteryInfo(viewModel = viewModel, showIcon = true, useExpandedFormat = false)
+        }
     }
 }
 
