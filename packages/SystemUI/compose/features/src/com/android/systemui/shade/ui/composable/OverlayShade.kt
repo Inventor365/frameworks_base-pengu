@@ -233,7 +233,10 @@ fun ContentScope.OverlayShade(
                             // animation. The parent clips the content, so remeasuring the
                             // children (especially text) on every frame is unnecessary and
                             // can cause performance issues (jank).
-                            .approachLayout(
+                            // Not for the COS panels: their lookahead width places the content
+                            // about half a panel outside the panel while they open, close or
+                            // switch, so it looks stuck to the screen's centre or edge.
+                            .thenIf(!cosPanel) { Modifier.approachLayout(
                                 isMeasurementApproachInProgress = { layoutState.isTransitioning() }
                             ) { measurable, constraints ->
                                 if (layoutState.currentTransition == null) {
@@ -250,7 +253,7 @@ fun ContentScope.OverlayShade(
                                 measurable.measure(fixedWidthConstraints).run {
                                     layout(width, height) { place(IntOffset.Zero) }
                                 }
-                            }
+                            } }
                     ) {
                         content()
                     }
