@@ -73,7 +73,9 @@ import com.android.compose.modifiers.thenIf
 import com.android.mechanics.behavior.VerticalExpandContainerSpec
 import com.android.mechanics.behavior.verticalExpandContainerBackground
 import com.android.mechanics.compose.modifier.motionDriver
+import com.android.systemui.penguin.CosFeature
 import com.android.systemui.penguin.CosShadeSwitch
+import com.android.systemui.penguin.rememberCosFeature
 import com.android.systemui.qs.shared.style.glassBlurRegion
 import com.android.systemui.qs.ui.composable.TileRevealFlag
 import com.android.systemui.res.R
@@ -168,7 +170,10 @@ fun ContentScope.OverlayShade(
     ) {
       CompositionLocalProvider(LocalCosSwitchMotion provides switchMotion) {
         OverlayScrim(
-            showBackgroundColor = enableTransparency && !cosPanel,
+            // The COS backdrop behind both shades is the same glass, so neither dims it further;
+            // otherwise a Quick Settings style without the COS panel darkens its shade alone.
+            showBackgroundColor =
+                enableTransparency && !cosPanel && !rememberCosFeature(CosFeature.Shade),
             onClicked = onScrimClicked,
         )
 
