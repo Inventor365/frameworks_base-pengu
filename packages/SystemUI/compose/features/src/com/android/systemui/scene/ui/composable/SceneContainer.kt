@@ -34,12 +34,14 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.FrameRateCategory
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.preferredFrameRate
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.android.compose.animation.scene.Back
@@ -48,6 +50,7 @@ import com.android.compose.animation.scene.OverlayKey
 import com.android.compose.animation.scene.PassthroughSwipeDetector
 import com.android.compose.animation.scene.SceneKey
 import com.android.compose.animation.scene.SceneTransitionLayout
+import com.android.compose.animation.scene.SceneTransitionLayoutState
 import com.android.compose.animation.scene.UserAction
 import com.android.compose.animation.scene.UserActionResult
 import com.android.compose.animation.scene.content.state.TransitionState
@@ -316,64 +319,70 @@ private fun InternalSceneContainer(
 
         CosShadeGlass(state)
 
-        SceneTransitionLayout(
-            state = state,
-            modifier = Modifier.fillMaxSize(),
-            swipeSourceDetector = viewModel.swipeSourceDetector,
-            swipeDetector =
-                remember { PassthroughSwipeDetector(velocityThreshold = swipeVelocityThreshold) },
-            implicitTestTags = isRunningMotionTest,
-            debugName = "SceneContainer",
-        ) {
-            sceneByKey.forEach { (sceneKey, scene) ->
-                scene(
-                    key = sceneKey,
-                    userActions = userActionsByContentKey.getOrDefault(sceneKey, emptyMap()),
-                    effectFactory = offsetOverscrollEffectFactory,
-                    alwaysCompose = scene.alwaysCompose,
-                ) {
-                    // Activate the scene.
-                    LaunchedEffect(scene) { scene.activate() }
+        HighFrameRateWhileTransitioning(state) {
+            SceneTransitionLayout(
+                state = state,
+                modifier = Modifier.fillMaxSize(),
+                swipeSourceDetector = viewModel.swipeSourceDetector,
+                swipeDetector =
+                    remember {
+                        PassthroughSwipeDetector(velocityThreshold = swipeVelocityThreshold)
+                    },
+                implicitTestTags = isRunningMotionTest,
+                debugName = "SceneContainer",
+            ) {
+                sceneByKey.forEach { (sceneKey, scene) ->
+                    scene(
+                        key = sceneKey,
+                        userActions = userActionsByContentKey.getOrDefault(sceneKey, emptyMap()),
+                        effectFactory = offsetOverscrollEffectFactory,
+                        alwaysCompose = scene.alwaysCompose,
+                    ) {
+                        // Activate the scene.
+                        LaunchedEffect(scene) { scene.activate() }
 
-                    // Render the scene.
-                    with(scene) {
-                        this@scene.Content(
-                            modifier = Modifier.element(sceneKey.rootElementKey).fillMaxSize()
-                        )
+                        // Render the scene.
+                        with(scene) {
+                            this@scene.Content(
+                                modifier = Modifier.element(sceneKey.rootElementKey).fillMaxSize()
+                            )
+                        }
                     }
                 }
-            }
-            overlayByKey.forEach { (overlayKey, overlay) ->
-                overlay(
-                    key = overlayKey,
-                    userActions = userActionsByContentKey.getOrDefault(overlayKey, emptyMap()),
-                    effectFactory =
-                        quickSettingsShadeOverscroll?.takeIf {
-                            overlayKey == Overlays.QuickSettingsShade
-                        } ?: overlayEffectFactory,
-                    alwaysCompose = overlay.alwaysCompose,
-                    // The bouncer overlay is special and not rendered here, so avoid adding
-                    // the fullscreen clickable which modals typically introduce. This avoids
-                    // issues with accessibility touch exploration while on the bouncer.
-                    isModal = overlayKey != Overlays.Bouncer,
-                ) {
-                    // Activate the overlay.
-                    LaunchedEffect(overlay) { overlay.activate() }
+                overlayByKey.forEach { (overlayKey, overlay) ->
+                    overlay(
+                        key = overlayKey,
+                        userActions = userActionsByContentKey.getOrDefault(overlayKey, emptyMap()),
+                        effectFactory =
+                            quickSettingsShadeOverscroll?.takeIf {
+                                overlayKey == Overlays.QuickSettingsShade
+                            } ?: overlayEffectFactory,
+                        alwaysCompose = overlay.alwaysCompose,
+                        // The bouncer overlay is special and not rendered here, so avoid adding
+                        // the fullscreen clickable which modals typically introduce. This avoids
+                        // issues with accessibility touch exploration while on the bouncer.
+                        isModal = overlayKey != Overlays.Bouncer,
+                    ) {
+                        // Activate the overlay.
+                        LaunchedEffect(overlay) { overlay.activate() }
 
-                    if (overlayKey == Overlays.Bouncer) {
-                        // The bouncer overlay is special because it needs to be rendered above the
-                        // notifications which, themselves, are rendered above the scene container.
-                        //
-                        // There is a separate, external, bouncer scene container whose only job is
-                        // to render the bouncer overlay. We still want to have the overlay here in
-                        // this scene container because we still need it to manage transitions in
-                        // and out of that overlay - but we delegate the actual showing and
-                        // transition animations out to that dedicated bouncer scene container.
-                        return@overlay
+                        if (overlayKey == Overlays.Bouncer) {
+                            // The bouncer overlay is special because it needs to be rendered
+                            // above the notifications which, themselves, are rendered above the
+                            // scene container.
+                            //
+                            // There is a separate, external, bouncer scene container whose only
+                            // job is to render the bouncer overlay. We still want to have the
+                            // overlay here in this scene container because we still need it to
+                            // manage transitions in and out of that overlay - but we delegate the
+                            // actual showing and transition animations out to that dedicated
+                            // bouncer scene container.
+                            return@overlay
+                        }
+
+                        // Render the overlay.
+                        with(overlay) { this@overlay.Content(Modifier) }
                     }
-
-                    // Render the overlay.
-                    with(overlay) { this@overlay.Content(Modifier) }
                 }
             }
         }
@@ -387,6 +396,27 @@ private fun InternalSceneContainer(
                         .burnInAware(movement = viewModel.burnInMovementState, isClock = false),
             )
         }
+    }
+}
+
+/**
+ * Asks for the display's high frame rate category while a scene or overlay transition runs.
+ *
+ * The whole container is a single AndroidComposeView, so redrawing it only ever votes the
+ * size-based NORMAL category, and a pull from the status bar is forwarded into this window rather
+ * than delivered to it, so it never touch-boosts either. Shade and Quick Settings expansions would
+ * otherwise run at the NORMAL rate (60 Hz) on displays whose HIGH category is faster. The vote is
+ * only cast by frames drawn while transitioning, so an idle shade still lets the display relax.
+ */
+@Composable
+private fun HighFrameRateWhileTransitioning(
+    state: SceneTransitionLayoutState,
+    content: @Composable () -> Unit,
+) {
+    val frameRate =
+        if (state.currentTransition != null) FrameRateCategory.High else FrameRateCategory.Default
+    Box(Modifier.fillMaxSize().preferredFrameRate(frameRate), propagateMinConstraints = true) {
+        content()
     }
 }
 
