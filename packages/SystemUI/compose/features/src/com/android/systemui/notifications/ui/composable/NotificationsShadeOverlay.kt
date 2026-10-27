@@ -52,6 +52,7 @@ import com.android.compose.animation.scene.ContentScope
 import com.android.compose.animation.scene.ElementKey
 import com.android.compose.animation.scene.UserAction
 import com.android.compose.animation.scene.UserActionResult
+import com.android.compose.animation.scene.content.state.TransitionState
 import com.android.compose.lifecycle.DisposableEffectWithLifecycle
 import com.android.compose.lifecycle.LaunchedEffectWithLifecycle
 import com.android.internal.jank.InteractionJankMonitor
@@ -66,6 +67,8 @@ import com.android.systemui.notifications.intelligence.rules.ui.viewmodel.Notifi
 import com.android.systemui.notifications.ui.viewmodel.NotificationsShadeOverlayActionsViewModel
 import com.android.systemui.notifications.ui.viewmodel.NotificationsShadeOverlayContentViewModel
 import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.CosShadeSwitch
+import com.android.systemui.penguin.panelSwitchAlpha
 import com.android.systemui.penguin.rememberCosFeature
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementKeys
 import com.android.systemui.res.R
@@ -75,6 +78,7 @@ import com.android.systemui.scene.ui.composable.LocalSceneContainerPreloadedReso
 import com.android.systemui.scene.ui.composable.Overlay
 import com.android.systemui.shade.ui.composable.ChipHighlightModel
 import com.android.systemui.shade.ui.composable.LocalCosSwitchMotion
+import com.android.systemui.shade.ui.composable.isTabletPanelSwitch
 import com.android.systemui.shade.ui.composable.OverlayShade
 import com.android.systemui.shade.ui.composable.OverlayShadeHeader
 import com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout
@@ -217,6 +221,28 @@ constructor(
                         onDispose { stackScrollView.moveWithCosSwitch(0f) }
                     }
                 }
+                if (isTabletPanelSwitch()) {
+                    LaunchedEffect(layoutState, stackScrollView) {
+                        snapshotFlow {
+                                val transition =
+                                    layoutState.currentTransition
+                                        as? TransitionState.Transition.ReplaceOverlay
+                                if (transition?.key != CosShadeSwitch) {
+                                    1f
+                                } else {
+                                    panelSwitchAlpha(
+                                        leaving =
+                                            transition.fromContent == Overlays.NotificationsShade,
+                                        progress = transition.progress,
+                                    )
+                                }
+                            }
+                            .collect { stackScrollView.fadeWithCosSwitch(it) }
+                    }
+                    DisposableEffect(stackScrollView) {
+                        onDispose { stackScrollView.fadeWithCosSwitch(1f) }
+                    }
+                }
                 ScrollingNotificationPanel(
                     tag = "NotifShadeOverlay",
                     shadeSession = shadeSession,
@@ -279,6 +305,10 @@ private fun secureIntSetting(key: String, default: Int): Int {
         onDispose { resolver.unregisterContentObserver(observer) }
     }
     return value
+}
+
+private fun NotificationScrollView.fadeWithCosSwitch(alpha: Float) {
+    (asView() as? NotificationStackScrollLayout)?.setCosSwitchAlpha(alpha)
 }
 
 private fun NotificationScrollView.moveWithCosSwitch(x: Float) {

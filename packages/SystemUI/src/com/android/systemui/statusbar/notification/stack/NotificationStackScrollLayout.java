@@ -6982,6 +6982,11 @@ public class NotificationStackScrollLayout
 
     private float mCosSwitchShift;
 
+    /** Fades the stack with its panel while side-by-side COS panels switch. */
+    public void setCosSwitchAlpha(float alpha) {
+        mController.setMaxAlphaForCosSwitch(alpha);
+    }
+
     public void setCosSwitchTranslation(float translationX) {
         mCosSwitchShift = translationX;
         setTranslationX(translationX);

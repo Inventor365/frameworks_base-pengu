@@ -332,6 +332,7 @@ public class NotificationStackScrollLayoutController implements Dumpable {
      * hub is not visible or transitioning.
      */
     private float mMaxAlphaForGlanceableHub = 1.0f;
+    private float mMaxAlphaForCosSwitch = 1.0f;
 
     /**
      * A list of visible status bar chips with their key and their absolute on-screen bounds.
@@ -1494,6 +1495,12 @@ public class NotificationStackScrollLayoutController implements Dumpable {
         updateAlpha();
     }
 
+    /** Sets the max alpha value for notifications while side-by-side COS panels switch. */
+    public void setMaxAlphaForCosSwitch(float alpha) {
+        mMaxAlphaForCosSwitch = alpha;
+        updateAlpha();
+    }
+
     /**
      * Max alpha from the containing view. Used by brightness slider as an example.
      */
@@ -1539,6 +1546,7 @@ public class NotificationStackScrollLayoutController implements Dumpable {
             newAlpha = Math.min(newAlpha, mMaxAlphaForUnhide);
             newAlpha = Math.min(newAlpha, mMaxAlphaForRebind);
             newAlpha = Math.min(newAlpha, mMaxAlphaForGlanceableHub);
+            newAlpha = Math.min(newAlpha, mMaxAlphaForCosSwitch);
             newAlpha = Math.min(newAlpha, mMaxAlphaForKeyguard);
             mView.setAlpha(newAlpha);
         }

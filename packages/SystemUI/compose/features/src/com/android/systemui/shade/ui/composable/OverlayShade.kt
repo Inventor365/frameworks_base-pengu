@@ -116,11 +116,12 @@ fun ContentScope.OverlayShade(
         }
 
     val switchMotion = remember { CosSwitchMotion() }
+    val tabletSwitch = isTabletPanelSwitch()
     LaunchedEffect(switchMotion) { switchMotion.drive() }
     val layoutDirection = LocalLayoutDirection.current
     var width by remember { mutableIntStateOf(0) }
     var windowTop by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(layoutState, contentKey, layoutDirection) {
+    LaunchedEffect(layoutState, contentKey, layoutDirection, tabletSwitch) {
         val side =
             (if (contentKey == Overlays.NotificationsShade) -1f else 1f) *
                 (if (layoutDirection == LayoutDirection.Rtl) -1f else 1f)
@@ -129,7 +130,13 @@ fun ContentScope.OverlayShade(
                     layoutState.currentTransition as? TransitionState.Transition.ReplaceOverlay
                 // A shade composed for the switch has no width on its first frame; starting the
                 // rows from that zero offset would leave them a panel's width away from it.
-                if (transition == null || transition.key != CosShadeSwitch || width == 0) {
+                // Tablet panels fade into each other instead of sliding, so nothing trails.
+                if (
+                    transition == null ||
+                        transition.key != CosShadeSwitch ||
+                        width == 0 ||
+                        tabletSwitch
+                ) {
                     null
                 } else {
                     val shown =
@@ -269,6 +276,12 @@ private fun ContentScope.Panel(
         }
     }
 }
+
+/** Tablets switch between their side-by-side COS panels by fading instead of sliding. */
+@Composable
+fun isTabletPanelSwitch(): Boolean =
+    !LocalSceneContainerPreloadedResources.current.isFullWidthShade &&
+        LocalConfiguration.current.smallestScreenWidthDp >= 600
 
 @Composable
 fun isLandscapeSplitShade(): Boolean {
