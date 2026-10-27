@@ -22,6 +22,7 @@ import static android.hardware.display.DisplayManager.APP_HDR_PLAYBACK_MODE_SDR_
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.app.ActivityManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -29,6 +30,7 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.hardware.display.DisplayManager;
 import android.net.Uri;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.Process;
 import android.os.UserHandle;
@@ -53,6 +55,10 @@ import java.util.Map;
  * <p>Policies are persisted per user in {@link Settings.Secure#APP_HDR_PLAYBACK_POLICIES} by
  * package name and cached in memory by both package name and application ID for lock-light lookups
  * on display capability, HDR headroom, and surface configuration paths.
+ *
+ * <p>An app decides between its HDR and SDR pipelines when it starts playback, from the display
+ * capabilities it saw, and the window headroom clamp cannot reach PQ/HLG video layers. So an
+ * explicit mode change force-stops the package, and its next launch sees the new capabilities.
  */
 final class AppHdrPolicyController {
     private static final String TAG = "AppHdrPolicyController";
@@ -69,9 +75,14 @@ final class AppHdrPolicyController {
         int getPackageUid(@NonNull String packageName, int userId);
     }
 
+    interface PackageStopper {
+        void forceStopPackage(@NonNull String packageName, int userId);
+    }
+
     private final Context mContext;
     private final SettingsAdapter mSettingsAdapter;
     private final UidResolver mUidResolver;
+    private final PackageStopper mPackageStopper;
     private final Runnable mOnPolicyChanged;
     private final Object mLock = new Object();
 
@@ -143,6 +154,18 @@ final class AppHdrPolicyController {
                         }
                     }
                 },
+                (packageName, userId) -> {
+                    final ActivityManager am = context.getSystemService(ActivityManager.class);
+                    if (am == null) {
+                        return;
+                    }
+                    final long token = Binder.clearCallingIdentity();
+                    try {
+                        am.forceStopPackageAsUser(packageName, userId);
+                    } finally {
+                        Binder.restoreCallingIdentity(token);
+                    }
+                },
                 onPolicyChanged);
     }
 
@@ -151,10 +174,12 @@ final class AppHdrPolicyController {
             @NonNull Context context,
             @NonNull SettingsAdapter settingsAdapter,
             @NonNull UidResolver uidResolver,
+            @NonNull PackageStopper packageStopper,
             @NonNull Runnable onPolicyChanged) {
         mContext = context;
         mSettingsAdapter = settingsAdapter;
         mUidResolver = uidResolver;
+        mPackageStopper = packageStopper;
         mOnPolicyChanged = onPolicyChanged;
     }
 
@@ -228,6 +253,7 @@ final class AppHdrPolicyController {
         }
         final String normalizedPkg = packageName.trim();
         final boolean changed;
+        final int userId;
         synchronized (mLock) {
             final int currentMode =
                     mPackageModes.getOrDefault(normalizedPkg, APP_HDR_PLAYBACK_MODE_DEFAULT);
@@ -243,10 +269,12 @@ final class AppHdrPolicyController {
             rebuildAppIdMapLocked();
             final String serialized = serializePolicies(mPackageModes);
             mSettingsAdapter.putPolicies(serialized, mCurrentUserId);
+            userId = mCurrentUserId;
             changed = true;
         }
         if (changed) {
             mOnPolicyChanged.run();
+            restartPackage(normalizedPkg, userId);
         }
     }
 
@@ -262,8 +290,12 @@ final class AppHdrPolicyController {
 
     void resetAllModes() {
         final boolean changed;
+        final String[] resetPackages;
+        final int userId;
         synchronized (mLock) {
             changed = !mPackageModes.isEmpty() || mAppIdModes.size() > 0;
+            resetPackages = mPackageModes.keySet().toArray(new String[0]);
+            userId = mCurrentUserId;
             mPackageModes.clear();
             mAppIdModes.clear();
             mHasOverrides = false;
@@ -271,6 +303,28 @@ final class AppHdrPolicyController {
         }
         if (changed) {
             mOnPolicyChanged.run();
+        }
+        for (String pkg : resetPackages) {
+            restartPackage(pkg, userId);
+        }
+    }
+
+    /**
+     * Force-stops an application package so that its next launch starts from the new policy.
+     * System UIDs are never restricted by {@link #getModeForUid}, so they are left running.
+     */
+    private void restartPackage(@NonNull String packageName, int userId) {
+        final int uid = mUidResolver.getPackageUid(packageName, userId);
+        if (uid < Process.FIRST_APPLICATION_UID) {
+            return;
+        }
+        Slog.i(TAG, "Force-stopping " + packageName + " (u" + userId
+                + ") so it relaunches with its new HDR playback mode");
+        try {
+            mPackageStopper.forceStopPackage(packageName, userId);
+        } catch (RuntimeException e) {
+            Slog.w(TAG, "Failed to force-stop " + packageName
+                    + "; the HDR mode applies from its next launch", e);
         }
     }
 
