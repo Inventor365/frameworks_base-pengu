@@ -21,7 +21,9 @@ import android.app.WallpaperColors
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.theming.ThemeStyle
+import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.InsetDrawable
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.PlaybackState
@@ -461,7 +463,17 @@ constructor(
                         userId,
                     )
                 val icon = applicationContext.packageManager.getApplicationIcon(appInfo)
-                Icon.Loaded(icon, null)
+                // Media cards tint this icon, which turns a full-colour launcher icon into a solid
+                // shape. Use its themed (monochrome) layer, cropped to the icon's visible part.
+                val monochrome = (icon as? AdaptiveIconDrawable)?.monochrome
+                if (monochrome != null) {
+                    Icon.Loaded(
+                        InsetDrawable(monochrome, -AdaptiveIconDrawable.getExtraInsetFraction()),
+                        null,
+                    )
+                } else {
+                    Icon.Resource(R.drawable.ic_music_note, null)
+                }
             } catch (exception: PackageManager.NameNotFoundException) {
                 Log.w(TAG, "Cannot find icon for package $packageName", exception)
                 Icon.Resource(R.drawable.ic_music_note, null)
