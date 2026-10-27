@@ -533,7 +533,12 @@ constructor(
                 Scenes.Communal -> Classifier.GLANCEABLE_HUB_SWIPE
                 Scenes.Gone -> Classifier.UNLOCK
                 Scenes.Shade -> Classifier.SHADE_DRAG
-                Overlays.NotificationsShade -> Classifier.NOTIFICATION_DRAG_DOWN
+                // Both dual shades open with the same pull from the top and differ only in which
+                // half it starts on, so judge them alike. NOTIFICATION_DRAG_DOWN is also checked
+                // against the proximity sensor, which QUICK_SETTINGS is not, so a pull on the
+                // notifications half was rejected on the lockscreen where one on the other half
+                // went through.
+                Overlays.NotificationsShade,
                 Scenes.QuickSettings,
                 Overlays.QuickSettingsShade,
                 Overlays.QuickActions -> Classifier.QUICK_SETTINGS
