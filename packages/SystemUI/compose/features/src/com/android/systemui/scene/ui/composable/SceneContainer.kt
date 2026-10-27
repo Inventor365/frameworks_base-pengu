@@ -314,7 +314,7 @@ private fun InternalSceneContainer(
             modifier = Modifier.fillMaxSize(),
         )
 
-        CosShadeGlass(state)
+        CosShadeGlass(state, viewModel.isLaunchingActivity)
 
         SceneTransitionLayout(
             state = state,
