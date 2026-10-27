@@ -356,7 +356,11 @@ public class NotificationBackgroundView extends View implements Dumpable,
         if (!lockscreenBlurForNotifications()) {
             return;
         }
-        Assert.isMainThread();
+        // AsyncRowInflater inflates rows on its own thread, and
+        // onFinishInflate() lands here before the row is attached.
+        if (isAttachedToWindow()) {
+            Assert.isMainThread();
+        }
 
         if (enabled && mBackgroundBlurDrawable == null) {
             if (mOnAttachStateChangeListener != null) {
