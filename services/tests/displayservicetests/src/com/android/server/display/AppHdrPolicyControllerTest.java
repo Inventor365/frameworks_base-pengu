@@ -36,6 +36,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -57,6 +58,7 @@ public class AppHdrPolicyControllerTest {
 
     private final ArrayMap<Integer, String> mUserPolicies = new ArrayMap<>();
     private final ArrayMap<String, Integer> mPackageUids = new ArrayMap<>();
+    private final List<String> mStoppedPackages = new ArrayList<>();
     private AtomicInteger mCallbackCount;
     private AppHdrPolicyController mController;
 
@@ -66,6 +68,7 @@ public class AppHdrPolicyControllerTest {
         mPackageUids.clear();
         mPackageUids.put(PKG_YOUTUBE, UID_YOUTUBE);
         mPackageUids.put(PKG_NETFLIX, UID_NETFLIX);
+        mStoppedPackages.clear();
 
         mCallbackCount = new AtomicInteger(0);
         mController = new AppHdrPolicyController(
@@ -82,6 +85,7 @@ public class AppHdrPolicyControllerTest {
                     }
                 },
                 (packageName, userId) -> mPackageUids.getOrDefault(packageName, Process.INVALID_UID),
+                (packageName, userId) -> mStoppedPackages.add(packageName + "/u" + userId),
                 () -> mCallbackCount.incrementAndGet());
     }
 
@@ -198,6 +202,50 @@ public class AppHdrPolicyControllerTest {
         assertEquals(1, malformedParsed.size());
         assertEquals(Integer.valueOf(APP_HDR_PLAYBACK_MODE_SDR_ONLY),
                 malformedParsed.get("com.valid.app"));
+    }
+
+    @Test
+    public void testModeChangeRestartsOnlyThatPackage() {
+        mController.setModeForPackage(PKG_YOUTUBE, APP_HDR_PLAYBACK_MODE_SDR_ONLY);
+        assertEquals(Arrays.asList(PKG_YOUTUBE + "/u0"), mStoppedPackages);
+
+        // Re-applying the same mode is a no-op and must not kill the app again.
+        mController.setModeForPackage(PKG_YOUTUBE, APP_HDR_PLAYBACK_MODE_SDR_ONLY);
+        assertEquals(1, mStoppedPackages.size());
+
+        mController.setModeForPackage(PKG_YOUTUBE, APP_HDR_PLAYBACK_MODE_DEFAULT);
+        assertEquals(Arrays.asList(PKG_YOUTUBE + "/u0", PKG_YOUTUBE + "/u0"), mStoppedPackages);
+    }
+
+    @Test
+    public void testResetAllRestartsEveryOverriddenPackage() {
+        mController.setModeForPackage(PKG_YOUTUBE, APP_HDR_PLAYBACK_MODE_SDR_ONLY);
+        mController.setModeForPackage(PKG_NETFLIX, APP_HDR_PLAYBACK_MODE_HDR_ALLOWED);
+        mStoppedPackages.clear();
+
+        mController.resetAllModes();
+
+        assertEquals(2, mStoppedPackages.size());
+        assertTrue(mStoppedPackages.contains(PKG_YOUTUBE + "/u0"));
+        assertTrue(mStoppedPackages.contains(PKG_NETFLIX + "/u0"));
+    }
+
+    @Test
+    public void testSystemAndUninstalledPackagesAreNotStopped() {
+        mPackageUids.put("com.android.settings", Process.SYSTEM_UID);
+        mController.setModeForPackage("com.android.settings", APP_HDR_PLAYBACK_MODE_SDR_ONLY);
+        mController.setModeForPackage(PKG_UNINSTALLED, APP_HDR_PLAYBACK_MODE_SDR_ONLY);
+
+        assertTrue(mStoppedPackages.isEmpty());
+    }
+
+    @Test
+    public void testSettingSyncDoesNotRestartPackages() {
+        mUserPolicies.put(UserHandle.USER_SYSTEM, PKG_YOUTUBE + "=2");
+        mController.onSettingChanged();
+
+        assertEquals(APP_HDR_PLAYBACK_MODE_SDR_ONLY, mController.getModeForUid(UID_YOUTUBE));
+        assertTrue(mStoppedPackages.isEmpty());
     }
 
     @Test(expected = IllegalArgumentException.class)
