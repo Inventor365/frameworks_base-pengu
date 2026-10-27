@@ -41,6 +41,7 @@ import com.android.systemui.scene.ui.composable.transitions.goneToAodEnterFromTo
 import com.android.systemui.scene.ui.composable.transitions.goneToQuickSettingsTransition
 import com.android.systemui.scene.ui.composable.transitions.goneToSingleShadeTransition
 import com.android.systemui.scene.ui.composable.transitions.goneToSplitShadeTransition
+import com.android.systemui.scene.ui.composable.transitions.lockscreenFadeOutTransition
 import com.android.systemui.scene.ui.composable.transitions.lockscreenToBouncerTransition
 import com.android.systemui.scene.ui.composable.transitions.lockscreenToCommunalSystemTransition
 import com.android.systemui.scene.ui.composable.transitions.lockscreenToCommunalUserTransition
@@ -651,10 +652,15 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                lockscreenToQuickSettingsOverlayTransition(
-                    shadeExpansionMotion = shadeExpansionMotion,
-                    revealHaptics = revealHaptics,
-                )
+                // Reveal Quick Settings over the lock screen the same way as over apps.
+                shadeMotion?.run {
+                    lockscreenFadeOutTransition()
+                    toQuickSettingsShade(1.0)
+                }
+                    ?: lockscreenToQuickSettingsOverlayTransition(
+                        shadeExpansionMotion = shadeExpansionMotion,
+                        revealHaptics = revealHaptics,
+                    )
             }
             from(
                 Scenes.Lockscreen,
@@ -663,11 +669,16 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                lockscreenToQuickSettingsOverlayTransition(
-                    durationScale = 0.9,
-                    shadeExpansionMotion = shadeExpansionMotion,
-                    revealHaptics = revealHaptics,
-                )
+                // Reveal Quick Settings over the lock screen the same way as over apps.
+                shadeMotion?.run {
+                    lockscreenFadeOutTransition(durationScale = 0.9)
+                    toQuickSettingsShade(0.9)
+                }
+                    ?: lockscreenToQuickSettingsOverlayTransition(
+                        durationScale = 0.9,
+                        shadeExpansionMotion = shadeExpansionMotion,
+                        revealHaptics = revealHaptics,
+                    )
             }
             from(
                 Overlays.NotificationsShade,
@@ -705,12 +716,17 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_COLLAPSE,
             ) {
-                reversed {
-                    lockscreenToQuickSettingsOverlayTransition(
-                        shadeExpansionMotion = shadeExpansionMotion,
-                        revealHaptics = revealHaptics,
-                    )
+                // Dismiss Quick Settings over the lock screen the same way as over apps.
+                shadeMotion?.run {
+                    reversed { lockscreenFadeOutTransition() }
+                    fromQuickSettingsShade()
                 }
+                    ?: reversed {
+                        lockscreenToQuickSettingsOverlayTransition(
+                            shadeExpansionMotion = shadeExpansionMotion,
+                            revealHaptics = revealHaptics,
+                        )
+                    }
             }
             from(
                 Overlays.QuickSettingsShade,
@@ -719,13 +735,18 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_COLLAPSE,
             ) {
-                reversed {
-                    lockscreenToQuickSettingsOverlayTransition(
-                        durationScale = 0.9,
-                        shadeExpansionMotion = shadeExpansionMotion,
-                        revealHaptics = revealHaptics,
-                    )
+                // Dismiss Quick Settings over the lock screen the same way as over apps.
+                shadeMotion?.run {
+                    reversed { lockscreenFadeOutTransition(durationScale = 0.9) }
+                    fromQuickSettingsShade()
                 }
+                    ?: reversed {
+                        lockscreenToQuickSettingsOverlayTransition(
+                            durationScale = 0.9,
+                            shadeExpansionMotion = shadeExpansionMotion,
+                            revealHaptics = revealHaptics,
+                        )
+                    }
             }
         }
     }
