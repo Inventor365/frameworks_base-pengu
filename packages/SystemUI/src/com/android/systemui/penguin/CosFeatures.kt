@@ -17,8 +17,8 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-enum class CosFeature(val key: String) {
-    AppMotion("penguin_cos_app_motion"),
+enum class CosFeature(val key: String, val defaultOn: Boolean = false) {
+    AppMotion("penguin_cos_app_motion", defaultOn = true),
     Recents("penguin_cos_recents"),
     Shade("penguin_cos_shade"),
     QuickSettings("penguin_cos_qs"),
@@ -41,7 +41,7 @@ object CosFeatures {
     fun isOn(context: Context, feature: CosFeature): Boolean {
         if (feature == CosFeature.Island) return true
         val resolver = context.contentResolver
-        val all = Settings.Secure.getInt(resolver, CosFeature.ALL, 0)
+        val all = Settings.Secure.getInt(resolver, CosFeature.ALL, if (feature.defaultOn) 1 else 0)
         return Settings.Secure.getInt(resolver, feature.key, all) == 1
     }
 
