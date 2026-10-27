@@ -51,7 +51,6 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.approachLayout
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
@@ -62,7 +61,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.android.compose.animation.scene.ContentScope
@@ -229,36 +227,10 @@ fun ContentScope.OverlayShade(
                         },
                 header = header.takeIf { isFullWidth },
                 content = {
-                    Box(
-                        Modifier
-                            // Prevent this element from resizing during the container reveal
-                            // animation. The parent clips the content, so remeasuring the
-                            // children (especially text) on every frame is unnecessary and
-                            // can cause performance issues (jank).
-                            // Not for the COS panels: their lookahead width places the content
-                            // about half a panel outside the panel while they open, close or
-                            // switch, so it looks stuck to the screen's centre or edge.
-                            .thenIf(!cosPanel) { Modifier.approachLayout(
-                                isMeasurementApproachInProgress = { layoutState.isTransitioning() }
-                            ) { measurable, constraints ->
-                                if (layoutState.currentTransition == null) {
-                                    return@approachLayout measurable.measure(constraints).run {
-                                        layout(width, height) { place(0, 0) }
-                                    }
-                                }
-
-                                // Make sure that this layout node has the same size than when we
-                                // are at rest.
-                                val widthAtRest = lookaheadSize.width
-                                val fixedWidthConstraints =
-                                    constraints.copy(minWidth = widthAtRest, maxWidth = widthAtRest)
-                                measurable.measure(fixedWidthConstraints).run {
-                                    layout(width, height) { place(IntOffset.Zero) }
-                                }
-                            } }
-                    ) {
-                        content()
-                    }
+                    // No approach layout holding the content at its at-rest width: the lookahead
+                    // width places the content about half a panel outside the panel while it
+                    // opens, closes or switches, so it looks stuck to the screen's centre or edge.
+                    Box { content() }
                 },
             )
         }
