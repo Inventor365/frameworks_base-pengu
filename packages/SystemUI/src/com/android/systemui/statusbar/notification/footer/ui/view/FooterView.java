@@ -43,6 +43,8 @@ import androidx.annotation.NonNull;
 
 import com.android.internal.graphics.ColorUtils;
 import com.android.systemui.common.shared.colors.SurfaceEffectColors;
+import com.android.systemui.penguin.CosFeature;
+import com.android.systemui.penguin.CosFeatures;
 import com.android.systemui.qs.shared.style.LiquidGlass;
 import com.android.systemui.res.R;
 import com.android.systemui.scene.shared.flag.SceneContainerFlag;
@@ -345,9 +347,12 @@ public class FooterView extends StackScrollerDecorView {
             scHigh = 0;
         }
         if (LiquidGlass.isEnabled(mContext)) {
-            final ColorFilter glass = new PorterDuffColorFilter(
-                    LiquidGlass.viewSurface() | 0xFF000000, SRC_ATOP);
-            final int glassAlpha = Color.alpha(LiquidGlass.viewSurface());
+            // In the COS shade's light theme the cards sit on a light frost under dark text; the
+            // footer buttons use the same frost, as the dark glass hides their dark labels.
+            final int surface = isCosLightShade() ? COS_LIGHT_FOOTER_FROST
+                    : LiquidGlass.viewSurface();
+            final ColorFilter glass = new PorterDuffColorFilter(surface | 0xFF000000, SRC_ATOP);
+            final int glassAlpha = Color.alpha(surface);
             for (Drawable bg : new Drawable[] {clearAllBg, settingsBg, historyBg}) {
                 bg.setColorFilter(glass);
                 bg.setAlpha(glassAlpha);
@@ -374,6 +379,15 @@ public class FooterView extends StackScrollerDecorView {
                             + " background=" + DrawableDumpKt.dumpToString(settingsBg));
         }
     }
+
+    private boolean isCosLightShade() {
+        return CosFeatures.isOn(mContext, CosFeature.Shade)
+                && (getResources().getConfiguration().uiMode
+                        & Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    /** Matches the light COS notification card frost in NotificationBackgroundView. */
+    private static final int COS_LIGHT_FOOTER_FROST = 0xA6F2F2F2;
 
     public void setIsBlurSupported(boolean isBlurSupported) {
         if (notificationShadeBlur()) {
