@@ -129,7 +129,9 @@ fun ContentScope.OverlayShade(
         snapshotFlow {
                 val transition =
                     layoutState.currentTransition as? TransitionState.Transition.ReplaceOverlay
-                if (transition == null || transition.key != CosShadeSwitch) {
+                // A shade composed for the switch has no width on its first frame; starting the
+                // rows from that zero offset would leave them a panel's width away from it.
+                if (transition == null || transition.key != CosShadeSwitch || width == 0) {
                     null
                 } else {
                     val shown =
@@ -277,16 +279,18 @@ private fun ContentScope.Panel(
     header: (@Composable () -> Unit)?,
     content: @Composable () -> Unit,
 ) {
-    Box(
-        modifier =
-            modifier
-                .disableSwipesWhenScrolling()
-                .verticalExpandContainerBackground(
-                    if (cosPanel) Color.Transparent
-                    else Colors.panelBackground(enableTransparency),
-                    spec,
-                )
-    ) {
+    // While the COS panels switch, each row trails the panel on its own spring, so part of a
+    // row sits outside the panel. The COS panel has no background of its own, so drop the
+    // container clip for the switch instead of cutting those rows at the panel edge.
+    val cosSwitching = cosPanel && LocalCosSwitchMotion.current?.active == true
+    val background =
+        if (cosSwitching) Modifier
+        else
+            Modifier.verticalExpandContainerBackground(
+                if (cosPanel) Color.Transparent else Colors.panelBackground(enableTransparency),
+                spec,
+            )
+    Box(modifier = modifier.disableSwipesWhenScrolling().then(background)) {
         Column {
             header?.invoke()
             content()
