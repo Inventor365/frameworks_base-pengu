@@ -77,7 +77,6 @@ import com.android.systemui.plugins.statusbar.NotificationSwipeActionHelper;
 import com.android.systemui.plugins.statusbar.StatusBarStateController;
 import com.android.systemui.power.domain.interactor.PowerInteractor;
 import com.android.systemui.res.R;
-import com.android.systemui.penguin.ShadeMotionKt;
 import com.android.systemui.scene.domain.interactor.SceneInteractor;
 import com.android.systemui.scene.shared.flag.SceneContainerFlag;
 import com.android.systemui.scene.shared.model.Overlays;
@@ -641,21 +640,6 @@ public class NotificationStackScrollLayoutController implements Dumpable {
                             && CosFeatures.isOn(mView.getContext(), CosFeature.Shade)
                             && mSceneInteractor.get().getCurrentOverlays().getValue()
                                     .contains(Overlays.NotificationsShade);
-                }
-
-                @Override
-                public boolean canSwipeInDirection(View v, float delta) {
-                    if (!cosSwitchAvailable()) {
-                        return true;
-                    }
-                    final boolean towardsQuickSettings = mView.isLayoutRtl() ? delta > 0 : delta < 0;
-                    if (towardsQuickSettings && !mSwipeStartedBesideCards) {
-                        mSwipeStartedBesideCards = true;
-                        mSceneInteractor.get().replaceOverlay(Overlays.NotificationsShade,
-                                Overlays.QuickSettingsShade, "COS card swipe",
-                                ShadeMotionKt.getCosShadeSwitch());
-                    }
-                    return !towardsQuickSettings;
                 }
 
                 @Override
