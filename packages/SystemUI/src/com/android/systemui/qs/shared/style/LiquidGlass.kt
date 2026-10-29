@@ -43,6 +43,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asAndroidPath
@@ -75,6 +77,44 @@ object LiquidGlass {
 
     private var state: State<Boolean>? = null
     private var cosState: State<Boolean>? = null
+    private var windowBlurState: State<Boolean>? = null
+
+    /**
+     * Whether windows can blur right now. Settings' blur switches, Battery Saver and tunnel mode
+     * all turn it off, and SurfaceFlinger then draws no blur regions at all - glass drawn only as
+     * a blur region vanishes with it.
+     */
+    fun windowBlurEnabled(context: Context): State<Boolean> =
+        windowBlurState
+            ?: synchronized(this) {
+                windowBlurState
+                    ?: run {
+                        val app = context.applicationContext
+                        val wm = app.getSystemService(android.view.WindowManager::class.java)
+                        val value = mutableStateOf(wm?.isCrossWindowBlurEnabled == true)
+                        wm?.addCrossWindowBlurEnabledListener(app.mainExecutor) {
+                            value.value = it
+                        }
+                        value.also { windowBlurState = it }
+                    }
+            }
+
+    /**
+     * The flat stand-in for a glass material while windows can't blur, close to what the
+     * material's tint layers leave over the dark panel (renderengine BlurFilter cosGlassLayers).
+     * 0 for materials that are only a blur (the panels, plain blurs).
+     */
+    @JvmStatic
+    fun fallbackColor(material: Int): Int =
+        when (material) {
+            0 -> 0x2EFFFFFF // Liquid Glass tile
+            1, 3 -> 0x33FFFFFF // COS module, inactive
+            2, 4 -> 0x5CFFFFFF // COS module, active
+            7, 8 -> 0x26FFFFFF // COS card
+            9, 10 -> 0xF0333333.toInt() // heads-up
+            11 -> 0xE62B2B2B.toInt() // dock
+            else -> 0
+        }
 
     fun cosStyle(context: Context): State<Boolean> =
         cosState
@@ -663,6 +703,8 @@ fun Modifier.glassBlurRegion(shape: Shape, material: Int = 0): Modifier {
         else if (material != 0) LiquidGlassTune.f("cos_blur", 62.0f).toInt()
         else LiquidGlassTune.f("tile_blur", 90.0f).toInt()
     val allowed = LocalGlassBlurAllowed.current
+    val context = LocalContext.current
+    val blurOn = remember(context) { LiquidGlass.windowBlurEnabled(context) }
     SideEffect { if (radius <= 0) drawable[0]?.setVisible(false, false) }
     DisposableEffect(view) { onDispose { drawable[0]?.setVisible(false, false) } }
     if (radius <= 0) return this
@@ -711,6 +753,22 @@ fun Modifier.glassBlurRegion(shape: Shape, material: Int = 0): Modifier {
             val alpha = fade().coerceIn(0f, 1f)
             if (!allowed() || alpha < 0.01f || shown.width < 1f || shown.height < 1f) {
                 drawable[0]?.setVisible(false, false)
+                return@drawBehind
+            }
+            if (!blurOn.value) {
+                // No blur regions while windows can't blur: draw the material's tint flat, or
+                // every glass module and slider track was left as bare icons on the panel.
+                drawable[0]?.setVisible(false, false)
+                val fill = LiquidGlass.fallbackColor(material)
+                if (fill != 0) {
+                    val color = Color(fill)
+                    clipRect(shown.left, shown.top, shown.right, shown.bottom) {
+                        drawOutline(
+                            shape.createOutline(size, layoutDirection, this),
+                            color.copy(alpha = color.alpha * alpha),
+                        )
+                    }
+                }
                 return@drawBehind
             }
             val root = view.viewRootImpl ?: return@drawBehind
