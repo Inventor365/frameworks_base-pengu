@@ -88,6 +88,14 @@ object LockscreenElementKeys {
                 fromContentZIndex: Long,
                 toContentZIndex: Long,
             ): ContentKey {
+                // When only one side hosts the element (e.g. the notifications shade switching to
+                // the Quick Settings shade), keep it there. Picking the other side by z-index
+                // would compose it nowhere and blank it for the whole transition.
+                val inFrom = transition.fromContent in contents
+                val inTo = transition.toContent in contents
+                if (inFrom != inTo) {
+                    return if (inFrom) transition.fromContent else transition.toContent
+                }
                 return HighestZIndexContentPicker.contentDuringTransition(
                     element,
                     transition,
