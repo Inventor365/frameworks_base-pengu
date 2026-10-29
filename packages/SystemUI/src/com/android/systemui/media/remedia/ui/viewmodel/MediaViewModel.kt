@@ -441,6 +441,18 @@ constructor(
         interactor.sessions.getOrNull(cardIndex)?.onSessionVisible(areDeviceChipsVisible)
     }
 
+    /**
+     * Puts the cards in their sorted order now: playing first, then the most recently active.
+     *
+     * The list is otherwise only reordered once the shade has been closed, so the carousel never
+     * jumps under the user's finger. A UI that shows one card and can't be paged calls this when
+     * it appears; without it, a player started while the shade was closed stayed behind the one
+     * that had been playing before.
+     */
+    fun reorderForSingleCard() {
+        interactor.reorderMedia()
+    }
+
     /** Notifies that the carousel is reordered and first card is now visible on screen. */
     fun onScrollToFirstCard() {
         interactor.resetScrollToFirst()
