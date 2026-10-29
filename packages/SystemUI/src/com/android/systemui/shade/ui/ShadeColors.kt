@@ -27,6 +27,10 @@ object ShadeColors {
     private val LIQUID_GLASS_DIM get() = LiquidGlassTune.color("dim", 0x52000000)
     private val LIQUID_GLASS_SCRIM get() = LiquidGlassTune.color("scrim", 0x8C000000.toInt())
     private val LIQUID_GLASS_PANEL get() = LiquidGlassTune.color("panel", 0x14000000)
+    // Liquid Glass panels are dark glass. Without blur there is nothing behind them to show
+    // through, and the Monet fallback came out as an opaque tinted (often pink or purple) sheet
+    // under glass-styled tiles; a neutral near-black reads like the blurred panel instead.
+    private val LIQUID_GLASS_FALLBACK get() = LiquidGlassTune.color("fallback", 0xF2141416.toInt())
 
     /**
      * Calculate notification shade panel color.
@@ -51,6 +55,8 @@ object ShadeColors {
             } else {
                 shadePanelStandard(context)
             }
+        } else if (LiquidGlass.enabled(context).value) {
+            LIQUID_GLASS_FALLBACK
         } else {
             shadePanelFallback(context)
         }
@@ -60,6 +66,8 @@ object ShadeColors {
     fun notificationScrim(context: Context, blurSupported: Boolean): Int {
         return if (blurSupported) {
             Color.TRANSPARENT
+        } else if (LiquidGlass.enabled(context).value) {
+            LIQUID_GLASS_FALLBACK
         } else {
             notificationScrimFallback(context)
         }
