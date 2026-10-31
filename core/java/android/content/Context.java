@@ -6318,11 +6318,6 @@ public abstract class Context {
     public static final String APP_OPS_SERVICE = "appops";
 
     /**
-     * @hide
-     */
-    public static final String OBSCURA_SERVICE = "obscura";
-
-    /**
      * System service name for the PowerInsightService.
      * @hide
      */

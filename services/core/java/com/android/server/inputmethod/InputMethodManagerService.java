@@ -178,7 +178,6 @@ import com.android.internal.protolog.ProtoLog;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.CollectionUtils;
 import com.android.internal.util.DumpUtils;
-import com.android.server.obscura.ObscuraService;
 import com.android.internal.util.Preconditions;
 import com.android.server.AccessibilityManagerInternal;
 import com.android.server.LocalServices;
@@ -1746,17 +1745,7 @@ public final class InputMethodManagerService implements IInputMethodManagerImpl.
         synchronized (ImfLock.class) {
             selectedImeId = bindingController.getSelectedImeId();
         }
-        InputMethodInfo originalImi = InputMethodSettingsRepository.get(userId).getMethodMap().get(selectedImeId);
-        final int callingUid = Binder.getCallingUid();
-        String[] clientPackages = mContext.getPackageManager().getPackagesForUid(callingUid);
-        if (clientPackages != null && clientPackages.length > 0) {
-            if (ObscuraService.get().isPackageIsolated(clientPackages[0])) {
-                 for (InputMethodInfo imi : InputMethodSettingsRepository.get(userId).getMethodList()) {
-                     if (imi.isSystem()) return imi;
-                 }
-            }
-        }
-        return originalImi;
+        return InputMethodSettingsRepository.get(userId).getMethodMap().get(selectedImeId);
     }
 
     @BinderThread
@@ -5946,41 +5935,6 @@ public final class InputMethodManagerService implements IInputMethodManagerImpl.
         if (selectedImeComponent != null
                 && selectedImeComponent.getPackageName().equals(targetPkgName)) {
             return true;
-        }
-        if (ObscuraService.get().isPackageIsolated(targetPkgName)) {
-            if (!UserHandle.isCore(callingUid)) {
-                String[] packages = mContext.getPackageManager().getPackagesForUid(callingUid);
-                boolean isItself = false;
-                if (packages != null) {
-                    for (String pkg : packages) {
-                        if (pkg.equals(targetPkgName)) {
-                            isItself = true;
-                            break;
-                        }
-                    }
-                }
-                if (!isItself) return false;
-            }
-        }
-
-        String[] callingPackages = mContext.getPackageManager().getPackagesForUid(callingUid);
-        if (callingPackages != null && callingPackages.length > 0) {
-            for (String callingPackage : callingPackages) {
-                if (callingPackage.equals(targetPkgName)) {
-                    return true;
-                }
-                if (ObscuraService.get().shouldHidePackageFromCaller(callingPackage, targetPkgName)) {
-                    return false;
-                }
-                if (ObscuraService.get().isPackageIsolated(callingPackage)) {
-                    for (InputMethodInfo imi : settings.getMethodList()) {
-                        if (imi.getPackageName().equals(targetPkgName)) {
-                            return imi.isSystem();
-                        }
-                    }
-                    return false;
-                }
-            }
         }
         final boolean canAccess = !mPackageManagerInternal.filterAppAccess(
                 targetPkgName, callingUid, userId);

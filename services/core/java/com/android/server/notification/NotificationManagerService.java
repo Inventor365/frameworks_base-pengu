@@ -382,7 +382,6 @@ import android.window.DesktopExperienceFlags;
 
 import com.android.internal.R;
 import com.android.internal.annotations.GuardedBy;
-import com.android.internal.app.HiddenNotificationInfo;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.compat.IPlatformCompat;
 import com.android.internal.config.sysui.SystemUiSystemPropertiesFlags;
@@ -423,7 +422,6 @@ import com.android.server.job.JobSchedulerInternal;
 import com.android.server.lights.LightsManager;
 import com.android.server.notification.GroupHelper.NotificationAttributes;
 import com.android.server.notification.ManagedServices.ManagedServiceInfo;
-import com.android.server.obscura.ObscuraService;
 import com.android.server.notification.ManagedServices.UserProfiles;
 import com.android.server.notification.NotificationRecordLogger.NotificationPullStatsEvent;
 import com.android.server.notification.NotificationRecordLogger.NotificationReportedEvent;
@@ -9276,15 +9274,6 @@ public class NotificationManagerService extends SystemService {
                     SmallHash.hash(Objects.hashCode(tag) ^ id));
         }
 
-        if (ObscuraService.get().isPackageHidden(pkg)) {
-            try {
-                String key = pkg + "|" + (tag != null ? tag : "") + "|" + id;
-                ObscuraService.get().onHiddenNotificationRemoved(key);
-                return;
-            } catch (Exception e) {
-                Slog.w(TAG, "Failed to remove hidden app notification: " + pkg, e);
-            }
-        }
         cancelNotification(uid, callingPid, pkg, tag, id, 0,
                 FlagChecker.mustNotHave(mustNotHaveFlags),
                 false, userId, REASON_APP_CANCEL, null);
@@ -9373,26 +9362,6 @@ public class NotificationManagerService extends SystemService {
         final int userId = ActivityManager.handleIncomingUser(callingPid,
                 callingUid, incomingUserId, true, false, "enqueueNotification", pkg);
         final UserHandle user = UserHandle.of(userId);
-
-        final boolean isHiddenApp = ObscuraService.get().isPackageHidden(pkg);
-        if (isHiddenApp) {
-            try {
-                String key = pkg + "|" + (tag != null ? tag : "") + "|" + id;
-                Icon appIcon = notification.getSmallIcon();
-                CharSequence title = notification.extras.getCharSequence(Notification.EXTRA_TITLE);
-                CharSequence text = notification.extras.getCharSequence(Notification.EXTRA_TEXT);
-                PendingIntent contentIntent = notification.contentIntent;
-                long postTime = System.currentTimeMillis();
-
-                HiddenNotificationInfo info = new HiddenNotificationInfo(
-                        key, pkg, appIcon, title, text, contentIntent, postTime, userId);
-
-                ObscuraService.get().onHiddenNotificationPosted(info);
-                return true;
-            } catch (Exception e) {
-                Slog.w(TAG, "Failed to redirect hidden app notification: " + pkg, e);
-            }
-        }
 
         // Can throw a SecurityException if the calling uid doesn't have permission to post
         // as "pkg"

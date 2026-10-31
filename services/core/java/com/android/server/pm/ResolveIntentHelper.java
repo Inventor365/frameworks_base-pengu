@@ -543,9 +543,7 @@ final class ResolveIntentHelper {
             if (instantAppPkgName == null) {
                 PackageStateInternal resolvedSetting = computer.getPackageStateInternal(
                         info.providerInfo.packageName, 0);
-                if (!computer.shouldFilterApplication(resolvedSetting, callingUid, userId)
-                        && !computer.shouldHideFromCaller(callingUid,
-                                info.providerInfo.packageName)) {
+                if (!computer.shouldFilterApplication(resolvedSetting, callingUid, userId)) {
                     continue;
                 }
             }

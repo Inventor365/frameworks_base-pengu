@@ -166,10 +166,6 @@ import com.android.server.utils.WatchedSparseBooleanArray;
 import com.android.server.utils.WatchedSparseIntArray;
 import com.android.server.wm.ActivityTaskManagerInternal;
 
-import android.app.ActivityManagerInternal;
-import com.android.server.LocalServices;
-import com.android.server.obscura.ObscuraService;
-
 import libcore.util.EmptyArray;
 
 import java.io.BufferedOutputStream;
@@ -496,169 +492,6 @@ public class ComputerEngine implements Computer {
         // Used to reference PMS attributes that are primitives and which are not
         // updated under control of the PMS lock.
         mService = args.service;
-    }
-
-    private static final Set<String> PACKAGES_SHOULD_NOT_HIDE = Set.of(
-            "android",
-            "android.media",
-            "android.uid.system",
-            "android.uid.shell",
-            "android.uid.systemui",
-            "com.android.permissioncontroller",
-            "com.android.providers.downloads",
-            "com.android.providers.downloads.ui",
-            "com.android.providers.media",
-            "com.android.providers.media.module",
-            "com.android.providers.settings",
-            "com.android.settings",
-            "com.android.systemui",
-            "com.google.android.webview",
-            "com.google.android.providers.media.module"
-    );
-
-    private ActivityManagerInternal sActivityManagerInternal = null;
-
-    private ActivityManagerInternal getAmInternal() {
-        if (sActivityManagerInternal == null) {
-            sActivityManagerInternal = LocalServices.getService(ActivityManagerInternal.class);
-        }
-        return sActivityManagerInternal;
-    }
-
-    private boolean isSystemReady() {
-        final ActivityManagerInternal ami = getAmInternal();
-        if (ami == null || !ami.isBooted()) {
-            return false;
-        }
-        return true;
-    }
-
-    @Override
-    public boolean shouldHideFromCaller(int callingUid, String targetPackage) {
-        if (!isSystemReady()) return false;
-        if (targetPackage == null) return false;
-        if (callingUid < Process.FIRST_APPLICATION_UID) return false;
-        if (Process.isIsolated(callingUid) || Process.isSdkSandboxUid(callingUid)) return false;
-        if (PACKAGES_SHOULD_NOT_HIDE.contains(targetPackage)) return false;
-
-        int uid = callingUid;
-        if (Process.isSdkSandboxUid(uid)) {
-            uid = getBaseSdkSandboxUid();
-        }
-        if (isKnownIsolatedComputeApp(uid)) {
-            uid = getIsolatedOwner(uid);
-        }
-
-        final int appId = UserHandle.getAppId(uid);
-        final Object obj = mSettings.getSettingBase(appId);
-        if (obj instanceof PackageStateInternal) {
-            final String callingPkg = ((PackageStateInternal) obj).getPackageName();
-            if (callingPkg != null) {
-                if (PACKAGES_SHOULD_NOT_HIDE.contains(callingPkg)) return false;
-                if (callingPkg.equals(targetPackage)) return false;
-                return ObscuraService.get().shouldHidePackageFromCaller(callingPkg, targetPackage);
-            }
-        } else if (obj instanceof SharedUserSetting) {
-            final SharedUserSetting sus = (SharedUserSetting) obj;
-            final ArraySet<PackageStateInternal> packageStates =
-                    (ArraySet<PackageStateInternal>) sus.getPackageStates();
-            if (packageStates != null) {
-                final int n = packageStates.size();
-                for (int index = 0; index < n; index++) {
-                    final PackageStateInternal ps = packageStates.valueAt(index);
-                    if (ps != null && ps.getPackageName() != null) {
-                        final String callingPkg = ps.getPackageName();
-                        if (PACKAGES_SHOULD_NOT_HIDE.contains(callingPkg)) return false;
-                        if (callingPkg.equals(targetPackage)) return false;
-                        if (ObscuraService.get().shouldHidePackageFromCaller(callingPkg, targetPackage)) {
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }
-        }
-
-        // Fallback to PID if getSettingBase returned null
-        String callingPkg = null;
-        final ActivityManagerInternal ami = getAmInternal();
-        if (ami != null) callingPkg = ami.getPackageNameByPid(Binder.getCallingPid());
-        if (callingPkg == null || TextUtils.isEmpty(callingPkg)) return false;
-        if (PACKAGES_SHOULD_NOT_HIDE.contains(callingPkg)) return false;
-        if (callingPkg.equals(targetPackage)) return false;
-
-        return ObscuraService.get().shouldHidePackageFromCaller(callingPkg, targetPackage);
-    }
-
-    private static final int SPOOF_INSTALL_DISABLED = 0;
-    private static final int SPOOF_INSTALL_USER = 1;
-    private static final int SPOOF_INSTALL_SYSTEM = 2;
-    private static final String VENDING_PACKAGE = "com.android.vending";
-
-    private int shouldSpoofInstallSource(int callingUid, String targetPackage) {
-        if (!isSystemReady()) return SPOOF_INSTALL_DISABLED;
-        if (targetPackage == null) return SPOOF_INSTALL_DISABLED;
-        if (callingUid == Process.SYSTEM_UID || callingUid == Process.ROOT_UID || callingUid == Process.SHELL_UID) return SPOOF_INSTALL_DISABLED;
-        if (Process.isIsolated(callingUid) || Process.isSdkSandboxUid(callingUid)) return SPOOF_INSTALL_DISABLED;
-        final PackageStateInternal ps = mSettings.getPackage(targetPackage);
-        if (ps == null) return SPOOF_INSTALL_DISABLED;
-        if (ps.isSystem()) return SPOOF_INSTALL_SYSTEM;
-        if (ps.getAppId() == UserHandle.getAppId(callingUid) || shouldHideFromCaller(callingUid, targetPackage)) {
-            return SPOOF_INSTALL_USER;
-        }
-        return SPOOF_INSTALL_DISABLED;
-    }
-
-    private boolean isAppDetached(String packageName) {
-        if (!isSystemReady()) return false;
-        if (packageName == null || TextUtils.isEmpty(packageName)) return false;
-        final boolean isDetached = ObscuraService.get().isPackageDetached(packageName);
-        final boolean isIsolated = ObscuraService.get().isPackageIsolated(packageName);
-        if (!isDetached && !isIsolated) return false;
-
-        final int callingUid = Binder.getCallingUid();
-        String callingPackage = null;
-        int callingPid = Binder.getCallingPid();
-        final ActivityManagerInternal ami = getAmInternal();
-        if (ami != null) callingPackage = ami.getPackageNameByPid(callingPid);
-        if (callingPackage == null || TextUtils.isEmpty(callingPackage)) return false;
-        boolean isFinsky = callingPackage.contains("com.android.vending");
-        if (isFinsky) return true;
-
-        if (!isIsolated) return false;
-
-        if (callingPackage.contains(packageName)) return false;
-        if (packageName.contains("youtube") || packageName.contains("microg")
-                || packageName.contains("revanced") || packageName.contains("gms")) return false;
-        return !isCallerSystem(callingUid) && !Process.isIsolated(callingUid)
-                && !Process.isSdkSandboxUid(callingUid);
-    }
-
-    private boolean isCallerSystem(int callingUid) {
-        if (callingUid == Process.SYSTEM_UID || callingUid == Process.ROOT_UID
-                || callingUid == Process.SHELL_UID) return true;
-        final SettingBase callingPs = mSettings.getSettingBase(UserHandle.getAppId(callingUid));
-        if (callingPs == null) return false;
-        final int callingFlags = callingPs.getFlags();
-        if ((callingFlags & ApplicationInfo.FLAG_SYSTEM) == ApplicationInfo.FLAG_SYSTEM
-                || (callingFlags & ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)
-                        == ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) return true;
-        return false;
-    }
-
-    public PackageInfoList recreatePackageList(
-            int callingUid, Context context, int userId, PackageInfoList list) {
-        List<PackageInfo> appList = new ArrayList<>(list.getList());
-        appList.removeIf(info -> isAppDetached(info.packageName));
-        PackageInfoList result = new PackageInfoList(appList);
-        return result;
-    }
-
-    public List<ApplicationInfo> recreateApplicationList(
-            int callingUid, Context context, int userId, List<ApplicationInfo> list) {
-        List<ApplicationInfo> appList = new ArrayList<>(list);
-        appList.removeIf(info -> isAppDetached(info.packageName));
-        return appList;
     }
 
     @Override
@@ -1164,8 +997,6 @@ public class ComputerEngine implements Computer {
 
     public final ApplicationInfo getApplicationInfo(String packageName,
             @PackageManager.ApplicationInfoFlagsBits long flags, int userId) {
-        if (isAppDetached(packageName)) return null;
-        if (shouldHideFromCaller(Binder.getCallingUid(), packageName)) return null;
         return getApplicationInfoInternal(packageName, flags, Binder.getCallingUid(), userId);
     }
 
@@ -1179,8 +1010,6 @@ public class ComputerEngine implements Computer {
             @PackageManager.ApplicationInfoFlagsBits long flags,
             int filterCallingUid, int userId) {
         if (!mUserManager.exists(userId)) return null;
-        if (isAppDetached(packageName)) return null;
-        if (shouldHideFromCaller(filterCallingUid, packageName)) return null;
         flags = updateFlagsForApplication(flags, userId);
 
         if (!isRecentsAccessingChildProfiles(Binder.getCallingUid(), userId)) {
@@ -1477,11 +1306,6 @@ public class ComputerEngine implements Computer {
                 // allow activities that have been explicitly exposed to ephemeral apps
                 continue;
             }
-            if (info.activityInfo != null
-                    && shouldHideFromCaller(filterCallingUid, info.activityInfo.packageName)) {
-                resolveInfos.remove(i);
-                continue;
-            }
             resolveInfos.remove(i);
         }
         return resolveInfos;
@@ -1539,10 +1363,6 @@ public class ComputerEngine implements Computer {
             if (!isEphemeralApp
                     && ((info.serviceInfo.flags & ServiceInfo.FLAG_VISIBLE_TO_INSTANT_APP)
                     != 0)) {
-                continue;
-            }
-            if (shouldHideFromCaller(filterCallingUid, info.serviceInfo.packageName)) {
-                resolveInfos.remove(i);
                 continue;
             }
             resolveInfos.remove(i);
@@ -1846,8 +1666,6 @@ public class ComputerEngine implements Computer {
 
     public final PackageInfo getPackageInfo(String packageName,
             @PackageManager.PackageInfoFlagsBits long flags, int userId) {
-        if (isAppDetached(packageName)) return null;
-        if (shouldHideFromCaller(Binder.getCallingUid(), packageName)) return null;
         return getPackageInfoInternal(packageName, PackageManager.VERSION_CODE_HIGHEST,
                 flags, Binder.getCallingUid(), userId);
     }
@@ -1861,7 +1679,6 @@ public class ComputerEngine implements Computer {
     public final PackageInfo getPackageInfoInternal(String packageName, long versionCode,
             long flags, int filterCallingUid, int userId) {
         if (!mUserManager.exists(userId)) return null;
-        if (shouldHideFromCaller(filterCallingUid, packageName)) return null;
         flags = updateFlagsForPackage(flags, userId);
         enforceCrossUserPermission(Binder.getCallingUid(), userId,
                 false /* requireFullPermission */, false /* checkShell */, "get package info");
@@ -1933,10 +1750,7 @@ public class ComputerEngine implements Computer {
 
     @Override
     public String[] getAllAvailablePackageNames() {
-        final int callingUid = Binder.getCallingUid();
-        return mPackages.keySet().stream()
-                .filter(pkg -> !shouldHideFromCaller(callingUid, pkg))
-                .toArray(String[]::new);
+        return mPackages.keySet().toArray(new String[0]);
     }
 
     @Nullable
@@ -1957,8 +1771,7 @@ public class ComputerEngine implements Computer {
         packageName = resolveInternalPackageNameInternalLocked(
                 packageName, PackageManager.VERSION_CODE_HIGHEST, callingUid);
         var packageState = mSettings.getPackage(packageName);
-        if (shouldFilterApplication(packageState, callingUid, userId)
-                || shouldHideFromCaller(callingUid, packageName)) {
+        if (shouldFilterApplication(packageState, callingUid, userId)) {
             return null;
         } else {
             return packageState;
@@ -1979,8 +1792,7 @@ public class ComputerEngine implements Computer {
         Slog.i(TAG, "getInstalledPackages: callingUid=" + callingUid + " flags=" + flags
                + " updatedFlags=" + updatedFlags + " userId=" + userId);
 
-        return recreatePackageList(callingUid, mContext,
-                        userId, getInstalledPackagesBody(updatedFlags, userId, callingUid));
+        return getInstalledPackagesBody(updatedFlags, userId, callingUid);
     }
 
     private PackageInfoList getInstalledPackagesBody(long flags, int userId, int callingUid) {
@@ -2019,9 +1831,6 @@ public class ComputerEngine implements Computer {
                 if (shouldFilterApplication(ps, callingUid, userId)) {
                     continue;
                 }
-                if (shouldHideFromCaller(callingUid, ps.getPackageName())) {
-                    continue;
-                }
                 final PackageInfo pi = generatePackageInfo(ps, flags, userId);
                 if (pi != null) {
                     list.add(pi);
@@ -2048,9 +1857,6 @@ public class ComputerEngine implements Computer {
                     continue;
                 }
                 if (shouldFilterApplication(ps, callingUid, userId)) {
-                    continue;
-                }
-                if (shouldHideFromCaller(callingUid, ps.getPackageName())) {
                     continue;
                 }
                 final PackageInfo pi = generatePackageInfo(ps, flags, userId);
@@ -2312,8 +2118,7 @@ public class ComputerEngine implements Computer {
             for (int index = 0; index < n; index++) {
                 final PackageStateInternal ps = packageStates.valueAt(index);
                 if (ps.getUserStateOrDefault(userId).isInstalled()
-                        && !shouldFilterApplication(ps, callingUid, userId)
-                        && !shouldHideFromCaller(callingUid, ps.getPackageName())) {
+                        && !shouldFilterApplication(ps, callingUid, userId)) {
                     res[i++] = ps.getPackageName();
                 }
             }
@@ -2321,8 +2126,7 @@ public class ComputerEngine implements Computer {
         } else if (obj instanceof PackageStateInternal) {
             final PackageStateInternal ps = (PackageStateInternal) obj;
             if (ps.getUserStateOrDefault(userId).isInstalled()
-                    && !shouldFilterApplication(ps, callingUid, userId)
-                    && !shouldHideFromCaller(callingUid, ps.getPackageName())) {
+                    && !shouldFilterApplication(ps, callingUid, userId)) {
                 return new String[]{ps.getPackageName()};
             }
         }
@@ -2859,9 +2663,6 @@ public class ComputerEngine implements Computer {
         // if the target and caller are the same application, don't filter
         if (isCallerSameApp(ps.getPackageName(), callingUid)) {
             return false;
-        }
-        if (shouldHideFromCaller(callingUid, ps.getPackageName())) {
-            return true;
         }
         if (callerIsInstantApp) {
             // both caller and target are both instant, but, different applications, filter
@@ -3973,9 +3774,6 @@ public class ComputerEngine implements Computer {
 
         final PackageStateInternal ps = getPackageStateInternal(packageName);
         if (ps != null && ps.getPkg() != null) {
-            if (ps != null && isAppDetached(ps.getPackageName())) {
-                return true;
-            }
             if (shouldFilterApplication(ps, callingUid, userId)) {
                 return false;
             }
@@ -4681,9 +4479,6 @@ public class ComputerEngine implements Computer {
                 if (!pkg.isVisibleToInstantApps()) {
                     continue;
                 }
-                if (shouldHideFromCaller(callingUid, pkg.getPackageName())) {
-                    continue;
-                }
                 result.add(pkg.getPackageName());
             }
         } else {
@@ -4694,9 +4489,6 @@ public class ComputerEngine implements Computer {
                         && ps.getUserStateOrDefault(callingUserId).isInstantApp()
                         && !mInstantAppRegistry.isInstantAccessGranted(callingUserId,
                         UserHandle.getAppId(callingUid), ps.getAppId())) {
-                    continue;
-                }
-                if (shouldHideFromCaller(callingUid, pkg.getPackageName())) {
                     continue;
                 }
                 result.add(pkg.getPackageName());
@@ -4726,16 +4518,10 @@ public class ComputerEngine implements Computer {
             if (shouldFilterApplicationIncludingUninstalled(sus, callingUid, callingUserId)) {
                 return null;
             }
-            if (shouldHideFromCaller(callingUid, sus.name)) {
-                return null;
-            }
             return sus.name + ":" + sus.mAppId;
         } else if (obj instanceof PackageSetting) {
             final PackageSetting ps = (PackageSetting) obj;
             if (shouldFilterApplicationIncludingUninstalled(ps, callingUid, callingUserId)) {
-                return null;
-            }
-            if (shouldHideFromCaller(callingUid, ps.getPackageName())) {
                 return null;
             }
             return ps.getPackageName();
@@ -4767,16 +4553,14 @@ public class ComputerEngine implements Computer {
             final Object obj = mSettings.getSettingBase(appId);
             if (obj instanceof SharedUserSetting) {
                 final SharedUserSetting sus = (SharedUserSetting) obj;
-                if (shouldFilterApplicationIncludingUninstalled(sus, callingUid, callingUserId)
-                        || shouldHideFromCaller(callingUid, sus.name)) {
+                if (shouldFilterApplicationIncludingUninstalled(sus, callingUid, callingUserId)) {
                     names[i] = null;
                 } else {
                     names[i] = "shared:" + sus.name;
                 }
             } else if (obj instanceof PackageSetting) {
                 final PackageSetting ps = (PackageSetting) obj;
-                if (shouldFilterApplicationIncludingUninstalled(ps, callingUid, callingUserId)
-                        || shouldHideFromCaller(callingUid, ps.getPackageName())) {
+                if (shouldFilterApplicationIncludingUninstalled(ps, callingUid, callingUserId)) {
                     names[i] = null;
                 } else {
                     names[i] = ps.getPackageName();
@@ -4906,8 +4690,7 @@ public class ComputerEngine implements Computer {
         for (int i = packageNames.size() - 1; i >= 0; i--) {
             final String packageName = packageNames.valueAt(i);
             if (!shouldFilterApplicationIncludingUninstalled(
-                    mSettings.getPackage(packageName), callingUid, userId)
-                    && !shouldHideFromCaller(callingUid, packageName)) {
+                    mSettings.getPackage(packageName), callingUid, userId)) {
                 continue;
             }
             packageNames.removeAt(i);
@@ -4942,7 +4725,6 @@ public class ComputerEngine implements Computer {
     private void addPackageHoldingPermissions(ArrayList<PackageInfo> list, PackageStateInternal ps,
             String[] permissions, boolean[] tmp, @PackageManager.PackageInfoFlagsBits long flags,
             int userId) {
-        if (shouldHideFromCaller(Binder.getCallingUid(), ps.getPackageName())) return;
         int numMatch = 0;
         for (int i=0; i<permissions.length; i++) {
             final String permission = permissions[i];
@@ -5030,9 +4812,6 @@ public class ComputerEngine implements Computer {
                     if (shouldFilterApplication(ps, callingUid, userId)) {
                         continue;
                     }
-                    if (shouldHideFromCaller(callingUid, ps.getPackageName())) {
-                        continue;
-                    }
                     ai = PackageInfoUtils.generateApplicationInfo(ps.getPkg(), effectiveFlags,
                             ps.getUserStateOrDefault(userId), userId, ps);
                     if (ai != null) {
@@ -5064,9 +4843,6 @@ public class ComputerEngine implements Computer {
                 if (shouldFilterApplication(packageState, callingUid, userId)) {
                     continue;
                 }
-                if (shouldHideFromCaller(callingUid, packageState.getPackageName())) {
-                    continue;
-                }
                 ApplicationInfo ai = PackageInfoUtils.generateApplicationInfo(pkg, flags,
                         packageState.getUserStateOrDefault(userId), userId, packageState);
                 if (ai != null) {
@@ -5076,7 +4852,7 @@ public class ComputerEngine implements Computer {
             }
         }
 
-        return recreateApplicationList(callingUid, mContext, userId, list);
+        return list;
     }
 
     @Nullable
@@ -5210,8 +4986,7 @@ public class ComputerEngine implements Computer {
             final ComponentName component =
                     new ComponentName(providerInfo.packageName, providerInfo.name);
             if (!shouldFilterApplication(ps, Binder.getCallingUid(), component,
-                    TYPE_PROVIDER, callingUserId)
-                    && !shouldHideFromCaller(Binder.getCallingUid(), providerInfo.packageName)) {
+                    TYPE_PROVIDER, callingUserId)) {
                 continue;
             }
             infos.remove(i);
@@ -5252,8 +5027,7 @@ public class ComputerEngine implements Computer {
             final ComponentName component =
                     new ComponentName(providerInfo.packageName, providerInfo.name);
             if (shouldFilterApplication(
-                    ps, callingUid, component, TYPE_PROVIDER, userId)
-                    || shouldHideFromCaller(callingUid, providerInfo.packageName)) {
+                    ps, callingUid, component, TYPE_PROVIDER, userId)) {
                 continue;
             }
             if (finalList == null) {
@@ -5438,9 +5212,6 @@ public class ComputerEngine implements Computer {
     @Override
     public String getInstallerPackageName(@NonNull String packageName, @UserIdInt int userId) {
         final int callingUid = Binder.getCallingUid();
-        int spoofResult = shouldSpoofInstallSource(callingUid, packageName);
-        if (spoofResult == SPOOF_INSTALL_USER) return VENDING_PACKAGE;
-        if (spoofResult == SPOOF_INSTALL_SYSTEM) return null;
         final InstallSource installSource = getInstallSource(packageName, callingUid, userId);
         if (installSource == null) {
             throw new IllegalArgumentException("Unknown package: " + packageName);
@@ -5498,20 +5269,6 @@ public class ComputerEngine implements Computer {
         final int callingUid = Binder.getCallingUid();
         enforceCrossUserPermission(callingUid, userId, false /* requireFullPermission */,
                 false /* checkShell */, "getInstallSourceInfo");
-
-        int spoofResult = shouldSpoofInstallSource(callingUid, packageName);
-        if (spoofResult == SPOOF_INSTALL_USER) {
-            return new InstallSourceInfo(
-                    VENDING_PACKAGE, null, VENDING_PACKAGE,
-                    VENDING_PACKAGE, VENDING_PACKAGE,
-                    android.content.pm.PackageInstaller.PACKAGE_SOURCE_STORE);
-        }
-        if (spoofResult == SPOOF_INSTALL_SYSTEM) {
-            return new InstallSourceInfo(
-                    null, null, null,
-                    null, null,
-                    android.content.pm.PackageInstaller.PACKAGE_SOURCE_UNSPECIFIED);
-        }
 
         String installerPackageName;
         String initiatingPackageName;
@@ -5997,14 +5754,9 @@ public class ComputerEngine implements Computer {
 
         final int numPackages = mPackages.size();
         final int userId = UserHandle.getCallingUserId();
-        final int callingUid = Binder.getCallingUid();
         for (int index = 0; index < numPackages; index++) {
             final AndroidPackage p = mPackages.valueAt(index);
             var packageState = mSettings.getPackage(p.getPackageName());
-
-            if (shouldHideFromCaller(callingUid, p.getPackageName())) {
-                continue;
-            }
 
             final boolean matchesUnaware = ((flags & MATCH_DIRECT_BOOT_UNAWARE) != 0)
                     && !p.isDirectBootAware();
