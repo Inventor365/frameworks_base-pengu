@@ -35,6 +35,12 @@ fun panelSwitchAlpha(leaving: Boolean, progress: Float): Float =
 interface ShadeMotion {
     @Composable fun key(): Any?
 
+    /**
+     * Whether the shade overlays reveal and dismiss with AOSP's own transitions rather than this
+     * motion. Read after [key] has been composed.
+     */
+    fun useStockMotion(): Boolean = false
+
     fun TransitionBuilder.shadeToQuickSettings(animateQsTilesAsShared: () -> Boolean)
 
     fun TransitionBuilder.quickSettingsToShade(animateQsTilesAsShared: () -> Boolean)

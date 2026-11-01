@@ -97,6 +97,10 @@ class SceneContainerTransitions(
         return transitions {
             interruptionHandler = DefaultInterruptionHandler
 
+            // The notification and Quick Settings overlays fall back to AOSP's own reveal and
+            // dismiss when the motion asks for it.
+            val overlayMotion = shadeMotion?.takeUnless { it.useStockMotion() }
+
             val lockscreenToShadeTransitionDistancePx =
                 resources.getDimension(R.dimen.lockscreen_shade_full_transition_distance)
 
@@ -528,7 +532,7 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                shadeMotion?.run { toNotificationsShade(1.0, true) }
+                overlayMotion?.run { toNotificationsShade(1.0, true) }
                     ?: toNotificationsShadeTransition(
                         enableSharedElements = true,
                         shadeExpansionMotion = shadeExpansionMotion,
@@ -542,7 +546,7 @@ class SceneContainerTransitions(
                 cujTag = TAG_COLLAPSE,
             ) {
                 reversed {
-                    shadeMotion?.run { toNotificationsShade(1.0, false) }
+                    overlayMotion?.run { toNotificationsShade(1.0, false) }
                         ?: toNotificationsShadeTransition(
                             shadeExpansionMotion = shadeExpansionMotion,
                             enableSharedElements = false,
@@ -556,7 +560,7 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                shadeMotion?.run { toNotificationsShade(1.0, false) }
+                overlayMotion?.run { toNotificationsShade(1.0, false) }
                     ?: toNotificationsShadeTransition(
                         shadeExpansionMotion = shadeExpansionMotion,
                         enableSharedElements = false,
@@ -569,7 +573,7 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                shadeMotion?.run { toQuickSettingsShade(1.0) }
+                overlayMotion?.run { toQuickSettingsShade(1.0) }
                     ?: toQuickSettingsShadeTransition(
                         shadeExpansionMotion = shadeExpansionMotion,
                         revealHaptics = revealHaptics,
@@ -581,7 +585,7 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_COLLAPSE,
             ) {
-                shadeMotion?.run { fromQuickSettingsShade() }
+                overlayMotion?.run { fromQuickSettingsShade() }
                     ?: reversed {
                         toQuickSettingsShadeTransition(
                             shadeExpansionMotion = shadeExpansionMotion,
@@ -598,7 +602,7 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                shadeMotion?.run { toNotificationsShade(0.9, false) }
+                overlayMotion?.run { toNotificationsShade(0.9, false) }
                     ?: toNotificationsShadeTransition(
                         durationScale = 0.9,
                         enableSharedElements = false,
@@ -613,7 +617,7 @@ class SceneContainerTransitions(
                 cuj = Cuj.CUJ_NOTIFICATION_SHADE_QS_EXPAND_COLLAPSE,
                 cujTag = TAG_EXPAND,
             ) {
-                shadeMotion?.run { toQuickSettingsShade(0.9) }
+                overlayMotion?.run { toQuickSettingsShade(0.9) }
                     ?: toQuickSettingsShadeTransition(
                         durationScale = 0.9,
                         shadeExpansionMotion = shadeExpansionMotion,
@@ -653,7 +657,7 @@ class SceneContainerTransitions(
                 cujTag = TAG_EXPAND,
             ) {
                 // Reveal Quick Settings over the lock screen the same way as over apps.
-                shadeMotion?.run {
+                overlayMotion?.run {
                     lockscreenFadeOutTransition()
                     toQuickSettingsShade(1.0)
                 }
@@ -670,7 +674,7 @@ class SceneContainerTransitions(
                 cujTag = TAG_EXPAND,
             ) {
                 // Reveal Quick Settings over the lock screen the same way as over apps.
-                shadeMotion?.run {
+                overlayMotion?.run {
                     lockscreenFadeOutTransition(durationScale = 0.9)
                     toQuickSettingsShade(0.9)
                 }
@@ -717,7 +721,7 @@ class SceneContainerTransitions(
                 cujTag = TAG_COLLAPSE,
             ) {
                 // Dismiss Quick Settings over the lock screen the same way as over apps.
-                shadeMotion?.run {
+                overlayMotion?.run {
                     reversed { lockscreenFadeOutTransition() }
                     fromQuickSettingsShade()
                 }
@@ -736,7 +740,7 @@ class SceneContainerTransitions(
                 cujTag = TAG_COLLAPSE,
             ) {
                 // Dismiss Quick Settings over the lock screen the same way as over apps.
-                shadeMotion?.run {
+                overlayMotion?.run {
                     reversed { lockscreenFadeOutTransition(durationScale = 0.9) }
                     fromQuickSettingsShade()
                 }
