@@ -218,15 +218,16 @@ private class SwipeToExpandNotificationNode(
             /** Inline helper to handle the drag for an expansion. */
             fun processDrag(dragAmount: Float) {
                 if (!isExpanding) {
-                    val movingDown = dragAmount > 0
-                    if (movingDown) {
+                    val canResize = (dragAmount > 0 && currentHeight < expandedHeight) ||
+                        (dragAmount < 0 && currentHeight > collapsedHeight)
+                    if (canResize) {
                         debugLog { "START expanding" }
                         isExpanding = true
                         callback.setUserSwipingToExpand(targetView, true)
                         callback.expansionStateChanged(true)
                         callback.playExpandStartHaptic()
                     } else {
-                        debugLog { "Upward drag, not expanding yet" }
+                        debugLog { "Drag cannot resize this notification" }
                     }
                 }
 
@@ -325,7 +326,9 @@ private fun obtainExpandableTarget(
             ?: return null
 
     if (!callback.canChildBeExpanded(targetView)) return null
-    if (targetView.intrinsicHeight == targetView.maxContentHeight) return null
+    // Expanded rows must also be eligible: an upward drag collapses the row rather than
+    // dismissing the panel. Once resizing starts, keep consuming until UP/CANCEL.
+    if (targetView.collapsedHeight >= targetView.maxContentHeight) return null
 
     debugLog { "Obtained target ${(targetView as? ExpandableNotificationRow)?.key ?: targetView}" }
 

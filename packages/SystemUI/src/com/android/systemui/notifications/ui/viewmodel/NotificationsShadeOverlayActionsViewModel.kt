@@ -30,7 +30,6 @@ import com.android.systemui.penguin.CosFeature
 import com.android.systemui.penguin.CosFeatures
 import com.android.systemui.penguin.CosShadeSwitch
 import com.android.systemui.scene.shared.model.Overlays
-import com.android.systemui.scene.ui.viewmodel.SceneContainerArea.EndHalf
 import com.android.systemui.scene.ui.viewmodel.SceneContainerArea.TopEdgeEndHalf
 import com.android.systemui.scene.ui.viewmodel.UserActionsViewModel
 import dagger.assisted.AssistedFactory
@@ -50,20 +49,17 @@ constructor(@Application private val context: Context) : UserActionsViewModel() 
     private fun actions(cosShade: Boolean): Map<UserAction, UserActionResult> = buildMap {
         put(Swipe.Up, HideOverlay(Overlays.NotificationsShade))
         put(Back, HideOverlay(Overlays.NotificationsShade))
-        put(
-            Swipe.Down(fromSource = EndHalf),
-            ShowOverlay(
-                Overlays.QuickSettingsShade,
-                hideCurrentOverlays = HideCurrentOverlays.Some(Overlays.NotificationsShade),
-            ),
-        )
-        put(
-            Swipe.Down(fromSource = TopEdgeEndHalf),
-            ShowOverlay(
-                Overlays.QuickSettingsShade,
-                hideCurrentOverlays = HideCurrentOverlays.Some(Overlays.NotificationsShade),
-            ),
-        )
+        // Card drags belong to notification expansion across the whole panel width.
+        // Only a new drag from the top edge may open QS. COS uses sideways switching.
+        if (!cosShade) {
+            put(
+                Swipe.Down(fromSource = TopEdgeEndHalf),
+                ShowOverlay(
+                    Overlays.QuickSettingsShade,
+                    hideCurrentOverlays = HideCurrentOverlays.Some(Overlays.NotificationsShade),
+                ),
+            )
+        }
         if (cosShade) {
             put(
                 Swipe.Start,

@@ -97,6 +97,29 @@ class SwipeToExpandNotificationModifierTest : SysuiTestCase() {
     }
 
     @Test
+    fun testDragUpFromExpandedRightSide_collapsesTarget() {
+        val target = FakeExpandableTarget(context, collapsedHeight = 100, expandedHeight = 300)
+        target.actualHeight = 300
+        target.userExpanded = true
+        callback.childAtPosition = target
+        setTestContent()
+
+        rule.onNodeWithTag(EXPANDABLE_TAG).performTouchInput {
+            down(Offset(size.width * 0.9f, center.y))
+            moveBy(Offset(0f, -250f))
+        }
+        assertThat(callback.isExpanding).isTrue()
+        assertThat(target.userSwipingToExpand).isTrue()
+
+        rule.onNodeWithTag(EXPANDABLE_TAG).performTouchInput { up() }
+        rule.waitForIdle()
+        assertThat(target.actualHeight).isEqualTo(100)
+        assertThat(target.userExpanded).isFalse()
+        assertThat(target.userSwipingToExpand).isFalse()
+        assertThat(callback.isExpanding).isFalse()
+    }
+
+    @Test
     fun testDisabled_doesNotExpand() {
         val target = FakeExpandableTarget(context, collapsedHeight = 100, expandedHeight = 200)
         callback.childAtPosition = target

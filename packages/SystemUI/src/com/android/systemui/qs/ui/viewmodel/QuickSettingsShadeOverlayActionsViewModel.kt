@@ -69,22 +69,26 @@ constructor(
                             ReplaceByOverlay(Overlays.NotificationsShade, transitionKey = CosShadeSwitch),
                         )
                     }
-                    put(
-                        Swipe.Down(fromSource = StartHalf),
-                        ShowOverlay(
-                            Overlays.NotificationsShade,
-                            hideCurrentOverlays =
-                                HideCurrentOverlays.Some(Overlays.QuickSettingsShade),
-                        ),
-                    )
-                    put(
-                        Swipe.Down(fromSource = TopEdgeStartHalf),
-                        ShowOverlay(
-                            Overlays.NotificationsShade,
-                            hideCurrentOverlays =
-                                HideCurrentOverlays.Some(Overlays.QuickSettingsShade),
-                        ),
-                    )
+                    // The COS shade switches panels sideways, so drags down inside a panel, top
+                    // edge included, stay in it.
+                    if (!cosShade) {
+                        put(
+                            Swipe.Down(fromSource = StartHalf),
+                            ShowOverlay(
+                                Overlays.NotificationsShade,
+                                hideCurrentOverlays =
+                                    HideCurrentOverlays.Some(Overlays.QuickSettingsShade),
+                            ),
+                        )
+                        put(
+                            Swipe.Down(fromSource = TopEdgeStartHalf),
+                            ShowOverlay(
+                                Overlays.NotificationsShade,
+                                hideCurrentOverlays =
+                                    HideCurrentOverlays.Some(Overlays.QuickSettingsShade),
+                            ),
+                        )
+                    }
                 }
             }
             .collect { actions -> setActions(actions) }
