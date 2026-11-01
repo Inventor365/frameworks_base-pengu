@@ -59,6 +59,7 @@ import android.telecom.TelecomManager;
 import android.os.Binder;
 import android.os.Bundle;
 import android.os.Process;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.IntArray;
@@ -83,6 +84,11 @@ import java.util.function.Consumer;
 public class BtHelper {
 
     private static final String TAG = "AS.BtHelper";
+
+    // Set by the Bluetooth A2DP service while audio sharing encodes in software.
+    private static final String A2DP_SOFTWARE_SHARING_PROPERTY =
+            "bluetooth.a2dp.software_sharing";
+    private static final int AUDIO_FORMAT_PCM_16_BIT = 0x1;
 
     private final @NonNull AudioDeviceBroker mDeviceBroker;
 
@@ -888,6 +894,10 @@ public class BtHelper {
                 }
                 changed = !btCodecConfig.equals(mA2dpCodecConfig);
                 mA2dpCodecConfig = btCodecConfig;
+                if (SystemProperties.getBoolean(A2DP_SOFTWARE_SHARING_PROPERTY, false)) {
+                    // Audio sharing encodes in software: report PCM, which only the software Bluetooth audio module accepts
+                    return new Pair<>(AUDIO_FORMAT_PCM_16_BIT, changed);
+                }
                 return new Pair<>(
                         AudioSystem.bluetoothA2dpCodecToAudioFormat(btCodecType.getCodecId()),
                         changed);
