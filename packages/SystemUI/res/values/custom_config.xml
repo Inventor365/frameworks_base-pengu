@@ -48,4 +48,6 @@
     <!-- Whether to disable Smart Pixels on UDFPS -->
     <bool name="config_disableSmartPixelsOnUDFPS">false</bool>
 
+    <!-- Draw rounded corners in software for composers that crash on mask-only frames. -->
+    <bool name="config_disableHwcScreenDecoration">false</bool>
 </resources>
