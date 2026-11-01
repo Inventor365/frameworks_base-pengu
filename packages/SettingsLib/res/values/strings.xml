@@ -1894,4 +1894,8 @@
 
     <!-- The name of the screen for seeing and installing system updates. [CHAR LIMIT=40]-->
     <string name="system_update_settings_list_item_title">System Updates</string>
+    <string name="bluetooth_codec_aptx_adaptive" translatable="false">aptX Adaptive</string>
+    <string name="bluetooth_codec_aptx_lossless" translatable="false">aptX Lossless</string>
+    <!-- Active Bluetooth codec and its negotiated sample rate. -->
+    <string name="bluetooth_codec_sample_rate">%1$s • %2$s kHz</string>
 </resources>

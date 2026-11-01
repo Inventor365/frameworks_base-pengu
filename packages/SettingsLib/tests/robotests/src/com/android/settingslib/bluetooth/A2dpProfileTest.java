@@ -41,6 +41,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadow.api.Shadow;
 
@@ -226,4 +227,54 @@ public class A2dpProfileTest {
         assertThat(mProfile.setActiveDevice(null)).isTrue();
         assertThat(mProfile.setActiveDevice(mDevice)).isTrue();
     }
+    @Test
+    public void adaptiveSummary_highQuality16Bit44100_showsLossless() {
+        BluetoothCodecConfig config = new BluetoothCodecConfig.Builder()
+                .setCodecType(BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE)
+                .setSampleRate(BluetoothCodecConfig.SAMPLE_RATE_44100)
+                .setCodecSpecific4(0x0a05d000L)
+                .build();
+        assertThat(A2dpProfile.getAptxAdaptiveCodecSummary(
+                RuntimeEnvironment.getApplication(), config))
+                .isEqualTo("aptX Lossless • 44.1 kHz");
+    }
+
+    @Test
+    public void adaptiveSummary_otherProfiles_doNotClaimLossless() {
+        for (long profile : new long[] {0, 0x1000, 0x2000, 0x4000}) {
+            BluetoothCodecConfig config = new BluetoothCodecConfig.Builder()
+                    .setCodecType(BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE)
+                    .setSampleRate(BluetoothCodecConfig.SAMPLE_RATE_44100)
+                    .setCodecSpecific4(profile)
+                    .build();
+            assertThat(A2dpProfile.getAptxAdaptiveCodecSummary(
+                    RuntimeEnvironment.getApplication(), config))
+                    .isEqualTo("aptX Adaptive • 44.1 kHz");
+        }
+    }
+
+    @Test
+    public void adaptiveSummary_highSampleRate_doesNotClaimCdLossless() {
+        BluetoothCodecConfig config = new BluetoothCodecConfig.Builder()
+                .setCodecType(BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE)
+                .setSampleRate(BluetoothCodecConfig.SAMPLE_RATE_96000)
+                .setCodecSpecific4(0x0a05d000L)
+                .build();
+        assertThat(A2dpProfile.getAptxAdaptiveCodecSummary(
+                RuntimeEnvironment.getApplication(), config))
+                .isEqualTo("aptX Adaptive • 96 kHz");
+    }
+
+    @Test
+    public void adaptiveSummary_otherCodecOrMissingConfig_isAbsent() {
+        BluetoothCodecConfig config = new BluetoothCodecConfig.Builder()
+                .setCodecType(BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX)
+                .setCodecSpecific4(0x5000L)
+                .build();
+        assertThat(A2dpProfile.getAptxAdaptiveCodecSummary(
+                RuntimeEnvironment.getApplication(), config)).isNull();
+        assertThat(A2dpProfile.getAptxAdaptiveCodecSummary(
+                RuntimeEnvironment.getApplication(), null)).isNull();
+    }
+
 }

@@ -104,7 +104,9 @@ internal open class ActiveMediaDeviceItemFactory : DeviceItemFactory() {
         return createDeviceItem(
             cachedDevice,
             DeviceItemType.ACTIVE_MEDIA_BLUETOOTH_DEVICE,
-            cachedDevice.connectionSummary ?: "",
+            listOfNotNull(cachedDevice.connectionSummary, cachedDevice.activeCodecSummary)
+                .filter { it.isNotEmpty() }
+                .joinToString(" • "),
             backgroundOn,
             context.getString(actionAccessibilityLabelDisconnect),
             isActive = true,

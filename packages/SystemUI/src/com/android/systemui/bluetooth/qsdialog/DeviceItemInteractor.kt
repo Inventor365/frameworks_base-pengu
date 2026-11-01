@@ -17,6 +17,7 @@
 package com.android.systemui.bluetooth.qsdialog
 
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothCodecStatus
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import com.android.settingslib.bluetooth.BluetoothCallback
@@ -101,6 +102,13 @@ constructor(
                                 bluetoothProfile,
                             )
                             trySendWithFailureLogging(Unit, TAG, "onProfileConnectionStateChanged")
+                        }
+
+                        override fun onA2dpCodecConfigChanged(
+                            cachedDevice: CachedBluetoothDevice,
+                            codecStatus: BluetoothCodecStatus,
+                        ) {
+                            trySendWithFailureLogging(Unit, TAG, "onA2dpCodecConfigChanged")
                         }
 
                         override fun onAclConnectionStateChanged(

@@ -1530,6 +1530,12 @@ public class CachedBluetoothDevice implements Comparable<CachedBluetoothDevice> 
         return maxState;
     }
 
+    @Nullable
+    public String getActiveCodecSummary() {
+        A2dpProfile profile = mProfileManager.getA2dpProfile();
+        return profile == null ? null : profile.getActiveCodecSummary(mDevice);
+    }
+
     /**
      * Return full summary that describes connection state of this device
      *

@@ -24,6 +24,7 @@ import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothCodecConfig;
+import android.bluetooth.BluetoothCodecStatus;
 import android.bluetooth.BluetoothCodecType;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
@@ -33,10 +34,13 @@ import android.os.Build;
 import android.os.ParcelUuid;
 import android.util.Log;
 
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
+import androidx.annotation.VisibleForTesting;
 
 import com.android.settingslib.R;
 
+import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -357,6 +361,44 @@ public class A2dpProfile implements LocalBluetoothProfile {
         }
         return mContext.getString(
                 R.string.bluetooth_profile_a2dp_high_quality, codecType.getCodecName());
+    }
+
+    @Nullable
+    public String getActiveCodecSummary(BluetoothDevice device) {
+        if (mService == null || device == null || !device.equals(getActiveDevice())
+                || getConnectionStatus(device) != BluetoothProfile.STATE_CONNECTED) {
+            return null;
+        }
+        BluetoothCodecStatus status = mService.getCodecStatus(device);
+        return status == null ? null : getAptxAdaptiveCodecSummary(mContext, status.getCodecConfig());
+    }
+
+    @VisibleForTesting
+    @Nullable
+    static String getAptxAdaptiveCodecSummary(Context context, BluetoothCodecConfig config) {
+        if (config == null || config.getCodecType()
+                != BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE) {
+            return null;
+        }
+        int sampleRate = switch (config.getSampleRate()) {
+            case BluetoothCodecConfig.SAMPLE_RATE_44100 -> 44100;
+            case BluetoothCodecConfig.SAMPLE_RATE_48000 -> 48000;
+            case BluetoothCodecConfig.SAMPLE_RATE_96000 -> 96000;
+            default -> 0;
+        };
+        // Qualcomm's HQ + 16-bit-source profile selects CD-quality Lossless mode.
+        boolean lossless = sampleRate == 44100
+                && (config.getCodecSpecific4() & 0x7000L) == 0x5000L;
+        String codec = lossless ? context.getString(R.string.bluetooth_codec_aptx_lossless)
+                : context.getString(R.string.bluetooth_codec_aptx_adaptive);
+        if (sampleRate == 0) {
+            return codec;
+        }
+        NumberFormat format = NumberFormat.getNumberInstance(
+                context.getResources().getConfiguration().getLocales().get(0));
+        format.setMaximumFractionDigits(1);
+        return context.getString(R.string.bluetooth_codec_sample_rate, codec,
+                format.format(sampleRate / 1000.0));
     }
 
     public String toString() {
