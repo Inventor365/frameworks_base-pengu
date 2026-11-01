@@ -36,7 +36,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -705,39 +704,42 @@ fun Modifier.glassBlurRegion(shape: Shape, material: Int = 0): Modifier {
                 androidx.compose.ui.geometry.Rect(topLeft, bottomRight)
                     .intersect(androidx.compose.ui.geometry.Rect(Offset.Zero, coordinates.size.toSize()))
         }
-        .drawBehind {
-            val full = visible.value ?: androidx.compose.ui.geometry.Rect(Offset.Zero, size)
-            val shown = full.copy(bottom = minOf(full.bottom, clipBottom() - originY.value))
-            val alpha = fade().coerceIn(0f, 1f)
-            if (!allowed() || alpha < 0.01f || shown.width < 1f || shown.height < 1f) {
-                drawable[0]?.setVisible(false, false)
-                return@drawBehind
-            }
-            val root = view.viewRootImpl ?: return@drawBehind
-            val blur =
-                drawable[0]
-                    ?: root.createBackgroundBlurDrawable().also {
-                        it.setXfermode(null)
-                        drawable[0] = it
-                    }
+        .drawWithCache {
+            // The outline depends on geometry, density and layout direction, not shade alpha.
             val corner =
                 when (val outline = shape.createOutline(size, layoutDirection, this)) {
                     is Outline.Rounded -> outline.roundRect.topLeftCornerRadius.x
                     else -> 0f
                 }
-            blur.setVisible(true, false)
-            blur.setMaterial(material)
-            blur.setColor(0)
-            blur.setBlurRadius(radius)
-            blur.setCornerRadius(minOf(corner, shown.height / 2f))
-            blur.setAlpha((alpha * 255).toInt())
-            blur.setBounds(
-                shown.left.toInt(),
-                shown.top.toInt(),
-                shown.right.toInt(),
-                shown.bottom.toInt(),
-            )
-            drawIntoCanvas { blur.draw(it.nativeCanvas) }
+            onDrawBehind {
+                val full = visible.value ?: androidx.compose.ui.geometry.Rect(Offset.Zero, size)
+                val shown = full.copy(bottom = minOf(full.bottom, clipBottom() - originY.value))
+                val alpha = fade().coerceIn(0f, 1f)
+                if (!allowed() || alpha < 0.01f || shown.width < 1f || shown.height < 1f) {
+                    drawable[0]?.setVisible(false, false)
+                    return@onDrawBehind
+                }
+                val root = view.viewRootImpl ?: return@onDrawBehind
+                val blur =
+                    drawable[0]
+                        ?: root.createBackgroundBlurDrawable().also {
+                            it.setXfermode(null)
+                            drawable[0] = it
+                        }
+                blur.setVisible(true, false)
+                blur.setMaterial(material)
+                blur.setColor(0)
+                blur.setBlurRadius(radius)
+                blur.setCornerRadius(minOf(corner, shown.height / 2f))
+                blur.setAlpha((alpha * 255).toInt())
+                blur.setBounds(
+                    shown.left.toInt(),
+                    shown.top.toInt(),
+                    shown.right.toInt(),
+                    shown.bottom.toInt(),
+                )
+                drawIntoCanvas { blur.draw(it.nativeCanvas) }
+            }
         }
 }
 
