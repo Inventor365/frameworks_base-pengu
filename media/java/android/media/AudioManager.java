@@ -4224,7 +4224,65 @@ public class AudioManager {
      *    key1=value1;key2=value2;...
      */
     public String getParameters(String keys) {
+        final String oplus = getOplusParameter(keys);
+        if (oplus != null) {
+            return oplus;
+        }
         return AudioSystem.getParameters(keys);
+    }
+
+    private static final String OPLUS_DEVICE_FOR_STREAM = "OPLUS_AUDIO_GET_DEVICE_FORSTREAM:";
+    private static final String OPLUS_MUSIC_VOLUME_INDEX =
+            "OPLUS_AUDIO_GET_DEVICE_VOLUME_INDEX_FORMUSIC:";
+
+    private String getMusicPlaybackPids() {
+        final StringBuilder pids = new StringBuilder();
+        final Set<Integer> seen = new HashSet<>();
+        for (AudioPlaybackConfiguration config : getActivePlaybackConfigurations()) {
+            final int pid = config.getClientPid();
+            if (config.getPlayerState() == AudioPlaybackConfiguration.PLAYER_STATE_STARTED
+                    && config.getAudioAttributes().getUsage() == AudioAttributes.USAGE_MEDIA
+                    && pid > 0 && seen.add(pid)) {
+                if (pids.length() > 0) {
+                    pids.append(":");
+                }
+                pids.append(pid);
+            }
+        }
+        return pids.toString();
+    }
+
+    /**
+     * ColorOS audio apps query these keys; answer from the audio policy and the active playback list.
+     */
+    private String getOplusParameter(String keys) {
+        if (keys == null) {
+            return null;
+        }
+        switch (keys) {
+            case "get_deepbuffer_music_pid":
+            case "get_music_assistant_pid":
+            case "get_effect_path_music_pids":
+                return getMusicPlaybackPids();
+        }
+        if (!keys.startsWith("OPLUS_AUDIO_GET_")) {
+            return null;
+        }
+        try {
+            if (keys.startsWith(OPLUS_DEVICE_FOR_STREAM)) {
+                final int stream = Integer.parseInt(
+                        keys.substring(OPLUS_DEVICE_FOR_STREAM.length()));
+                return Integer.toString(getDevicesForStream(stream));
+            }
+            if (keys.startsWith(OPLUS_MUSIC_VOLUME_INDEX)) {
+                final int device = Integer.parseInt(
+                        keys.substring(OPLUS_MUSIC_VOLUME_INDEX.length()));
+                return Integer.toString(AudioSystem.getStreamVolumeIndex(STREAM_MUSIC, device));
+            }
+        } catch (NumberFormatException e) {
+            Log.w(TAG, "Malformed parameter query: " + keys);
+        }
+        return null;
     }
 
     /* Sound effect identifiers */
