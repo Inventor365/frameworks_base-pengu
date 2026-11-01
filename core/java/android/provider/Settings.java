@@ -14780,49 +14780,6 @@ public final class Settings {
         public static final String SYSTEM_BLACK_THEME = "system_black_theme";
 
         /**
-         * User selectable PIF data.
-         * @hide
-         */
-        @Readable
-        public static final String PIF_DATA = "pif_data";
-
-        /**
-         * User selectable PIF data.
-         * @hide
-         */
-        @Readable
-        public static final String PIF_DATA_TIMESTAMP = "pif_data_timestamp";
-
-        /**
-         * PIF data fetched from our repo.
-         * @hide
-         */
-        @Readable
-        public static final String FETCHED_PIF = "fetched_pif";
-
-        /**
-         * Whether to automatically update PIF props from remote server.
-         * @hide
-         */
-        @Readable
-        public static final String AUTO_UPDATE_PIF = "auto_update_pif";
-
-        /**
-         * Whether to use Tensor spoof for google apps
-         * @hide
-         */
-        @Readable
-        public static final String PI_TENSOR_SPOOF = "pi_tensor_spoof";
-
-        /**
-         * Whether to spoof Google Photos as Pixel XL for unlimited storage
-         * Default is 1 (enabled).
-         * @hide
-         */
-        @Readable
-        public static final String GPHOTOS_SPOOF = "gphotos_spoof";
-
-        /**
           * Which navigation bar layout to use
           * 0 = Normal (Default)
           * 1 = Compact
@@ -15935,25 +15892,9 @@ public final class Settings {
          */
         public static final String SPOOF_PIF_PHOTOS = "spoof_pif_photos";
 
-        /**
-         * @hide
-         */
-        public static final String SPOOF_PIF_PROPS = "pif_spoof_props";
 
-        /**
-         * @hide
-         */
-        public static final String SPOOF_PIF_PROVIDER = "pif_spoof_provider";
 
-        /**
-         * @hide
-         */
-        public static final String SPOOF_PIF_SIGNATURE = "pif_spoof_signature";
 
-        /**
-         * @hide
-         */
-        public static final String SPOOF_PIF_VENDING_BUILD = "pif_spoof_vending_build";
 
         /**
          * @hide
@@ -15975,10 +15916,6 @@ public final class Settings {
          */
         public static final String SPOOF_TRICKYSTORE_PATCH = "spoof_trickystore_patch";
 
-        /**
-         * @hide
-         */
-        public static final String SPOOF_PIF_TARGETS = "spoof_pif_targets";
 
         /**
          * Network traffic indicator mode

@@ -24,8 +24,6 @@ import android.ravenwood.annotation.RavenwoodKeepWholeClass;
 import android.util.Log;
 import android.util.MutableInt;
 
-import com.android.internal.util.PropImitationHooks;
-
 import com.android.internal.annotations.GuardedBy;
 
 import dalvik.annotation.optimization.CriticalNative;
@@ -150,10 +148,6 @@ public class SystemProperties {
     @SystemApi
     public static String get(@NonNull String key) {
         if (TRACK_KEY_ACCESS) onKeyAccess(key);
-        if (PropImitationHooks.isSpoofPropsForProcess()) {
-            String spoofed = PropImitationHooks.getSpoofedProperty(key);
-            if (spoofed != null) return spoofed;
-        }
         return native_get(key);
     }
 
@@ -170,10 +164,6 @@ public class SystemProperties {
     @SystemApi
     public static String get(@NonNull String key, @Nullable String def) {
         if (TRACK_KEY_ACCESS) onKeyAccess(key);
-        if (PropImitationHooks.isSpoofPropsForProcess()) {
-            String spoofed = PropImitationHooks.getSpoofedProperty(key);
-            if (spoofed != null) return spoofed;
-        }
         return native_get(key, def);
     }
 
@@ -189,15 +179,6 @@ public class SystemProperties {
     @SystemApi
     public static int getInt(@NonNull String key, int def) {
         if (TRACK_KEY_ACCESS) onKeyAccess(key);
-        if (PropImitationHooks.isSpoofPropsForProcess()) {
-            String spoofed = PropImitationHooks.getSpoofedProperty(key);
-            if (spoofed != null) {
-                try {
-                    return Integer.parseInt(spoofed);
-                } catch (NumberFormatException ignored) {
-                }
-            }
-        }
         return native_get_int(key, def);
     }
 
@@ -213,15 +194,6 @@ public class SystemProperties {
     @SystemApi
     public static long getLong(@NonNull String key, long def) {
         if (TRACK_KEY_ACCESS) onKeyAccess(key);
-        if (PropImitationHooks.isSpoofPropsForProcess()) {
-            String spoofed = PropImitationHooks.getSpoofedProperty(key);
-            if (spoofed != null) {
-                try {
-                    return Long.parseLong(spoofed);
-                } catch (NumberFormatException ignored) {
-                }
-            }
-        }
         return native_get_long(key, def);
     }
 
@@ -242,12 +214,6 @@ public class SystemProperties {
     @SystemApi
     public static boolean getBoolean(@NonNull String key, boolean def) {
         if (TRACK_KEY_ACCESS) onKeyAccess(key);
-        if (PropImitationHooks.isSpoofPropsForProcess()) {
-            String spoofed = PropImitationHooks.getSpoofedProperty(key);
-            if (spoofed != null) {
-                return "1".equals(spoofed) || "true".equalsIgnoreCase(spoofed);
-            }
-        }
         return native_get_boolean(key, def);
     }
 
@@ -384,7 +350,7 @@ public class SystemProperties {
         if (nativeHandle == 0) {
             return null;
         }
-        return new Handle(nativeHandle, name);
+        return new Handle(nativeHandle);
     }
 
     /**
@@ -395,16 +361,11 @@ public class SystemProperties {
     public static final class Handle {
 
         private final long mNativeHandle;
-        private final String mKey;
 
         /**
          * @return Value of the property
          */
         @NonNull public String get() {
-            if (PropImitationHooks.isSpoofPropsForProcess()) {
-                String spoofed = PropImitationHooks.getSpoofedProperty(mKey);
-                if (spoofed != null) return spoofed;
-            }
             return native_get(mNativeHandle);
         }
         /**
@@ -412,15 +373,6 @@ public class SystemProperties {
          * @return value or {@code def} on parse error
          */
         public int getInt(int def) {
-            if (PropImitationHooks.isSpoofPropsForProcess()) {
-                String spoofed = PropImitationHooks.getSpoofedProperty(mKey);
-                if (spoofed != null) {
-                    try {
-                        return Integer.parseInt(spoofed);
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            }
             return native_get_int(mNativeHandle, def);
         }
         /**
@@ -428,15 +380,6 @@ public class SystemProperties {
          * @return value or {@code def} on parse error
          */
         public long getLong(long def) {
-            if (PropImitationHooks.isSpoofPropsForProcess()) {
-                String spoofed = PropImitationHooks.getSpoofedProperty(mKey);
-                if (spoofed != null) {
-                    try {
-                        return Long.parseLong(spoofed);
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            }
             return native_get_long(mNativeHandle, def);
         }
         /**
@@ -444,18 +387,11 @@ public class SystemProperties {
          * @return value or {@code def} on parse error
          */
         public boolean getBoolean(boolean def) {
-            if (PropImitationHooks.isSpoofPropsForProcess()) {
-                String spoofed = PropImitationHooks.getSpoofedProperty(mKey);
-                if (spoofed != null) {
-                    return "1".equals(spoofed) || "true".equalsIgnoreCase(spoofed);
-                }
-            }
             return native_get_boolean(mNativeHandle, def);
         }
 
-        private Handle(long nativeHandle, String key) {
+        private Handle(long nativeHandle) {
             mNativeHandle = nativeHandle;
-            mKey = key;
         }
     }
 }
