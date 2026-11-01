@@ -890,6 +890,8 @@ public class WindowManagerService extends IWindowManager.Stub
         private final Uri mLiquidGlassUri = Settings.Secure.getUriFor(LIQUID_GLASS_SETTING);
         private final Uri mLiquidGlassStyleUri =
                 Settings.Secure.getUriFor(LIQUID_GLASS_STYLE_SETTING);
+        private final Uri mLiquidGlassRefractionUri =
+                Settings.Secure.getUriFor(LIQUID_GLASS_REFRACTION_SETTING);
         private final Uri mMirrorBuiltInDisplayUri =
                 Settings.Secure.getUriFor(Settings.Secure.MIRROR_BUILT_IN_DISPLAY);
         private final Uri mDevelopmentOverrideDesktopExperienceUri = Settings.Global.getUriFor(
@@ -943,6 +945,8 @@ public class WindowManagerService extends IWindowManager.Stub
             resolver.registerContentObserver(mLiquidGlassUri, false, this, UserHandle.USER_ALL);
             resolver.registerContentObserver(mLiquidGlassStyleUri, false, this,
                     UserHandle.USER_ALL);
+            resolver.registerContentObserver(mLiquidGlassRefractionUri, false, this,
+                    UserHandle.USER_ALL);
         }
 
         @Override
@@ -956,7 +960,8 @@ public class WindowManagerService extends IWindowManager.Stub
                 return;
             }
 
-            if (mLiquidGlassUri.equals(uri) || mLiquidGlassStyleUri.equals(uri)) {
+            if (mLiquidGlassUri.equals(uri) || mLiquidGlassStyleUri.equals(uri)
+                    || mLiquidGlassRefractionUri.equals(uri)) {
                 syncLiquidGlass(mContext.getContentResolver());
                 return;
             }
@@ -7929,6 +7934,13 @@ public class WindowManagerService extends IWindowManager.Stub
     private static final String LIQUID_GLASS_STYLE_PROPERTY =
             "persist.sys.penguin.liquid_glass_style";
 
+    // How strongly the iOS style's glass rims refract, 0-100% of the strongest bend.
+    private static final String LIQUID_GLASS_REFRACTION_SETTING =
+            "penguin_liquid_glass_refraction";
+    private static final String LIQUID_GLASS_REFRACTION_PROPERTY =
+            "persist.sys.penguin.liquid_glass_refraction";
+    private static final int LIQUID_GLASS_REFRACTION_DEFAULT = 60;
+
     private static void syncLiquidGlass(ContentResolver resolver) {
         final boolean on = Settings.Secure.getIntForUser(resolver, LIQUID_GLASS_SETTING, 0,
                 UserHandle.USER_CURRENT) != 0;
@@ -7936,6 +7948,11 @@ public class WindowManagerService extends IWindowManager.Stub
         final int style = Settings.Secure.getIntForUser(resolver, LIQUID_GLASS_STYLE_SETTING, 0,
                 UserHandle.USER_CURRENT);
         SystemProperties.set(LIQUID_GLASS_STYLE_PROPERTY, style == 1 ? "cos" : "ios");
+        final int refraction = Settings.Secure.getIntForUser(resolver,
+                LIQUID_GLASS_REFRACTION_SETTING, LIQUID_GLASS_REFRACTION_DEFAULT,
+                UserHandle.USER_CURRENT);
+        SystemProperties.set(LIQUID_GLASS_REFRACTION_PROPERTY,
+                Integer.toString(Math.max(0, Math.min(100, refraction))));
     }
 
     private static final String DEX_GLASS_PROPERTY = "sys.penguin.liquid_glass.dex";
