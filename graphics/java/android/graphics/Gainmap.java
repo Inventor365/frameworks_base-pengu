@@ -21,6 +21,7 @@ import android.annotation.FloatRange;
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.compat.annotation.UnsupportedAppUsage;
 import android.os.Parcel;
 import android.os.Parcelable;
 
@@ -119,6 +120,7 @@ public final class Gainmap implements Parcelable {
 
     final long mNativePtr;
     private Bitmap mGainmapContents;
+    private float mHdrScale = -1.0f;
 
     // called from JNI
     private Gainmap(Bitmap gainmapContents, long nativeGainmap) {
@@ -157,6 +159,7 @@ public final class Gainmap implements Parcelable {
      */
     public Gainmap(@NonNull Gainmap gainmap, @NonNull Bitmap gainmapContents) {
         this(gainmapContents, nCreateCopy(gainmap.mNativePtr));
+        mHdrScale = gainmap.mHdrScale;
     }
 
     /**
@@ -167,8 +170,32 @@ public final class Gainmap implements Parcelable {
         if (sharedContents == mGainmapContents) {
             return this;
         } else {
-            return new Gainmap(sharedContents, nCreateCopy(mNativePtr));
+            final Gainmap shared = new Gainmap(sharedContents, nCreateCopy(mNativePtr));
+            shared.mHdrScale = mHdrScale;
+            return shared;
         }
+    }
+
+    /**
+     * Returns the HDR scale an app attached to this gainmap, or -1 if none was set. ColorOS apps
+     * look this up by reflection; it is not used for rendering.
+     *
+     * @hide
+     */
+    @UnsupportedAppUsage
+    public float getHdrScale() {
+        return mHdrScale;
+    }
+
+    /**
+     * Attaches an HDR scale to this gainmap for apps that read it back with
+     * {@link #getHdrScale()}.
+     *
+     * @hide
+     */
+    @UnsupportedAppUsage
+    public void setHdrScale(float hdrScale) {
+        mHdrScale = hdrScale;
     }
 
     /**
