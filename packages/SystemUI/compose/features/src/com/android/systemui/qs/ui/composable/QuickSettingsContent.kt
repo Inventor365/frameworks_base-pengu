@@ -16,6 +16,9 @@
 
 package com.android.systemui.qs.ui.composable
 
+import com.android.systemui.qs.shared.style.LiquidGlassBrightness
+import com.android.systemui.qs.shared.style.liquidGlassOn
+
 import androidx.compose.foundation.layout.Arrangement.spacedBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,6 +81,7 @@ fun ContentScope.QuickSettingsContent(
                     Element(modifier = Modifier, key = Elements.BrightnessSlider) {
                         BrightnessSliderContainer(
                             viewModel.brightnessSliderViewModel,
+                            glassAccent = if (liquidGlassOn) LiquidGlassBrightness else null,
                             containerColors =
                                 ContainerColors(
                                     Color.Transparent,

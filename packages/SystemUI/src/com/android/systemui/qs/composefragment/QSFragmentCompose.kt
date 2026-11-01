@@ -16,6 +16,9 @@
 
 package com.android.systemui.qs.composefragment
 
+import com.android.systemui.qs.shared.style.LiquidGlassBrightness
+import com.android.systemui.qs.shared.style.liquidGlassOn
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
@@ -855,6 +858,7 @@ constructor(
                                         BrightnessSliderContainer(
                                             viewModel =
                                                 containerViewModel.brightnessSliderViewModel,
+                                            glassAccent = if (liquidGlassOn) LiquidGlassBrightness else null,
                                             containerColors =
                                                 ContainerColors(
                                                     Color.Transparent,

@@ -581,7 +581,7 @@ private fun drawAutoBrightnessButton(
     )
     val iconTint by animateColorAsState(
         targetValue = if (autoMode) {
-            glassAccent ?: MaterialTheme.colorScheme.onPrimary
+            if (glassAccent != null) Color.Black else MaterialTheme.colorScheme.onPrimary
         } else {
             if (glassAccent != null) Color.White else MaterialTheme.colorScheme.onSurface
         }
