@@ -25,6 +25,8 @@ import android.view.LayoutInflater
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -38,16 +40,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.dimensionResource
@@ -84,6 +91,10 @@ import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenMo
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenScope
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenScope.Companion.LockscreenElement
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenScope.Companion.NestedScenes
+import androidx.compose.ui.platform.LocalDensity
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.android.systemui.customization.clocks.R as clocksR
+import com.android.systemui.keyguard.ui.viewmodel.KeyguardClockViewModel
 import com.android.systemui.res.R
 import com.android.systemui.shade.ShadeDisplayAware
 import com.android.systemui.shade.shared.model.ShadeMode
@@ -99,6 +110,7 @@ constructor(
     @ShadeDisplayAware private val context: Context,
     @KeyguardBlueprintLog private val blueprintLog: LogBuffer,
     private val viewModelFactory: LockscreenUpperRegionViewModel.Factory,
+    private val keyguardClockViewModel: KeyguardClockViewModel,
     player: Optional<LockscreenPlayer>,
 ) : LockscreenElementProvider {
     private val player = player.orElse(null)
@@ -133,12 +145,21 @@ constructor(
         protected fun LockscreenScope<ContentScope>.Notifications(
             aodAlignment: Alignment,
             modifier: Modifier = Modifier,
+            stackTopPadding: Dp = 0.dp,
         ) {
             Box(modifier = Modifier.fillMaxSize().then(modifier)) {
-                AODNotifications(Modifier.align(aodAlignment))
+                AODNotifications(
+                    Modifier.align(aodAlignment),
+                    horizontalAlignment =
+                        if (aodAlignment == Alignment.TopCenter) Alignment.CenterHorizontally
+                        else Alignment.Start,
+                )
                 // Make the Notification section overlap with the AOD icons, to avoid jumps while
                 // animating them in.
-                AnimatedVisibility(viewModel.isNotificationStackActive) {
+                AnimatedVisibility(
+                    viewModel.isNotificationStackActive,
+                    modifier = Modifier.padding(top = stackTopPadding),
+                ) {
                     LockscreenElement(
                         Notifications.Stack,
                         modifier = Modifier.burnInAware(isClock = false),
@@ -170,9 +191,10 @@ constructor(
 
         @Composable
         protected fun LockscreenScope<ContentScope>.AODNotifications(
-            modifier: Modifier = Modifier
+            modifier: Modifier = Modifier,
+            horizontalAlignment: Alignment.Horizontal = Alignment.Start,
         ) {
-            Column(modifier) {
+            Column(modifier, horizontalAlignment = horizontalAlignment) {
                 LockscreenElement(Notifications.AOD.Promoted, Modifier.padding(bottom = 4.dp))
                 LockscreenElement(Notifications.AOD.IconShelf)
             }
@@ -203,6 +225,21 @@ constructor(
             }
         }
 
+        /**
+         * Show the AOD notifications only once the large clock has mostly moved up, and hide them before
+         * it moves down.
+         */
+        protected fun TransitionBuilder.fadeAodNotificationsWithClockMove(entering: Boolean) {
+            if (viewModel.shouldSkipTransition) return
+            fractionRange(
+                start = if (entering) 0.6f else 0f,
+                end = if (entering) 1f else 0.25f,
+            ) {
+                fade(Notifications.AOD.Promoted)
+                fade(Notifications.AOD.IconShelf)
+            }
+        }
+
         protected fun PropertyTransformationBuilder.fadeLargeClock() {
             fade(Clock.Large)
             fade(Smartspace.DWA.LargeClock.Above)
@@ -227,8 +264,6 @@ constructor(
                 logDecision("NarrowLayout: ClockSize") {
                     viewModel.evaluateClockSize {
                         when {
-                            viewModel.isNotificationStackActive ->
-                                Decision(ClockSize.SMALL, "isNotificationStackActive")
                             viewModel.isMediaVisible -> Decision(ClockSize.SMALL, "isMediaVisible")
                             else -> Decision(ClockSize.LARGE, "Default Case")
                         }
@@ -241,11 +276,45 @@ constructor(
 
             NestedScenes(
                 sceneKey =
-                    when (clockSize) {
-                        ClockSize.LARGE -> NarrowScenes.LargeClock
-                        ClockSize.SMALL -> NarrowScenes.SmallClock
+                    when {
+                        clockSize == ClockSize.SMALL -> NarrowScenes.SmallClock
+                        viewModel.isNotificationStackActive ->
+                            NarrowScenes.LargeClockWithNotifications
+                        else -> NarrowScenes.LargeClock
                     },
                 transitions = {
+                    from(
+                        from = NarrowScenes.LargeClock,
+                        to = NarrowScenes.LargeClockWithNotifications,
+                    ) {
+                        configureClockCenteringTransition()
+                        fadeAodNotificationsWithClockMove(entering = true)
+                    }
+                    from(
+                        from = NarrowScenes.LargeClockWithNotifications,
+                        to = NarrowScenes.LargeClock,
+                    ) {
+                        configureClockCenteringTransition()
+                        fadeAodNotificationsWithClockMove(entering = false)
+                    }
+                    from(
+                        from = NarrowScenes.LargeClockWithNotifications,
+                        to = NarrowScenes.SmallClock,
+                    ) {
+                        configureClockSwitchTransition(
+                            enter = { fadeSmallClock() },
+                            exit = { fadeLargeClock() },
+                        )
+                    }
+                    from(
+                        from = NarrowScenes.SmallClock,
+                        to = NarrowScenes.LargeClockWithNotifications,
+                    ) {
+                        configureClockSwitchTransition(
+                            enter = { fadeLargeClock() },
+                            exit = { fadeSmallClock() },
+                        )
+                    }
                     from(from = NarrowScenes.SmallClock, to = NarrowScenes.LargeClock) {
                         configureClockSwitchTransition(
                             enter = { fadeLargeClock() },
@@ -267,6 +336,54 @@ constructor(
                         customStyle != 0 -> CustomClockView()
                         clockHidden -> { /* no clock */ }
                         else -> LockscreenElement(Region.Clock.Large)
+                    }
+                }
+                scene(NarrowScenes.LargeClockWithNotifications) {
+                    // Keep the large clock in the upper part and show the notification stack below it. Reserve what
+                    // the clock element lays out, between the old share and LARGE_CLOCK_WITH_NOTIFICATIONS_MAX_SHARE.
+                    val clockBounds by
+                        keyguardClockViewModel.clockEventController.largeClockBounds
+                            .collectAsStateWithLifecycle()
+                    val clockHeight = with(LocalDensity.current) { clockBounds.height.toDp() }
+                    val dateBelowClock by
+                        keyguardClockViewModel.shouldDateWeatherBeBelowLargeClock
+                            .collectAsStateWithLifecycle()
+                    // The date and weather row is laid out after the clock bounds, so it needs its own room
+                    val dateRowReserve = if (dateBelowClock) DATE_WEATHER_ROW_RESERVE else 0.dp
+                    val clockReserve =
+                        clockHeight +
+                            dateRowReserve +
+                            dimensionResource(R.dimen.keyguard_clock_top_margin) +
+                            dimensionResource(clocksR.dimen.enhanced_smartspace_height) +
+                            dimensionResource(R.dimen.smartspace_padding_vertical) * 2
+                    // The clock parts also report where they really end, and the stack is kept below that.
+                    val clockContent = remember { LargeClockContentBottom() }
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val clockAreaHeight =
+                            max(clockReserve, maxHeight * LARGE_CLOCK_WITH_NOTIFICATIONS_WEIGHT)
+                                .coerceAtMost(maxHeight * LARGE_CLOCK_WITH_NOTIFICATIONS_MAX_SHARE)
+                        Column(Modifier.fillMaxSize()) {
+                            Box(Modifier.fillMaxWidth().height(clockAreaHeight)) {
+                                CompositionLocalProvider(
+                                    LocalLargeClockContentBottom provides clockContent
+                                ) {
+                                    when {
+                                        customStyle != 0 ->
+                                            CustomClockView(
+                                                // Let a tall clock style take its full height
+                                                Modifier.wrapContentHeight(
+                                                        Alignment.Top,
+                                                        unbounded = true,
+                                                    )
+                                                    .largeClockContentPart()
+                                            )
+                                        clockHidden -> { /* no clock */ }
+                                        else -> LockscreenElement(Region.Clock.Large)
+                                    }
+                                }
+                            }
+                            NotificationsBelowClock(clockContent, Modifier.weight(1f))
+                        }
                     }
                 }
                 scene(NarrowScenes.SmallClock) {
@@ -302,6 +419,43 @@ constructor(
                         }
                     }
                 }
+            }
+        }
+
+        /**
+         * The notifications under the large clock, moved down where the clock content reaches lower
+         * than the clock area. The AOD burn-in shift is measured with a probe that moves like the date row.
+         */
+        @Composable
+        private fun LockscreenScope<ContentScope>.NotificationsBelowClock(
+            clockContent: LargeClockContentBottom,
+            modifier: Modifier,
+        ) {
+            var top by remember { mutableFloatStateOf(Float.NaN) }
+            var burnInTop by remember { mutableFloatStateOf(Float.NaN) }
+            val gap = with(LocalDensity.current) { CLOCK_NOTIFICATIONS_GAP.toPx() }
+            val contentBottom = clockContent.bottom
+            val stackTopPadding =
+                if (contentBottom == null || top.isNaN()) {
+                    0.dp
+                } else {
+                    val burnIn =
+                        if (burnInTop.isNaN()) 0f else (burnInTop - top).coerceAtLeast(0f)
+                    with(LocalDensity.current) {
+                        (contentBottom + burnIn + gap - top).coerceAtLeast(0f).toDp()
+                    }
+                }
+            Box(modifier.onGloballyPositioned { top = it.positionInRoot().y }) {
+                Box(
+                    Modifier.burnInAware(isClock = false).onGloballyPositioned {
+                        burnInTop = it.positionInRoot().y
+                    }
+                )
+                // Center the AOD icons under the centered large clock.
+                Notifications(
+                    aodAlignment = Alignment.TopCenter,
+                    stackTopPadding = stackTopPadding,
+                )
             }
         }
     }
@@ -689,8 +843,10 @@ constructor(
     }
 
     @Composable
-    private fun CustomClockView() {
+    private fun CustomClockView(modifier: Modifier = Modifier) {
         AndroidView(
+            // Preserve caller measurement/bounds modifiers while keeping the clock's natural height.
+            modifier = modifier.fillMaxWidth().wrapContentHeight(Alignment.Top, unbounded = true),
             factory = { ctx ->
                 LayoutInflater.from(ctx).inflate(R.layout.keyguard_clock_style, null) as ClockStyle
             },
@@ -703,6 +859,18 @@ constructor(
 
     companion object {
         const val CLOCK_CENTERING_DURATION_MILLIS = 1000
+
+        /** Share of the narrow upper region kept for the large clock when notifications show. */
+        const val LARGE_CLOCK_WITH_NOTIFICATIONS_WEIGHT = 0.45f
+
+        /** Most of the narrow upper region the large clock may take when notifications show. */
+        const val LARGE_CLOCK_WITH_NOTIFICATIONS_MAX_SHARE = 0.7f
+
+        /** Space kept between the large clock content and the notification stack below it. */
+        val CLOCK_NOTIFICATIONS_GAP = 16.dp
+
+        /** Room for the date and weather row below the large clock. */
+        val DATE_WEATHER_ROW_RESERVE = 56.dp
 
         enum class LayoutType {
             WIDE,

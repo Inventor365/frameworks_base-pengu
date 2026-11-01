@@ -62,6 +62,7 @@ constructor(
     private val clockFace = clockFace.orElse(null)
 
     private var handedOffClock: View? = null
+    private var handedOffCustomClock: ClockStyle? = null
     private var handedOffAlpha = 1f
 
     /**
@@ -178,9 +179,12 @@ constructor(
 
     private fun handOff() {
         val face = clockFace ?: return
-        ClockStyle.showing()?.clockView?.let {
-            hide(it)
-            return
+        ClockStyle.showing()?.let { customClock ->
+            customClock.clockView?.let {
+                hide(it)
+                handedOffCustomClock = customClock
+                return
+            }
         }
         if (face.isEnabled) {
             face.onHandedOff()
@@ -202,7 +206,11 @@ constructor(
 
     private fun restoreClock() {
         handedOffClock?.alpha = handedOffAlpha
+        // Opacity/doze state may have changed while the launcher owned the clock.
+        handedOffCustomClock?.restoreAfterHandoff()
         handedOffClock = null
+        handedOffCustomClock = null
+        clockFace?.onHandoffFinished()
     }
 
     /** Ensures that the launcher is either fully visible, or animating to be fully visible. */

@@ -204,9 +204,12 @@ class ClockStyle @JvmOverloads constructor(
         }
 
         isDozing = !forHome && statusBarStateController.isDozing
+        // A scene change can reattach this view after cancelling its previous animation.
+        currentClockView?.animate()?.cancel()
+        applyClockAlpha()
+        applyClockColors()
+        applyClockScale()
         if (isDozing) {
-            applyClockAlpha()
-            applyClockColors()
             startBurnInProtection()
             startAodTick()
         }
@@ -331,9 +334,10 @@ class ClockStyle @JvmOverloads constructor(
 
     private fun applyDozing(dozing: Boolean) {
         isDozing = dozing
-        animateAodTransition(dozing)
+        cancelWobbleAnimation()
         applyClockAlpha()
         applyClockColors()
+        animateAodTransition(dozing)
         if (dozing) {
             startBurnInProtection()
             startAodTick()
@@ -373,13 +377,18 @@ class ClockStyle @JvmOverloads constructor(
 
     private fun animateAodTransition(toAod: Boolean) {
         val view = currentClockView ?: return
-        if (!aodAnimEnabled) return
         view.animate().cancel()
+        if (!aodAnimEnabled) {
+            applyClockScale()
+            applyClockAlpha()
+            return
+        }
         if (toAod) {
             view.animate()
                 .scaleX(AOD_SCALE_DOWN)
                 .scaleY(AOD_SCALE_DOWN)
-                .alpha(0f)
+                // AOD may suspend before the animator ends; never leave the clock transparent.
+                .alpha(minOf(clockOpacity, AOD_OPACITY_CAP) / 100f)
                 .setDuration(AOD_ANIM_OUT_MS)
                 .setInterpolator(AccelerateInterpolator(1.5f))
                 .withEndAction {
@@ -400,6 +409,17 @@ class ClockStyle @JvmOverloads constructor(
                 .setInterpolator(OvershootInterpolator(1.2f))
                 .start()
         }
+    }
+
+    /** Restore the current appearance, rather than a pre-unlock alpha saved by the launcher. */
+    fun restoreAfterHandoff() {
+        val dozing = !forHome && statusBarStateController.isDozing
+        if (isDozing != dozing) applyDozing(dozing)
+        currentClockView?.animate()?.cancel()
+        applyClockAlpha()
+        applyClockColors()
+        applyClockScale()
+        forceTimeUpdate()
     }
 
     fun onTimeChanged() {
@@ -667,7 +687,7 @@ class ClockStyle @JvmOverloads constructor(
 
     private fun applyClockScale() {
         val view = currentClockView ?: return
-        val scale = getScaleFactor()
+        val scale = if (isDozing) AOD_SCALE_DOWN else getScaleFactor()
         view.scaleX = scale
         view.scaleY = scale
         view.pivotX = view.width / 2f

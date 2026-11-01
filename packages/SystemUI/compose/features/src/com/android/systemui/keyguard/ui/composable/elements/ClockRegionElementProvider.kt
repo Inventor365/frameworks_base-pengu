@@ -139,7 +139,8 @@ constructor(
         @Composable
         override fun LockscreenScope<ElementContentScope>.LockscreenElement() {
             if (clockFace?.isEnabled == true) {
-                clockFace.Placeholder(large = true, Modifier.fillMaxSize())
+                // The face draws inside its placeholder, so the placeholder is the clock content.
+                clockFace.Placeholder(large = true, Modifier.fillMaxSize().largeClockContentPart())
                 return
             }
             val glass = liquidGlassEnabled()
@@ -191,11 +192,15 @@ constructor(
                             Clock.Large,
                             Modifier.thenIf(glass) { Modifier.glassPressTarget(LockscreenClockPress) }
                                 .widthIn(min = clockBounds.width.toDp())
-                                .heightIn(min = clockBounds.height.toDp()),
+                                .heightIn(min = clockBounds.height.toDp())
+                                .largeClockContentPart(),
                         )
                     }
                     if (shouldDateWeatherBeBelowLargeClock) {
-                        LockscreenElement(Smartspace.DWA.LargeClock.Below)
+                        LockscreenElement(
+                            Smartspace.DWA.LargeClock.Below,
+                            Modifier.largeClockContentPart(),
+                        )
                     }
                 }
             }

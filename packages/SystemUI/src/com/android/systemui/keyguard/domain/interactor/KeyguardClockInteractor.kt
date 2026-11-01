@@ -113,7 +113,8 @@ constructor(
             ) { forcedClockSize, isFullWidthShade, hasNotifs, hasMedia, isDozing ->
                 when {
                     forcedClockSize != null -> forcedClockSize
-                    isFullWidthShade && (hasNotifs || hasMedia) -> ClockSize.SMALL
+                    // Keep the large clock when notifications are present.
+                    isFullWidthShade && hasMedia -> ClockSize.SMALL
                     isFullWidthShade -> ClockSize.LARGE
                     hasMedia && !isDozing -> ClockSize.SMALL
                     else -> ClockSize.LARGE

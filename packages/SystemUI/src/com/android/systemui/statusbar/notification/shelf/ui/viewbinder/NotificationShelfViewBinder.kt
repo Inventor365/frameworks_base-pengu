@@ -46,6 +46,7 @@ object NotificationShelfViewBinder {
 
             if (SceneContainerFlag.isEnabled) {
                 launch { viewModel.isAlignedToEnd.collect(::setAlignedToEnd) }
+                launch { viewModel.isCentered.collect(::setCentered) }
             }
 
             if (Flags.notificationRowTransparency()) {

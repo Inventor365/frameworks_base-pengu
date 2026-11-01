@@ -22,5 +22,8 @@ interface LockscreenClockFace {
 
     fun onHandedOff()
 
+    /** Return drawing ownership when the launcher animation ends or is cancelled. */
+    fun onHandoffFinished() {}
+
     data class Handoff(val bounds: Rect, val fontHeight: Int)
 }

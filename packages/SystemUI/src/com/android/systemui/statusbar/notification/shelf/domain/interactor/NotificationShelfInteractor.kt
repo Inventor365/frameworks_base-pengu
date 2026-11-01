@@ -20,11 +20,14 @@ import android.os.PowerManager
 import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.deviceentry.data.repository.DeviceEntryFaceAuthRepository
 import com.android.systemui.keyguard.data.repository.KeyguardRepository
+import com.android.systemui.keyguard.domain.interactor.KeyguardClockInteractor
+import com.android.systemui.keyguard.shared.model.ClockSize
 import com.android.systemui.power.domain.interactor.PowerInteractor
 import com.android.systemui.shade.domain.interactor.ShadeModeInteractor
 import com.android.systemui.shade.shared.model.ShadeMode
 import com.android.systemui.statusbar.LockscreenShadeTransitionController
 import com.android.systemui.statusbar.NotificationShelf
+import dagger.Lazy
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -40,6 +43,7 @@ constructor(
     private val powerInteractor: PowerInteractor,
     private val shadeModeInteractor: ShadeModeInteractor,
     private val keyguardTransitionController: LockscreenShadeTransitionController,
+    private val keyguardClockInteractor: Lazy<KeyguardClockInteractor>,
 ) {
     /** Is the shelf showing on the keyguard? */
     val isShowingOnKeyguard: Flow<Boolean>
@@ -63,6 +67,19 @@ constructor(
                     ShadeMode.Split -> true
                     else -> false
                 }
+            }
+
+    /**
+     * Should the short lockscreen shelf be centered? It is, under the centered large clock of a
+     * full width shade.
+     */
+    val isCentered: Flow<Boolean>
+        get() =
+            combine(
+                shadeModeInteractor.isFullWidthShade,
+                keyguardClockInteractor.get().clockSize,
+            ) { isFullWidthShade, clockSize ->
+                isFullWidthShade && clockSize == ClockSize.LARGE
             }
 
     /** Transition keyguard to the locked shade, triggered by the shelf. */

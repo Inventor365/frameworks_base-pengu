@@ -40,6 +40,8 @@ object LockscreenMovableParentKeys {
     object UpperRegion {
         object NarrowLayout {
             val LargeClock = SceneKey("UpperRegion-NarrowLayout-LargeClock")
+            val LargeClockWithNotifications =
+                SceneKey("UpperRegion-NarrowLayout-LargeClockWithNotifications")
             val SmallClock = SceneKey("UpperRegion-NarrowLayout-SmallClock")
         }
 
@@ -76,6 +78,7 @@ object LockscreenElementKeys {
                     LockscreenMovableParentKeys.Lockscreen,
                     LockscreenMovableParentKeys.NotificationsShade,
                     LockscreenMovableParentKeys.UpperRegion.NarrowLayout.LargeClock,
+                    LockscreenMovableParentKeys.UpperRegion.NarrowLayout.LargeClockWithNotifications,
                     LockscreenMovableParentKeys.UpperRegion.NarrowLayout.SmallClock,
                     LockscreenMovableParentKeys.UpperRegion.WideLayout.CenteredClock,
                     LockscreenMovableParentKeys.UpperRegion.WideLayout.TwoColumn.LargeClock,

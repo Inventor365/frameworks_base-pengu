@@ -18,11 +18,13 @@ package com.android.systemui.statusbar.notification.shelf.domain.interactor
 
 import com.android.systemui.keyguard.data.repository.deviceEntryFaceAuthRepository
 import com.android.systemui.keyguard.data.repository.keyguardRepository
+import com.android.systemui.keyguard.domain.interactor.keyguardClockInteractor
 import com.android.systemui.kosmos.Kosmos
 import com.android.systemui.kosmos.Kosmos.Fixture
 import com.android.systemui.power.domain.interactor.powerInteractor
 import com.android.systemui.shade.domain.interactor.shadeModeInteractor
 import com.android.systemui.statusbar.lockscreenShadeTransitionController
+import dagger.Lazy
 
 val Kosmos.notificationShelfInteractor by Fixture {
     NotificationShelfInteractor(
@@ -31,5 +33,6 @@ val Kosmos.notificationShelfInteractor by Fixture {
         powerInteractor = powerInteractor,
         shadeModeInteractor = shadeModeInteractor,
         keyguardTransitionController = lockscreenShadeTransitionController,
+        keyguardClockInteractor = Lazy { keyguardClockInteractor },
     )
 }

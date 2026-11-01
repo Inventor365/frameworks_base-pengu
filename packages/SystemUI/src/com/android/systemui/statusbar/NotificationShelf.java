@@ -43,6 +43,7 @@ import com.android.app.animation.Interpolators;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.policy.SystemBarUtils;
 import com.android.systemui.animation.ShadeInterpolation;
+import com.android.systemui.clocks.ClockStyle;
 import com.android.systemui.qs.shared.style.LiquidGlass;
 import com.android.systemui.res.R;
 import com.android.systemui.scene.shared.flag.SceneContainerFlag;
@@ -97,6 +98,7 @@ public class NotificationShelf extends ActivatableNotificationView {
     private int mNotGoneIndex;
     private boolean mHasItemsInStableShelf;
     private boolean mAlignedToEnd;
+    private boolean mCentered;
     private int mScrollFastThreshold;
     private boolean mInteractive;
     private boolean mAnimationsEnabled = true;
@@ -313,6 +315,43 @@ public class NotificationShelf extends ActivatableNotificationView {
             mShelfIcons.setActualLayoutWidth((int) actualWidth);
         }
         mActualWidth = actualWidth;
+        updateCenteredTranslation();
+    }
+
+    /**
+     * Moves a short shelf to the middle of the stack when it is centered. The offset shrinks to
+     * zero as the shelf widens to the full width while going to the shade.
+     */
+    private void updateCenteredTranslation() {
+        float offset = 0f;
+        if (isCentered()) {
+            offset = (getWidth() - getActualWidth()) / 2f;
+            if (isAlignedToRight()) {
+                offset = -offset;
+            }
+        }
+        if (getTranslationX() != offset) {
+            setTranslationX(offset);
+        }
+    }
+
+    private boolean isCentered() {
+        return NotificationMinimalism.isEnabled() && SceneContainerFlag.isEnabled()
+                && ((mCentered && !isAlignedToEnd())
+                    || (mAmbientState != null && mAmbientState.isCurrentSceneLockscreen()
+                        && ClockStyle.showing() != null));
+    }
+
+    /** Sets whether a short lockscreen shelf is centered in the stack. */
+    public void setCentered(boolean centered) {
+        if (SceneContainerFlag.isUnexpectedlyInLegacyMode()) {
+            return;
+        }
+        if (mCentered != centered) {
+            mCentered = centered;
+            updateCenteredTranslation();
+            requestLayout();
+        }
     }
 
     @Override
@@ -1023,6 +1062,7 @@ public class NotificationShelf extends ActivatableNotificationView {
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
+        updateCenteredTranslation();
 
         // we always want to clip to our sides, such that nothing can draw outside of these bounds
         int height = getResources().getDisplayMetrics().heightPixels;

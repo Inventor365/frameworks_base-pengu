@@ -53,6 +53,15 @@ constructor(
         }
     }
 
+    /** Is the short lockscreen shelf centered in the current configuration? */
+    val isCentered: Flow<Boolean> by lazy {
+        if (SceneContainerFlag.isUnexpectedlyInLegacyMode()) {
+            flowOf(false)
+        } else {
+            interactor.isCentered
+        }
+    }
+
     val isBlurSupported: Flow<Boolean> = windowRootViewBlurInteractor.isBlurCurrentlySupported
 
     /** Notifies that the user has clicked the shelf. */
