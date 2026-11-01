@@ -31,6 +31,9 @@ object CosTileTips {
     var tip by mutableStateOf<Pair<String, Long>?>(null)
         private set
 
+    /** When the last tip played; the header is composed again on every pull down. */
+    internal var shownAt = 0L
+
     fun show(text: String) {
         tip = text to SystemClock.uptimeMillis()
     }
@@ -43,7 +46,9 @@ fun CosTileTipHeader(modifier: Modifier = Modifier, header: @Composable () -> Un
     val tipAlpha = remember { Animatable(0f) }
     var words by remember { mutableStateOf("") }
     LaunchedEffect(tip) {
-        if (tip == null) return@LaunchedEffect
+        // Each pull down restarts this effect with the last tip; play every tip only once.
+        if (tip == null || tip.second <= CosTileTips.shownAt) return@LaunchedEffect
+        CosTileTips.shownAt = tip.second
         words = tip.first
         coroutineScope {
             launch { headerAlpha.animateTo(0f, tween(FADE_OUT_MS, easing = CouiEase)) }
