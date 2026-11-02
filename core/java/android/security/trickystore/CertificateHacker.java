@@ -345,7 +345,7 @@ public final class CertificateHacker {
             String[] packages) throws Exception {
 
         byte[] bootKey = rootOfTrustOctet(originalRootOfTrust, 0);
-        if (bootKey == null) {
+        if (AttestationUtils.isNullOrZeroBootKey(bootKey)) {
             bootKey = AttestationUtils.getBootKey();
         }
 
