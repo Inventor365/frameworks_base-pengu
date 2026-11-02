@@ -370,7 +370,55 @@ public class A2dpProfile implements LocalBluetoothProfile {
             return null;
         }
         BluetoothCodecStatus status = mService.getCodecStatus(device);
-        return status == null ? null : getAptxAdaptiveCodecSummary(mContext, status.getCodecConfig());
+        if (status == null) {
+            return null;
+        }
+        BluetoothCodecConfig config = status.getCodecConfig();
+        String aptx = getAptxAdaptiveCodecSummary(mContext, config);
+        return aptx != null ? aptx : getHiResCodecSummary(mContext, config);
+    }
+
+    // Extended codec ids (BluetoothCodecType), so the summary doesn't need the flagged constants.
+    private static final long CODEC_ID_LDAC = 0x00aa012dffL;
+    private static final long CODEC_ID_LHDCV5 = 0x4c35053affL;
+
+    /** LDAC and LHDC V5 are the other codecs whose active sample rate is worth showing. */
+    @VisibleForTesting
+    @Nullable
+    static String getHiResCodecSummary(Context context, BluetoothCodecConfig config) {
+        BluetoothCodecType type = config == null ? null : config.getExtendedCodecType();
+        if (type == null) {
+            return null;
+        }
+        final String codec;
+        if (type.getCodecId() == CODEC_ID_LDAC) {
+            codec = "LDAC";
+        } else if (type.getCodecId() == CODEC_ID_LHDCV5) {
+            codec = "LHDC V5";
+        } else {
+            return null;
+        }
+        return withSampleRate(context, codec, config.getSampleRate());
+    }
+
+    private static String withSampleRate(Context context, String codec, int sampleRateBit) {
+        int sampleRate = switch (sampleRateBit) {
+            case BluetoothCodecConfig.SAMPLE_RATE_44100 -> 44100;
+            case BluetoothCodecConfig.SAMPLE_RATE_48000 -> 48000;
+            case BluetoothCodecConfig.SAMPLE_RATE_88200 -> 88200;
+            case BluetoothCodecConfig.SAMPLE_RATE_96000 -> 96000;
+            case BluetoothCodecConfig.SAMPLE_RATE_176400 -> 176400;
+            case BluetoothCodecConfig.SAMPLE_RATE_192000 -> 192000;
+            default -> 0;
+        };
+        if (sampleRate == 0) {
+            return codec;
+        }
+        NumberFormat format = NumberFormat.getNumberInstance(
+                context.getResources().getConfiguration().getLocales().get(0));
+        format.setMaximumFractionDigits(1);
+        return context.getString(R.string.bluetooth_codec_sample_rate, codec,
+                format.format(sampleRate / 1000.0));
     }
 
     @VisibleForTesting
@@ -380,25 +428,12 @@ public class A2dpProfile implements LocalBluetoothProfile {
                 != BluetoothCodecConfig.SOURCE_CODEC_TYPE_APTX_ADAPTIVE) {
             return null;
         }
-        int sampleRate = switch (config.getSampleRate()) {
-            case BluetoothCodecConfig.SAMPLE_RATE_44100 -> 44100;
-            case BluetoothCodecConfig.SAMPLE_RATE_48000 -> 48000;
-            case BluetoothCodecConfig.SAMPLE_RATE_96000 -> 96000;
-            default -> 0;
-        };
         // Qualcomm's HQ + 16-bit-source profile selects CD-quality Lossless mode.
-        boolean lossless = sampleRate == 44100
+        boolean lossless = config.getSampleRate() == BluetoothCodecConfig.SAMPLE_RATE_44100
                 && (config.getCodecSpecific4() & 0x7000L) == 0x5000L;
         String codec = lossless ? context.getString(R.string.bluetooth_codec_aptx_lossless)
                 : context.getString(R.string.bluetooth_codec_aptx_adaptive);
-        if (sampleRate == 0) {
-            return codec;
-        }
-        NumberFormat format = NumberFormat.getNumberInstance(
-                context.getResources().getConfiguration().getLocales().get(0));
-        format.setMaximumFractionDigits(1);
-        return context.getString(R.string.bluetooth_codec_sample_rate, codec,
-                format.format(sampleRate / 1000.0));
+        return withSampleRate(context, codec, config.getSampleRate());
     }
 
     public String toString() {
