@@ -4792,6 +4792,10 @@ class DisplayContent extends RootDisplayArea implements WindowManagerPolicy.Disp
         return mWmService.mDisplayWindowSettings.getImePolicyLocked(this);
     }
 
+    boolean isFreeformDisplay() {
+        return isFreeformDisplay;
+    }
+
     boolean forceDesktopMode() {
         return ("VNC".equals(mDisplay.getName()) || mWmService.mForceDesktopModeOnExternalDisplays)
             && !isDefaultDisplay && !isFreeformDisplay && !isPrivate();

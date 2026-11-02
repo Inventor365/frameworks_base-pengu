@@ -24,7 +24,9 @@ import static android.app.ActivityTaskManager.INVALID_TASK_ID;
 import static android.app.KeyguardManager.ACTION_CONFIRM_DEVICE_CREDENTIAL_WITH_USER;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_STANDARD;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_UNDEFINED;
+import static android.app.WindowConfiguration.WINDOWING_MODE_FREEFORM;
 import static android.app.WindowConfiguration.WINDOWING_MODE_PINNED;
+import static android.app.WindowConfiguration.WINDOWING_MODE_UNDEFINED;
 import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
 import static android.content.pm.ActivityInfo.LAUNCH_SINGLE_INSTANCE;
 import static android.content.pm.ActivityInfo.LAUNCH_SINGLE_TASK;
@@ -2097,6 +2099,14 @@ public class RootWindowContainer extends WindowContainer<DisplayContent>
                     + " to its current taskDisplayArea=" + taskDisplayArea);
         }
         rootTask.reparent(taskDisplayArea, onTop);
+
+        // LMO freeform displays are sized to the floating window; a task carried over in
+        // freeform mode would keep its old bounds there instead of filling the display.
+        if (taskDisplayArea.getDisplayContent().isFreeformDisplay()
+                && rootTask.getWindowingMode() == WINDOWING_MODE_FREEFORM) {
+            rootTask.setWindowingMode(WINDOWING_MODE_UNDEFINED);
+            rootTask.setBounds(null);
+        }
 
         // Resume focusable root task after reparenting to another display area.
         rootTask.resumeNextFocusAfterReparent();
