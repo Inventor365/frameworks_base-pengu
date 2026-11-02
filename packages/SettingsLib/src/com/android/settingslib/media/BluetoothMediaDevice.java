@@ -41,7 +41,7 @@ public class BluetoothMediaDevice extends MediaDevice {
     private final CachedBluetoothDevice mCachedDevice;
     private final boolean mIsMutingExpectedDevice;
 
-    BluetoothMediaDevice(
+    public BluetoothMediaDevice(
             @NonNull Context context,
             @NonNull CachedBluetoothDevice device,
             @Nullable MediaRoute2Info routeInfo,

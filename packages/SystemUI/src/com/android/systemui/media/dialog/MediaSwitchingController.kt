@@ -19,6 +19,11 @@ import android.app.KeyguardManager
 import android.app.Notification
 import android.app.WallpaperColors
 import android.content.ActivityNotFoundException
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.os.Handler
+import android.os.Looper
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -53,6 +58,8 @@ import com.android.media.flags.Flags
 import com.android.media.flags.Flags.fixOutputSwitcherMultiuserSupport
 import com.android.settingslib.RestrictedLockUtilsInternal
 import com.android.settingslib.Utils
+import com.android.settingslib.bluetooth.A2dpProfile
+import com.android.settingslib.media.BluetoothMediaDevice
 import com.android.settingslib.bluetooth.BluetoothUtils
 import com.android.settingslib.bluetooth.LocalBluetoothLeBroadcast
 import com.android.settingslib.bluetooth.LocalBluetoothManager
@@ -89,6 +96,8 @@ import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executor
+import org.json.JSONException
+import org.json.JSONObject
 import kotlinx.coroutines.Job
 
 /**
@@ -166,6 +175,22 @@ constructor(
     private var mGroupSelectedItems: Boolean? = null // Unset until the first render.
     private var mInAudioSharing = false
     private var mAudioShareJob: Job? = null
+    private var mClassicSharingReceiverRegistered = false
+    private var mClassicSharingSupported = false
+    private var mClassicSharingState = JSONObject()
+    private val mClassicSharingReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != ACTION_CLASSIC_SHARING_STATE) return
+            try {
+                mClassicSharingState = JSONObject(intent.getStringExtra("state") ?: return)
+                mClassicSharingSupported = true
+                onDeviceListUpdate(mLocalMediaManager.mediaDevices.toMutableList())
+            } catch (e: JSONException) {
+                Log.w(TAG, "Invalid Bluetooth audio sharing state", e)
+            }
+        }
+    }
+
 
     @JvmField
     @VisibleForTesting
@@ -229,6 +254,22 @@ constructor(
             }
         }
         mCallback = cb
+        if (mMediaSwitchingType != MediaSwitchingType.INPUT) {
+            if (!mClassicSharingReceiverRegistered) {
+                mContext.registerReceiver(
+                    mClassicSharingReceiver,
+                    IntentFilter(ACTION_CLASSIC_SHARING_STATE),
+                    android.Manifest.permission.BLUETOOTH_PRIVILEGED,
+                    Handler(Looper.getMainLooper()),
+                    Context.RECEIVER_EXPORTED,
+                )
+                mClassicSharingReceiverRegistered = true
+            }
+            mContext.sendBroadcast(
+                Intent(ACTION_CLASSIC_SHARING_QUERY).setPackage("com.android.bluetooth"),
+                android.Manifest.permission.BLUETOOTH_PRIVILEGED,
+            )
+        }
         mNearbyDeviceInfoMap.clear()
         if (mMediaSwitchingType != MediaSwitchingType.INPUT) {
             mNearbyMediaDevicesManager?.registerNearbyDevicesCallback(this)
@@ -256,6 +297,12 @@ constructor(
     }
 
     fun stop() {
+        if (mClassicSharingReceiverRegistered) {
+            mContext.unregisterReceiver(mClassicSharingReceiver)
+            mClassicSharingReceiverRegistered = false
+        }
+        mClassicSharingSupported = false
+        mClassicSharingState = JSONObject()
         mMediaController?.unregisterCallback(mCb)
         if (mMediaSwitchingType != MediaSwitchingType.INPUT) {
             mLocalMediaManager.unregisterCallback(this)
@@ -301,9 +348,24 @@ constructor(
     }
 
     override fun onDeviceListUpdate(devices: MutableList<MediaDevice>) {
+        val outputDevices = devices.toMutableList()
+        // Include paired sinks that cannot connect before the current media link switches modes.
+        if (mClassicSharingSupported) {
+            mLocalBluetoothManager?.cachedDeviceManager?.cachedDevicesCopy?.forEach { cached ->
+                if (cached.bondState != BluetoothDevice.BOND_BONDED || cached.isHearingDevice ||
+                    cached.profiles.none { it is A2dpProfile }) return@forEach
+                val candidate = BluetoothMediaDevice(mContext, cached, null, null, null)
+                if (canShareClassicAudio(candidate) && outputDevices.none {
+                        (it as? BluetoothMediaDevice)?.cachedDevice?.device?.address ==
+                            cached.device.address
+                    }) {
+                    outputDevices.add(candidate)
+                }
+            }
+        }
         val isListEmpty = mOutputMediaItemListProxy.isEmpty()
         if (isListEmpty || !mIsRefreshing) {
-            buildMediaItems(devices)
+            buildMediaItems(outputDevices)
             if (mGroupSelectedItems == null) {
                 // Decide whether to group devices only during the initial render.
                 // Avoid grouping broadcast devices because grouped volume control is not
@@ -315,7 +377,7 @@ constructor(
             synchronized(mMediaDevicesLock) {
                 mNeedRefresh = true
                 mCachedMediaDevices.clear()
-                mCachedMediaDevices.addAll(devices)
+                mCachedMediaDevices.addAll(outputDevices)
             }
         }
     }
@@ -660,6 +722,12 @@ constructor(
     }
 
     fun connectDevice(device: MediaDevice) {
+        if (!device.isInputDevice && !isActiveRemoteDevice(device) &&
+            (mClassicSharingState.optBoolean("sharing") || isClassicAudioSharingPending())) {
+            val address = classicBluetoothAddress(device)
+            requestClassicAudioSharing(if (address == null) emptyList() else listOf(address))
+            if (address != null) return
+        }
         mInfoMediaManager.setDeviceState(device, MediaDeviceState.STATE_CONNECTING)
         // If input routing is supported and the device is an input device, call mInputRouteManager
         // to handle routing.
@@ -802,6 +870,79 @@ constructor(
     @VisibleForTesting
     fun clearMediaItemList() {
         mOutputMediaItemListProxy.clear()
+    }
+
+    private fun classicBluetoothAddress(device: MediaDevice?): String? {
+        if (device !is BluetoothMediaDevice || device.cachedDevice.isHearingDevice) return null
+        val routeType = device.routeInfo?.type
+        if (routeType != null && routeType != MediaRoute2Info.TYPE_BLUETOOTH_A2DP) return null
+        val cached = device.cachedDevice
+        return if (cached.bondState == BluetoothDevice.BOND_BONDED &&
+            cached.profiles.any { it is A2dpProfile }) cached.device.address else null
+    }
+
+    private fun classicSharingAddresses(field: String): List<String> {
+        val values = mClassicSharingState.optJSONArray(field) ?: return emptyList()
+        return (0 until values.length()).map { values.getString(it) }
+    }
+
+    private fun classicSelectedAddresses(): List<String> =
+        classicSharingAddresses("devices").ifEmpty {
+            listOfNotNull(classicBluetoothAddress(getCurrentConnectedMediaDevice()))
+        }
+
+    fun canShareClassicAudio(device: MediaDevice): Boolean {
+        if (!mClassicSharingSupported || device.isInputDevice || isCurrentConnectedDeviceRemote() ||
+            (userHandle != null && userHandle.identifier != mUserTracker.userId) ||
+            mContext.getSystemService<UserManager>()?.hasUserRestriction(
+                UserManager.DISALLOW_CONFIG_BLUETOOTH) == true) return false
+        return classicBluetoothAddress(device) != null &&
+            (classicSelectedAddresses().isNotEmpty() ||
+                (isClassicAudioSharingPending() &&
+                    classicSharingAddresses("requested").isNotEmpty()))
+    }
+
+    fun isClassicAudioSharingSelected(device: MediaDevice): Boolean =
+        classicBluetoothAddress(device) in classicSelectedAddresses()
+
+    fun canRemoveClassicAudioSharingDevice(): Boolean = classicSelectedAddresses().size > 1
+
+    fun canAddClassicAudioSharingDevice(): Boolean = classicSelectedAddresses().size < 2
+
+    fun isClassicAudioSharingPending(): Boolean =
+        mClassicSharingState.optString("status") == "connecting"
+
+    fun isClassicAudioSharingDevicePending(device: MediaDevice): Boolean =
+        isClassicAudioSharingPending() && classicBluetoothAddress(device) in
+            (classicSharingAddresses("requested") + classicSharingAddresses("devices"))
+
+    fun didClassicAudioSharingFail(device: MediaDevice): Boolean =
+        mClassicSharingState.optString("status") == "failed" &&
+            classicBluetoothAddress(device) in classicSharingAddresses("failed")
+
+    fun setClassicAudioSharingSelected(device: MediaDevice, selected: Boolean): Boolean {
+        if (!canShareClassicAudio(device)) return false
+        if (isClassicAudioSharingPending()) return true
+        val address = classicBluetoothAddress(device) ?: return false
+        val devices = classicSelectedAddresses().toMutableList()
+        if (selected) {
+            if (address in devices || devices.size >= 2) return true
+            devices.add(address)
+        } else {
+            if (devices.size < 2) return true
+            devices.remove(address)
+        }
+        requestClassicAudioSharing(devices)
+        return true
+    }
+
+    private fun requestClassicAudioSharing(addresses: List<String>) {
+        mClassicSharingState.put("status", "connecting")
+        mClassicSharingState.put("requested", org.json.JSONArray(addresses))
+        val request = Intent(ACTION_CLASSIC_SHARING_REQUEST).setPackage("com.android.bluetooth")
+        request.putStringArrayListExtra("devices", ArrayList(addresses))
+        mContext.sendBroadcast(request, android.Manifest.permission.BLUETOOTH_PRIVILEGED)
+        mCallback.onRouteChanged()
     }
 
     fun addDeviceToPlayMedia(device: MediaDevice) {
@@ -1131,6 +1272,12 @@ constructor(
 
     companion object {
         private const val TAG = "MediaSwitchingController"
+        private const val ACTION_CLASSIC_SHARING_REQUEST =
+            "com.android.bluetooth.action.REQUEST_AUDIO_SHARING"
+        private const val ACTION_CLASSIC_SHARING_QUERY =
+            "com.android.bluetooth.action.QUERY_AUDIO_SHARING"
+        private const val ACTION_CLASSIC_SHARING_STATE =
+            "com.android.bluetooth.action.AUDIO_SHARING_STATE"
         private val DEBUG = Log.isLoggable(TAG, Log.DEBUG)
         private const val PAGE_CONNECTED_DEVICES_KEY = "top_level_connected_devices"
         private const val ALLOWLIST_DURATION_MS: Long = 20000

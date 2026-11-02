@@ -585,6 +585,9 @@ class MediaOutputAdapter(controller: MediaSwitchingController) :
                     R.drawable.ic_add_circle_rounded
                 }
             )
+            mGroupButton.isEnabled = !mController.canShareClassicAudio(device) ||
+                (!mController.isClassicAudioSharingPending() &&
+                    (groupStatus.selected || mController.canAddClassicAudioSharingDevice()))
             mGroupButton.setOnClickListener {
                 onGroupActionTriggered(!groupStatus.selected, device)
             }

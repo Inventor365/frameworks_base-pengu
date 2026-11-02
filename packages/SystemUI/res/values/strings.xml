@@ -5092,4 +5092,6 @@
     <string name="active_edge_activity_select_title">Select activity</string>
     <!-- Title of the expanded Quick Settings connectivity folder [CHAR LIMIT=30] -->
     <string name="quick_settings_connectivity_folder_title">Connectivity</string>
+    <string name="media_output_dialog_bluetooth_sharing">Sharing audio · SBC</string>
+    <string name="media_output_dialog_bluetooth_sharing_connecting">Connecting audio devices…</string>
 </resources>

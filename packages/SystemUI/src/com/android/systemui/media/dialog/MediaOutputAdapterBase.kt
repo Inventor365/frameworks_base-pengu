@@ -165,6 +165,32 @@ abstract class MediaOutputAdapterBase(protected val mController: MediaSwitchingC
                 }
             }
 
+            if (mController.canShareClassicAudio(device)) {
+                val selected = mController.isClassicAudioSharingSelected(device)
+                val removable = selected && mController.canRemoveClassicAudioSharingDevice()
+                val pending = mController.isClassicAudioSharingPending()
+                groupStatus = GroupStatus(selected, removable)
+                connectionState = when {
+                    mController.isClassicAudioSharingDevicePending(device) -> CONNECTING
+                    selected -> CONNECTED
+                    else -> DISCONNECTED
+                }
+                restrictVolumeAdjustment = restrictVolumeAdjustment || !currentlyConnected || pending
+                deviceDisabled = pending || (!selected && !mController.canAddClassicAudioSharingDevice())
+                clickListener = if (!deviceDisabled && (!selected || removable)) {
+                    View.OnClickListener { onGroupActionTriggered(!selected, device) }
+                } else null
+                subtitle = when {
+                    mController.isClassicAudioSharingDevicePending(device) ->
+                        mContext.getString(R.string.media_output_dialog_bluetooth_sharing_connecting)
+                    mController.didClassicAudioSharingFail(device) ->
+                        mContext.getString(R.string.media_output_dialog_connect_failed)
+                    selected && removable ->
+                        mContext.getString(R.string.media_output_dialog_bluetooth_sharing)
+                    else -> subtitle
+                }
+            }
+
             if (connectionState == CONNECTED) {
                 mCurrentActivePosition = position
             }
@@ -257,6 +283,10 @@ abstract class MediaOutputAdapterBase(protected val mController: MediaSwitchingC
         }
 
         protected fun onGroupActionTriggered(isChecked: Boolean, device: MediaDevice) {
+            if (mController.setClassicAudioSharingSelected(device, isChecked)) {
+                notifyDataSetChanged()
+                return
+            }
             disableSeekBar()
             if (isChecked && device.isSelectable()) {
                 mController.addDeviceToPlayMedia(device)
