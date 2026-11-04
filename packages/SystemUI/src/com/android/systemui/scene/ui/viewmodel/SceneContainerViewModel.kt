@@ -20,8 +20,11 @@ import android.annotation.StringRes
 import android.content.res.Resources
 import android.os.Build
 import android.view.MotionEvent
+import android.view.View
 import android.view.WindowInsetsController
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.WindowInsetsCompat
 import com.android.app.tracing.coroutines.launchTraced as launch
 import com.android.compose.animation.scene.ContentKey
@@ -60,6 +63,7 @@ import com.android.systemui.shade.shared.model.ShadeMode
 import com.android.systemui.statusbar.core.StatusBarForDesktop
 import com.android.systemui.statusbar.domain.interactor.RemoteInputInteractor
 import com.android.systemui.statusbar.notification.domain.interactor.NotificationContainerInteractor
+import com.android.systemui.statusbar.notification.headsup.HeadsUpManager
 import com.android.systemui.statusbar.notification.stack.ui.view.SharedNotificationContainer
 import com.android.systemui.statusbar.ui.SystemBarUtilsState
 import com.android.systemui.wallpapers.ui.viewmodel.WallpaperViewModel
@@ -104,6 +108,7 @@ constructor(
     @Assisted private val motionEventHandlerReceiver: (MotionEventHandler?) -> Unit,
     private val accessibilityInteractor: AccessibilityInteractor,
     shadeAnimationInteractor: ShadeAnimationInteractor,
+    private val headsUpManager: HeadsUpManager,
 ) : HydratedActivatable() {
 
     /** The scene that should be rendered. */
@@ -159,12 +164,26 @@ constructor(
                 SceneContainerSwipeDetector(
                     dynamicSizeEdgeDetector = dynamicSizeEdgeDetector,
                     invocationGestureSplitRatio = splitRatio,
+                    headsUpSwipeSource = ::headsUpSwipeSource,
                 )
             } else {
                 dynamicSizeEdgeDetector
             }
         }
         .hydratedStateOf(initialValue = dynamicSizeEdgeDetector)
+
+    /** Dragging a pinned heads up opens the notifications shade, whichever half it starts in. */
+    private fun headsUpSwipeSource(position: IntOffset): SceneContainerArea.Resolved? {
+        val region = headsUpManager.getTouchableRegion() ?: return null
+        if (!region.contains(position.x, position.y)) return null
+        val layoutDirection =
+            if (resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL) {
+                LayoutDirection.Rtl
+            } else {
+                LayoutDirection.Ltr
+            }
+        return SceneContainerArea.StartHalf.resolve(layoutDirection)
+    }
 
     /** Amount of color saturation for the Flexi🥃 ribbon. */
     val ribbonColorSaturation: Float by

@@ -118,10 +118,13 @@ sealed class SceneContainerArea(private val resolveArea: (LayoutDirection) -> Re
  * @param dynamicSizeEdgeDetector The edge detector with knowledge about screen edge sizes.
  * @param invocationGestureSplitRatio The ratio split between "start" and "end". Must be in the
  *   range (0.. 1.0).
+ * @param headsUpSwipeSource Returns the area for a vertical swipe that starts on a pinned heads up
+ *   notification, or null if the position is not on one.
  */
 class SceneContainerSwipeDetector(
     private val dynamicSizeEdgeDetector: DynamicSizeEdgeDetector,
     private val invocationGestureSplitRatio: Float,
+    private val headsUpSwipeSource: (IntOffset) -> SceneContainerArea.Resolved? = { null },
 ) : SwipeSourceDetector {
 
     init {
@@ -136,6 +139,9 @@ class SceneContainerSwipeDetector(
         density: Density,
         orientation: Orientation,
     ): SceneContainerArea.Resolved {
+        if (orientation == Orientation.Vertical) {
+            headsUpSwipeSource(position)?.let { return it }
+        }
         val detectedEdge =
             dynamicSizeEdgeDetector.source(layoutSize, position, density, orientation)
         return when (detectedEdge) {

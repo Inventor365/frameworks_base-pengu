@@ -37,6 +37,7 @@ import com.android.systemui.scene.ui.viewmodel.toBouncerTransitionViewModelFacto
 import com.android.systemui.shade.domain.interactor.shadeInteractor
 import com.android.systemui.shade.domain.interactor.shadeModeInteractor
 import com.android.systemui.statusbar.domain.interactor.remoteInputInteractor
+import com.android.systemui.statusbar.notification.headsup.headsUpManager
 import com.android.systemui.statusbar.notification.stack.domain.interactor.notificationContainerInteractor
 import com.android.systemui.statusbar.ui.systemBarUtilsState
 import com.android.systemui.wallpapers.domain.interactor.wallpaperInteractorFaked
@@ -170,6 +171,7 @@ val Kosmos.sceneContainerViewModelFactory by Fixture {
                         override fun create() = BurnInMovementState(aodBurnInViewModel)
                     },
                 accessibilityInteractor = accessibilityInteractor,
+                headsUpManager = headsUpManager,
             )
     }
 }
