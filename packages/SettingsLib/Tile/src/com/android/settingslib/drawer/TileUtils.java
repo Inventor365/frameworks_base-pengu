@@ -401,7 +401,7 @@ public class TileUtils {
                     + intent + " missing metadata "
                     + (metaData == null ? "" : EXTRA_CATEGORY_KEY));
             return;
-        } else {
+        } else if (metaData != null && metaData.containsKey(EXTRA_CATEGORY_KEY)) {
             categoryKey = metaData.getString(EXTRA_CATEGORY_KEY);
         }
 
