@@ -99,6 +99,8 @@ public class TileUtils {
     private static final String MANUFACTURER_DEFAULT_CATEGORY =
             "com.android.settings.category.device";
 
+    private static final String SETTINGS_CATEGORY_PREFIX = "com.android.settings.category.";
+
     /**
      * The key used to get the category from metadata of activities of action
      * {@link #EXTRA_SETTINGS_ACTION}
@@ -402,7 +404,13 @@ public class TileUtils {
                     + (metaData == null ? "" : EXTRA_CATEGORY_KEY));
             return;
         } else if (metaData != null && metaData.containsKey(EXTRA_CATEGORY_KEY)) {
-            categoryKey = metaData.getString(EXTRA_CATEGORY_KEY);
+            final String declaredKey = metaData.getString(EXTRA_CATEGORY_KEY);
+            // OEM keys such as com.oplus.settings.category.* match no page and would hide the
+            // tile, so a tile with a default category keeps it.
+            if (defaultCategory == null
+                    || (declaredKey != null && declaredKey.startsWith(SETTINGS_CATEGORY_PREFIX))) {
+                categoryKey = declaredKey;
+            }
         }
 
         final boolean isProvider = componentInfo instanceof ProviderInfo;
