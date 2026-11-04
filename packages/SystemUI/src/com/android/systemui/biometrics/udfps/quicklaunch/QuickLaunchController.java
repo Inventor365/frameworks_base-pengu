@@ -58,14 +58,11 @@ public class QuickLaunchController implements CoreStartable,
 
     private static final String TAG = "QuickLaunchController";
 
-    private static final long HOLD_THRESHOLD_MS = 500L;
     private static final long FAST_GLIDE_TIMEOUT_MS = 250L;
     private static final long SAFETY_UNLOCK_TIMEOUT_MS = 3500L;
-    // After an unlock that began with the screen off: how long to wait for a real touch, how
-    // long it has to rest on the sensor before the menu opens, and how far from the sensor
-    // center it may be, in sensor radii.
+    // After an unlock that began with the screen off: how long to wait for a real touch and
+    // how far from the sensor center it may be, in sensor radii.
     private static final long AWAIT_TOUCH_TIMEOUT_MS = 1500L;
-    private static final long AWAIT_TOUCH_HOLD_MS = 250L;
     private static final float AWAIT_TOUCH_RADIUS_SCALE = 2f;
 
     private final Context mContext;
@@ -323,7 +320,8 @@ public class QuickLaunchController implements CoreStartable,
 
         long now = SystemClock.uptimeMillis();
         long elapsed = (mTouchDownTime > 0) ? (now - mTouchDownTime) : 200L;
-        long delay = Math.max(150L, HOLD_THRESHOLD_MS - elapsed);
+        long holdTime = QuickLaunchHelper.getInstance(mContext).getHoldTimeMs();
+        long delay = Math.max(150L, holdTime - elapsed);
         Log.d(TAG, "Fingerprint authenticated with finger held (" + elapsed
                 + "ms elapsed). Scheduling Quick Launch overlay in " + delay + "ms");
 
@@ -348,7 +346,7 @@ public class QuickLaunchController implements CoreStartable,
             Log.d(TAG, "Unlocked with the screen off and a touch already down");
             mAwaitingTouch = false;
             mMainHandler.postDelayed(mSafetyUnlockRunnable, SAFETY_UNLOCK_TIMEOUT_MS);
-            mMainHandler.postDelayed(mLongPressRunnable, AWAIT_TOUCH_HOLD_MS);
+            mMainHandler.postDelayed(mLongPressRunnable, getAwaitTouchHoldMs());
         } else {
             Log.d(TAG, "Unlocked with the screen off, waiting for a touch on the sensor");
             mAwaitingTouch = true;
@@ -371,7 +369,12 @@ public class QuickLaunchController implements CoreStartable,
 
         Log.d(TAG, "Touch on the sensor after the screen-off unlock, scheduling Quick Launch");
         mMainHandler.postDelayed(mSafetyUnlockRunnable, SAFETY_UNLOCK_TIMEOUT_MS);
-        mMainHandler.postDelayed(mLongPressRunnable, AWAIT_TOUCH_HOLD_MS);
+        mMainHandler.postDelayed(mLongPressRunnable, getAwaitTouchHoldMs());
+    }
+
+    // The unlock already took part of the hold, so only wait half the hold time here.
+    private long getAwaitTouchHoldMs() {
+        return QuickLaunchHelper.getInstance(mContext).getHoldTimeMs() / 2;
     }
 
     private void onAwaitTouchTimeout() {

@@ -53,6 +53,8 @@ public class QuickLaunchHelper {
 
     public static final String SETTING_QUICK_LAUNCH_ENABLED = "quick_launch_enabled";
     public static final String SETTING_QUICK_LAUNCH_ITEMS = "quick_launch_items";
+    public static final String SETTING_QUICK_LAUNCH_HOLD_TIME = "quick_launch_hold_time";
+    public static final int DEFAULT_HOLD_TIME_MS = 500;
 
         public static final int[] SLOT_CHECK_ORDER = new int[]{2, 3, 1, 4, 0};
 
@@ -96,6 +98,11 @@ public class QuickLaunchHelper {
 
     public boolean isQuickLaunchEnabled() {
         return mQuickLaunchEnabled;
+    }
+
+    public long getHoldTimeMs() {
+        return Settings.Secure.getIntForUser(mContext.getContentResolver(),
+                SETTING_QUICK_LAUNCH_HOLD_TIME, DEFAULT_HOLD_TIME_MS, UserHandle.USER_CURRENT);
     }
 
     public List<QuickLaunchItem> getQuickLaunchItems() {
