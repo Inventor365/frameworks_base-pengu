@@ -455,6 +455,16 @@ public class NotificationIconContainer extends ViewGroup {
         float layoutRight = getRightBound();
         mVisualOverflowStart = 0;
         mFirstVisibleIconState = null;
+        // Icons of notifications that are not in the shelf yet take no room, so only the icons
+        // that are showing count towards the overflow.
+        int lastShownIndex = -1;
+        for (int i = childCount - 1; i >= 0; i--) {
+            if (mIconStates.get(getChildAt(i)).iconAppearAmount > 0.0f) {
+                lastShownIndex = i;
+                break;
+            }
+        }
+        int shownIcons = 0;
         for (int i = 0; i < childCount; i++) {
             View view = getChildAt(i);
             IconState iconState = mIconStates.get(view);
@@ -471,10 +481,14 @@ public class NotificationIconContainer extends ViewGroup {
                     ? StatusBarIconView.STATE_HIDDEN
                     : StatusBarIconView.STATE_ICON;
 
-            final boolean forceOverflow =
-                    shouldForceOverflow(i, iconState.iconAppearAmount, maxVisibleIcons);
-            final boolean isOverflowing = forceOverflow || isOverflowing(
-                    /* isLastChild= */ i == childCount - 1, translationX, layoutRight, mIconSize);
+            final boolean shown = iconState.iconAppearAmount > 0.0f;
+            final boolean forceOverflow = shown
+                    && shouldForceOverflow(shownIcons, iconState.iconAppearAmount, maxVisibleIcons);
+            final boolean isOverflowing = forceOverflow || (shown && isOverflowing(
+                    /* isLastChild= */ i >= lastShownIndex, translationX, layoutRight, mIconSize));
+            if (shown) {
+                shownIcons++;
+            }
 
             // First icon to overflow.
             if (mFirstOverflowIndex == -1 && isOverflowing) {
