@@ -69,6 +69,7 @@ import dagger.Lazy
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.android.systemui.penguin.NowBarStack
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -525,7 +526,12 @@ constructor(
      * TODO(b/338590620): Migrate alphas from [SharedNotificationContainerViewModel] into this flow
      */
     val maxAlpha: Flow<Float> =
-        stackAppearanceInteractor.alphaForBrightnessMirror.dumpValue("maxAlpha")
+        combine(
+            stackAppearanceInteractor.alphaForBrightnessMirror.dumpValue("maxAlpha"),
+            NowBarStack.alpha,
+        ) { mirror, nowBar ->
+            mirror * nowBar
+        }
 
     /** Scroll state of the notification shade. */
     val shadeScrollState: Flow<ShadeScrollState> = stackAppearanceInteractor.shadeScrollState

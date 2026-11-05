@@ -16,6 +16,9 @@ interface LockscreenPlayer {
 
     val expansion: Float
 
+    /** How far the player card and notifications have folded into the now bar, 0 to 1. */
+    val nowBarFraction: Float
+
     @Composable fun ObserveSettings()
 
     fun setMediaVisible(visible: Boolean)
@@ -42,4 +45,6 @@ interface LockscreenPlayer {
         media: @Composable ColumnScope.() -> Unit,
         notifications: @Composable (Modifier) -> Unit,
     )
+
+    @Composable fun NowBar(modifier: Modifier)
 }

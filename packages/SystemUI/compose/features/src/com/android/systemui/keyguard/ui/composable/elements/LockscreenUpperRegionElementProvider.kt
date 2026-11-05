@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -53,8 +54,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.dimensionResource
@@ -102,6 +107,10 @@ import com.android.systemui.shade.shared.model.ShadeMode
 import com.google.errorprone.annotations.CompileTimeConstant
 import java.util.Optional
 import javax.inject.Inject
+
+private val FOLD_PILL_OFFSET = 64.dp
+private const val FOLD_PILL_SCALE = 0.6f
+private val FOLD_BLUR = 24.dp
 
 @SysUISingleton
 /** Provides a combined element for all lockscreen ui above the lock icon. */
@@ -157,8 +166,11 @@ constructor(
                 )
                 // Make the Notification section overlap with the AOD icons, to avoid jumps while
                 // animating them in.
+                val folded by remember {
+                    derivedStateOf { (player?.nowBarFraction ?: 0f) >= 0.5f }
+                }
                 AnimatedVisibility(
-                    viewModel.isNotificationStackActive,
+                    viewModel.isNotificationStackActive && !folded,
                     modifier = Modifier.padding(top = stackTopPadding),
                 ) {
                     LockscreenElement(
@@ -186,8 +198,43 @@ constructor(
             LockscreenElement(
                 MediaCarousel,
                 modifier =
-                    Modifier.then(widthModifier).padding(bottom = bottomPadding).then(modifier),
+                    Modifier.then(widthModifier)
+                        .padding(bottom = bottomPadding)
+                        .then(modifier)
+                        .foldedIntoNowBar(),
             )
+        }
+
+        /**
+         * Like ColorOS, folding into the now bar sends the card down to the pill: it travels to the
+         * bottom of the screen, shrinks towards the pill's width and blurs out in the first half,
+         * then gives up its height in one step. It stays composed: the now bar reads its state.
+         */
+        @Composable
+        private fun Modifier.foldedIntoNowBar(): Modifier {
+            val nowBar = player ?: return this
+            val travel = remember { floatArrayOf(0f) }
+            return onGloballyPositioned {
+                    val root = it.findRootCoordinates().size.height
+                    val center = it.positionInRoot().y + it.size.height / 2f
+                    travel[0] = (root - center).coerceAtLeast(0f)
+                }
+                .layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints.copy(minHeight = 0))
+                    val height = if (nowBar.nowBarFraction >= 0.5f) 0 else placeable.height
+                    layout(placeable.width, height) { placeable.place(0, 0) }
+                }
+                .graphicsLayer {
+                    val out = (nowBar.nowBarFraction * 2f).coerceAtMost(1f)
+                    // Stop short of the bottom edge, where the pill sits between the shortcuts.
+                    translationY = out * (travel[0] - FOLD_PILL_OFFSET.toPx()).coerceAtLeast(0f)
+                    scaleX = 1f - (1f - FOLD_PILL_SCALE) * out
+                    scaleY = 1f - (1f - FOLD_PILL_SCALE) * out
+                    alpha = 1f - out * out
+                    val blur = out * FOLD_BLUR.toPx()
+                    renderEffect =
+                        if (blur > 0f) BlurEffect(blur, blur, TileMode.Decal) else null
+                }
         }
 
         @Composable

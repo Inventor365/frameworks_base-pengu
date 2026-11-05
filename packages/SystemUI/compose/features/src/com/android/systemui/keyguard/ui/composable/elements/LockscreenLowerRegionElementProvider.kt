@@ -29,7 +29,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -43,6 +45,7 @@ import com.android.systemui.keyguard.ui.viewmodel.KeyguardQuickAffordancesCombin
 import com.android.systemui.keyguard.ui.viewmodel.KeyguardQuickAffordancesCombinedViewModelModule.Companion.LOCKSCREEN_INSTANCE
 import com.android.systemui.keyguard.ui.viewmodel.LockscreenLowerRegionViewModel
 import com.android.systemui.lifecycle.rememberViewModel
+import com.android.systemui.penguin.LockscreenPlayer
 import com.android.systemui.plugins.keyguard.ui.composable.elements.BaseLockscreenElement.ElementSource
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElement
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementKeys
@@ -53,6 +56,7 @@ import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenSc
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenScope.Companion.LockscreenElement
 import com.android.systemui.res.R
 import com.android.systemui.shade.ShadeDisplayAware
+import java.util.Optional
 import javax.inject.Inject
 import javax.inject.Named
 
@@ -65,7 +69,10 @@ constructor(
     private val viewModelFactory: LockscreenLowerRegionViewModel.Factory,
     @Named(LOCKSCREEN_INSTANCE)
     private val quickAffordancesCombinedViewModel: KeyguardQuickAffordancesCombinedViewModel,
+    player: Optional<LockscreenPlayer>,
 ) : LockscreenElementProvider {
+    private val player = player.orElse(null)
+
     override val elements: List<LockscreenElement> by lazy { listOf(LowerRegionElement()) }
 
     private inner class LowerRegionElement : LockscreenElement {
@@ -86,7 +93,20 @@ constructor(
                     Modifier.weight(1f)
                         .wrapContentHeight(Alignment.CenterVertically, unbounded = true)
                 ) {
-                    LockscreenElement(IndicationArea)
+                    val folded by remember {
+                        derivedStateOf { (player?.nowBarFraction ?: 0f) >= 0.5f }
+                    }
+                    if (!folded) {
+                        Box(
+                            Modifier.graphicsLayer {
+                                alpha = 1f - ((player?.nowBarFraction ?: 0f) * 2f).coerceAtMost(1f)
+                            }
+                        ) {
+                            LockscreenElement(IndicationArea)
+                        }
+                    } else {
+                        player?.NowBar(Modifier.align(Alignment.Center))
+                    }
                 }
 
                 ShortcutElement(Shortcuts.End, viewModel)

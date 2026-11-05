@@ -67,6 +67,7 @@ import com.android.systemui.keyguard.ui.viewmodel.ViewStateAccessor
 import com.android.systemui.lifecycle.rememberViewModel
 import com.android.systemui.penguin.LockscreenClockFace
 import com.android.systemui.penguin.LockscreenPlayer
+import com.android.systemui.penguin.NowBarStack
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementContext
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementKeys
 import com.android.systemui.qs.shared.style.LockscreenClockPress
@@ -75,6 +76,7 @@ import com.android.systemui.qs.shared.style.liquidGlassEnabled
 import com.android.systemui.scene.shared.model.Overlays
 import com.android.systemui.scene.shared.model.Scenes
 import com.android.systemui.scene.ui.composable.transitions.LockscreenToGoneCosFadeEnd
+import kotlin.math.max
 import kotlin.math.min
 import kotlinx.coroutines.flow.first
 import platform.test.motion.compose.values.MotionTestValueKey
@@ -205,6 +207,21 @@ class LockscreenContent(
                     ?.takeIf { it.fromContent == contentKey && it.toContent == Scenes.Gone }
                     ?.progress
             (toGone ?: overlaid { it == Overlays.Bouncer }).coerceIn(0f, 1f)
+        }
+        // The stack fades out in the first half of folding into the now bar, and is back in full
+        // as soon as the shade or bouncer covers the lock screen or the lock screen is left.
+        DisposableEffect(Unit) { onDispose { NowBarStack.alpha.value = 1f } }
+        LaunchedEffect(Unit) {
+            snapshotFlow {
+                    val fold = (1f - 2f * (player?.nowBarFraction ?: 0f)).coerceAtLeast(0f)
+                    val leaving =
+                        (layoutState.currentTransition as? TransitionState.Transition.ChangeScene)
+                            ?.takeIf { it.fromContent == contentKey }
+                            ?.progress ?: 0f
+                    val away = max(covered(), leaving.coerceIn(0f, 1f))
+                    fold + (1f - fold) * away
+                }
+                .collect { NowBarStack.alpha.value = it }
         }
         player?.ExpandedArt(
             alpha = {
