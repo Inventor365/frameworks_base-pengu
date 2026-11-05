@@ -276,6 +276,7 @@ class LockscreenContent(
                 )
             }
         }
+        player?.ArtGestures()
         if (fluidClock) {
             clockFace?.Overlay(
                 alpha = { min(viewModel.alpha, contentAlphaAnimatable.value) * (1f - covered()) },

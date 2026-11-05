@@ -47,4 +47,7 @@ interface LockscreenPlayer {
     )
 
     @Composable fun NowBar(modifier: Modifier)
+
+    /** Touch handling over the folded artwork, which is drawn behind the lock screen. */
+    @Composable fun ArtGestures()
 }
