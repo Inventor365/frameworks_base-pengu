@@ -5938,9 +5938,9 @@ public class NotificationStackScrollLayout
         int shelfHeight = mShelf != null ? mShelf.getIntrinsicHeight() : 0;
         return mNotificationStackSizeCalculator.computeMaxKeyguardNotifications(
                 /* stack = */ this,
-                /* space = */ availableSpace,
-                /* shelfHeight = */ shelfHeight,
-                /* extraShelfSpace = */ useExtraShelfSpace ? shelfHeight : 0
+                /* notifSpace = */ availableSpace,
+                /* shelfSpace = */ useExtraShelfSpace ? shelfHeight : 0,
+                /* shelfHeight = */ shelfHeight
         );
     }
 
