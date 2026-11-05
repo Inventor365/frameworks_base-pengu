@@ -264,6 +264,7 @@ import com.android.internal.os.SomeArgs;
 import com.android.internal.os.logging.MetricsLoggerWrapper;
 import com.android.internal.policy.DecorView;
 import com.android.internal.protolog.ProtoLog;
+import com.android.internal.util.custom.AdvancedAppSpoofUtils;
 import com.android.internal.util.android.FontController;
 import com.android.internal.util.ArrayUtils;
 import com.android.internal.util.FastPrintWriter;
@@ -8212,6 +8213,7 @@ public final class ActivityThread extends ClientTransactionHandler
         mConfigurationController.updateLocaleListFromAppContext(appContext);
 
         GamePropsSpoofService.getInstance().spoofForPackage(data.appInfo.packageName, appContext);
+        AdvancedAppSpoofUtils.setProps(appContext);
 
         if (PlayIntegritySpoofService.isTargetProcess(data.processName)) {
             PlayIntegritySpoofService pifService = PlayIntegritySpoofService.getInstance();
