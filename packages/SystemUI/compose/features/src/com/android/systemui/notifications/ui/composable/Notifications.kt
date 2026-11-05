@@ -49,6 +49,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -195,7 +196,8 @@ fun ContentScope.ConstrainedNotificationStack(
             tag = "Constrained",
             viewModel = viewModel,
             modifier =
-                Modifier.fillMaxWidth()
+                Modifier.align(LocalLockscreenStackAlignment.current)
+                    .fillMaxWidth()
                     .notificationStackHeight(view = stackScrollView, constrainToMaxHeight = true)
                     .onGloballyPositioned { coordinates ->
                         viewModel.onLockScreenStackBottomChanged(
@@ -211,6 +213,12 @@ fun ContentScope.ConstrainedNotificationStack(
         )
     }
 }
+
+/**
+ * Where the constrained lockscreen stack sits in its space: at the top, or at the bottom just above
+ * the lock icon.
+ */
+val LocalLockscreenStackAlignment = compositionLocalOf { Alignment.TopCenter }
 
 private val LockscreenStackBottomGap = 16.dp
 

@@ -74,6 +74,7 @@ import com.android.systemui.keyguard.shared.model.ClockSize
 import com.android.systemui.keyguard.ui.viewmodel.LockscreenUpperRegionViewModel
 import com.android.systemui.keyguard.ui.viewmodel.LockscreenUpperRegionViewModel.Decision
 import com.android.systemui.lifecycle.rememberViewModel
+import com.android.systemui.notifications.ui.composable.LocalLockscreenStackAlignment
 import com.android.systemui.penguin.LockscreenPlayer
 import com.android.systemui.log.LogBuffer
 import com.android.systemui.log.core.Logger
@@ -387,35 +388,40 @@ constructor(
                     }
                 }
                 scene(NarrowScenes.SmallClock) {
-                    val clock: @Composable () -> Unit = {
-                        when {
-                            customStyle != 0 -> CustomClockView()
-                            clockHidden -> { /* no clock */ }
-                            else -> LockscreenElement(Region.Clock.Small)
-                        }
-                    }
-                    val player = this@LockscreenUpperRegionElementProvider.player
-                    if (player != null) {
-                        Column(Modifier.fillMaxSize()) {
-                            with(player) {
-                                SmallClockColumn(
-                                    notificationsActive = viewModel.isNotificationStackActive,
-                                    clock = clock,
-                                    media = { MediaCarousel(Modifier.align(Alignment.Start)) },
-                                    notifications = { notificationsModifier ->
-                                        Notifications(
-                                            aodAlignment = Alignment.TopStart,
-                                            modifier = notificationsModifier,
-                                        )
-                                    },
-                                )
+                    // Like iOS, the notifications under the small clock rest just above the lock icon.
+                    CompositionLocalProvider(
+                        LocalLockscreenStackAlignment provides Alignment.BottomCenter
+                    ) {
+                        val clock: @Composable () -> Unit = {
+                            when {
+                                customStyle != 0 -> CustomClockView()
+                                clockHidden -> { /* no clock */ }
+                                else -> LockscreenElement(Region.Clock.Small)
                             }
                         }
-                    } else {
-                        Column {
-                            clock()
-                            MediaCarousel(Modifier.align(Alignment.Start))
-                            Notifications(aodAlignment = Alignment.TopStart)
+                        val player = this@LockscreenUpperRegionElementProvider.player
+                        if (player != null) {
+                            Column(Modifier.fillMaxSize()) {
+                                with(player) {
+                                    SmallClockColumn(
+                                        notificationsActive = viewModel.isNotificationStackActive,
+                                        clock = clock,
+                                        media = { MediaCarousel(Modifier.align(Alignment.Start)) },
+                                        notifications = { notificationsModifier ->
+                                            Notifications(
+                                                aodAlignment = Alignment.TopStart,
+                                                modifier = notificationsModifier,
+                                            )
+                                        },
+                                    )
+                                }
+                            }
+                        } else {
+                            Column {
+                                clock()
+                                MediaCarousel(Modifier.align(Alignment.Start))
+                                Notifications(aodAlignment = Alignment.TopStart)
+                            }
                         }
                     }
                 }
