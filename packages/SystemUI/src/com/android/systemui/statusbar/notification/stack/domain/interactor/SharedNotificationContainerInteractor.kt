@@ -122,13 +122,16 @@ constructor(
      * The notification shelf can extend over the lock icon area if:
      * * UDFPS supported. Ambient indication will always appear below
      * * UDFPS not supported and ambient indication not visible, which will appear above lock icon
+     *
+     * The scene container lays the stack out above the lock icon, which is drawn as a button, so
+     * the shelf must stay above it.
      */
     val useExtraShelfSpace: Flow<Boolean> =
         combine(
             keyguardInteractor.ambientIndicationVisible,
             deviceEntryUdfpsInteractor.isUdfpsSupported,
         ) { ambientIndicationVisible, isUdfpsSupported ->
-            isUdfpsSupported || !ambientIndicationVisible
+            !SceneContainerFlag.isEnabled && (isUdfpsSupported || !ambientIndicationVisible)
         }
 
     /** Top position (without translation) of the shared container. */

@@ -177,6 +177,8 @@ fun ContentScope.ConstrainedNotificationStack(
     Box(
         modifier =
             modifier
+                // Keep the stack, shelf included, clear of the lock icon below it.
+                .padding(bottom = LockscreenStackBottomGap)
                 .onSizeChanged { viewModel.onConstrainedAvailableSpaceChanged(it.height) }
                 .onPlaced {
                     val rawBounds = it.rawBoundsInWindow()
@@ -209,6 +211,8 @@ fun ContentScope.ConstrainedNotificationStack(
         )
     }
 }
+
+private val LockscreenStackBottomGap = 16.dp
 
 /** Standalone version of the Scrolling Notification Stack. */
 @Composable
