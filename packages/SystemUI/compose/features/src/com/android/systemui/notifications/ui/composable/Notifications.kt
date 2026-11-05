@@ -75,6 +75,7 @@ import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -175,6 +176,7 @@ fun ContentScope.ConstrainedNotificationStack(
     viewModel: NotificationsPlaceholderViewModel,
     modifier: Modifier = Modifier,
 ) {
+    val stackTopListener = LocalLockscreenStackTopListener.current
     Box(
         modifier =
             modifier
@@ -203,6 +205,7 @@ fun ContentScope.ConstrainedNotificationStack(
                         viewModel.onLockScreenStackBottomChanged(
                             coordinates.boundsInWindow().bottom
                         )
+                        stackTopListener?.invoke(coordinates.positionInWindow().y)
                     },
         )
         HeadsUpNotificationPlaceholder(
@@ -221,6 +224,9 @@ fun ContentScope.ConstrainedNotificationStack(
 val LocalLockscreenStackAlignment = compositionLocalOf { Alignment.TopCenter }
 
 private val LockscreenStackBottomGap = 16.dp
+
+/** Told where the top of the constrained lockscreen stack is, in window coordinates. */
+val LocalLockscreenStackTopListener = compositionLocalOf<((Float) -> Unit)?> { null }
 
 /** Standalone version of the Scrolling Notification Stack. */
 @Composable
