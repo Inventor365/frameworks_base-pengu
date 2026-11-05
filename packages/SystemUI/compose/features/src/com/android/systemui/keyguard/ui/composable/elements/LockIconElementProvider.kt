@@ -19,6 +19,7 @@ package com.android.systemui.keyguard.ui.composable.elements
 import android.content.Context
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -33,6 +34,7 @@ import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,7 +50,9 @@ import com.android.systemui.keyguard.ui.view.DeviceEntryIconView
 import com.android.systemui.keyguard.ui.viewmodel.DeviceEntryBackgroundViewModel
 import com.android.systemui.keyguard.ui.viewmodel.DeviceEntryForegroundViewModel
 import com.android.systemui.keyguard.ui.viewmodel.DeviceEntryIconViewModel
+import com.android.internal.policy.SystemBarUtils
 import com.android.systemui.log.LogBuffer
+import com.android.systemui.penguin.rememberLockIconOnTop
 import com.android.systemui.log.TouchHandlingViewLogger
 import com.android.systemui.log.dagger.LongPressTouchLog
 import com.android.systemui.plugins.FalsingManager
@@ -102,7 +106,47 @@ constructor(
 
     @Composable
     fun LockIcon(modifier: Modifier = Modifier, overrideColor: Color? = null) {
-        val lockIconBounds = rememberLockIconBounds()
+        val onTop = rememberLockIconOnTop()
+        val (lockIconBounds, stockTop) = rememberLockIconBounds(onTop)
+        val isUdfpsSupported by
+            deviceEntryIconViewModel.get().isUdfpsSupported.collectAsStateWithLifecycle()
+        val iconType by
+            deviceEntryIconViewModel
+                .get()
+                .iconType
+                .collectAsStateWithLifecycle(DeviceEntryIconView.IconType.NONE)
+        // With the padlock at the top, the sensor only shows the fingerprint hint.
+        val hidden =
+            onTop && isUdfpsSupported && iconType != DeviceEntryIconView.IconType.FINGERPRINT
+        val boundsModifier =
+            modifier.layout { measurable, _ ->
+                val placeable =
+                    measurable.measure(
+                        Constraints.fixed(
+                            width = lockIconBounds.width,
+                            height = lockIconBounds.height,
+                        )
+                    )
+                layout(
+                    width = placeable.width,
+                    height = placeable.height,
+                    alignmentLines =
+                        mapOf(
+                            LockIconAlignmentLines.Left to lockIconBounds.left,
+                            LockIconAlignmentLines.Top to lockIconBounds.top,
+                            LockIconAlignmentLines.Right to lockIconBounds.right,
+                            LockIconAlignmentLines.Bottom to lockIconBounds.bottom,
+                            LockIconAlignmentLines.StockTop to stockTop,
+                        ),
+                ) {
+                    placeable.place(0, 0)
+                }
+            }
+        // An empty box keeps the bounds without taking touches meant for what lies under it.
+        if (hidden) {
+            Box(boundsModifier)
+            return
+        }
         val (disposable, setDisposable) = remember { mutableStateOf<DisposableHandle?>(null) }
 
         AndroidView(
@@ -130,29 +174,7 @@ constructor(
                         )
                     }
             },
-            modifier =
-                modifier.layout { measurable, _ ->
-                    val placeable =
-                        measurable.measure(
-                            Constraints.fixed(
-                                width = lockIconBounds.width,
-                                height = lockIconBounds.height,
-                            )
-                        )
-                    layout(
-                        width = placeable.width,
-                        height = placeable.height,
-                        alignmentLines =
-                            mapOf(
-                                LockIconAlignmentLines.Left to lockIconBounds.left,
-                                LockIconAlignmentLines.Top to lockIconBounds.top,
-                                LockIconAlignmentLines.Right to lockIconBounds.right,
-                                LockIconAlignmentLines.Bottom to lockIconBounds.bottom,
-                            ),
-                    ) {
-                        placeable.place(0, 0)
-                    }
-                },
+            modifier = boundsModifier,
             onRelease = { disposable?.dispose() },
         )
     }
@@ -167,7 +189,8 @@ constructor(
      * happens shortly after device boot) or the window view bounds change.
      */
     @Composable
-    private fun rememberLockIconBounds(): IntRect {
+    /** Also returns the top the icon has when it is not moved to the top of the screen. */
+    private fun rememberLockIconBounds(onTop: Boolean): Pair<IntRect, Int> {
         val context = LocalContext.current
         val isUdfpsSupported: Boolean by
             deviceEntryIconViewModel.get().isUdfpsSupported.collectAsStateWithLifecycle()
@@ -179,9 +202,11 @@ constructor(
                 dimensionResource(clocksR.dimen.lock_icon_margin_bottom).roundToPx()
             }
         val windowViewBounds = windowManager.currentWindowMetrics.bounds
+        val topLockRadiusPx = with(LocalDensity.current) { TopLockRadius.roundToPx() }
+        val topLockMarginPx = with(LocalDensity.current) { TopLockMargin.roundToPx() }
 
-        val bounds: IntRect by
-            remember(context, isUdfpsSupported, udfpsLocation, windowViewBounds) {
+        val bounds: Pair<IntRect, Int> by
+            remember(context, isUdfpsSupported, udfpsLocation, windowViewBounds, onTop) {
                 derivedStateOf {
                     var widthPx = windowViewBounds.right.toFloat()
                     if (featureFlags.isEnabled(Flags.LOCKSCREEN_ENABLE_LANDSCAPE)) {
@@ -195,7 +220,7 @@ constructor(
                     }
 
                     val finalUdfpsLocation = udfpsLocation
-                    if (isUdfpsSupported && finalUdfpsLocation != null) {
+                    val stock = if (isUdfpsSupported && finalUdfpsLocation != null) {
                         IntRect(
                             center =
                                 IntOffset(
@@ -226,6 +251,29 @@ constructor(
                             radius = (lockIconRadiusPx * scaleFactor).toInt(),
                         )
                     }
+                    val top =
+                        if (onTop && !(isUdfpsSupported && finalUdfpsLocation != null)) {
+                            val statusBarPx = SystemBarUtils.getStatusBarHeight(context)
+                            // Landscape has no room for a row of its own; the cutout is at the
+                            // side there, so the padlock sits in the middle of the status bar.
+                            val landscape = windowViewBounds.width() > windowViewBounds.height()
+                            val radius =
+                                if (landscape) minOf(topLockRadiusPx, statusBarPx / 2)
+                                else topLockRadiusPx
+                            IntRect(
+                                center =
+                                    IntOffset(
+                                        x = (widthPx / 2).toInt(),
+                                        y =
+                                            if (landscape) statusBarPx / 2
+                                            else statusBarPx + topLockMarginPx + radius,
+                                    ),
+                                radius = radius,
+                            )
+                        } else {
+                            stock
+                        }
+                    top to stock.top
                 }
             }
 
@@ -234,5 +282,7 @@ constructor(
 
     companion object {
         private const val TAG = "LockSection"
+        val TopLockRadius = 18.dp
+        val TopLockMargin = 4.dp
     }
 }

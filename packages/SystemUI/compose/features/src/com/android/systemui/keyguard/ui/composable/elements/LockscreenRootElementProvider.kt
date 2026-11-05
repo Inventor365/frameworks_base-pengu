@@ -17,9 +17,19 @@
 package com.android.systemui.keyguard.ui.composable.elements
 
 import android.content.Context
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.HorizontalAlignmentLine
 import androidx.compose.ui.layout.Layout
@@ -34,7 +44,9 @@ import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.keyguard.ui.composable.LockscreenTouchHandling
 import com.android.systemui.keyguard.ui.composable.modifier.burnInAware
 import com.android.systemui.keyguard.ui.composable.trackBurnInParameters
+import com.android.systemui.keyguard.ui.view.DeviceEntryIconView
 import com.android.systemui.keyguard.ui.viewmodel.AodBurnInViewModel
+import com.android.systemui.keyguard.ui.viewmodel.DeviceEntryIconViewModel
 import com.android.systemui.keyguard.ui.viewmodel.KeyguardClockViewModel
 import com.android.systemui.keyguard.ui.viewmodel.LockscreenRootViewModel
 import com.android.systemui.lifecycle.rememberViewModel
@@ -53,7 +65,10 @@ import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenEl
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementProvider
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenScope
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenScope.Companion.LockscreenElement
+import com.android.systemui.penguin.rememberLockIconOnTop
+import com.android.systemui.res.R
 import com.android.systemui.shade.ShadeDisplayAware
+import dagger.Lazy
 import javax.inject.Inject
 import kotlin.math.max
 import kotlin.math.min
@@ -67,6 +82,7 @@ constructor(
     private val viewModelFactory: LockscreenRootViewModel.Factory,
     private val aodBurnInViewModel: AodBurnInViewModel,
     private val keyguardClockViewModel: KeyguardClockViewModel,
+    private val deviceEntryIconViewModel: Lazy<DeviceEntryIconViewModel>,
 ) : LockscreenElementProvider {
     override val elements: List<LockscreenElement> by lazy { listOf(RootElement()) }
 
@@ -110,7 +126,11 @@ constructor(
                     )
 
                 with(scopeFactory.create(contentScope, innerContext)) {
-                    LockscreenSceneLayout(viewModel.isUdfpsSupported)
+                    LockscreenSceneLayout(
+                        viewModel.isUdfpsSupported,
+                        lockOnTop = rememberLockIconOnTop(),
+                        topPadlock = { TopPadlock(deviceEntryIconViewModel.get()) },
+                    )
                 }
             }
         }
@@ -168,6 +188,9 @@ object LockIconAlignmentLines {
             }
         )
 
+    /** The top edge the lock icon has in its usual place, also when it is moved to the top. */
+    val StockTop = HorizontalAlignmentLine(merger = { old, new -> min(old, new) })
+
     /** The bottom edge of the lock icon. */
     val Bottom =
         HorizontalAlignmentLine(
@@ -192,8 +215,13 @@ object LockIconAlignmentLines {
 @Composable
 private fun LockscreenScope<ContentScope>.LockscreenSceneLayout(
     isUdfpsSupported: Boolean,
+    lockOnTop: Boolean,
+    topPadlock: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Without UDFPS the lock icon itself moves to the top; with it, the sensor keeps the
+    // fingerprint hint and a padlock is drawn at the top instead.
+    val padlock = lockOnTop && isUdfpsSupported
     Layout(
         content = {
             LockscreenElement(StatusBar)
@@ -202,6 +230,7 @@ private fun LockscreenScope<ContentScope>.LockscreenSceneLayout(
             LockscreenElement(AmbientIndicationArea)
             LockscreenElement(Region.Lower)
             LockscreenElement(SettingsMenu)
+            if (padlock) topPadlock() else Box {}
         },
         // Hide the lock screen elements when an overlay is shown above.
         modifier =
@@ -209,13 +238,14 @@ private fun LockscreenScope<ContentScope>.LockscreenSceneLayout(
                 Modifier.graphicsLayer { alpha = 0f }
             },
     ) { measurables, constraints ->
-        check(measurables.size == 6)
+        check(measurables.size == 7)
         val statusBarMeasurable = measurables[0]
         val upperRegionMeasurable = measurables[1]
         val lockIconMeasurable = measurables[2]
         val ambientIndicationMeasurable = measurables[3]
         val lowerRegionMeasurable = measurables[4]
         val settingsMenuMeasurable = measurables[5]
+        val padlockMeasurable = measurables[6]
 
         val statusBarPlaceable =
             statusBarMeasurable.measure(constraints = Constraints.fixedWidth(constraints.maxWidth))
@@ -237,6 +267,63 @@ private fun LockscreenScope<ContentScope>.LockscreenSceneLayout(
             ambientIndicationMeasurable.measure(
                 constraints = Constraints.fixedWidth(constraints.maxWidth)
             )
+
+        if (lockOnTop) {
+            val padlockPlaceable =
+                padlockMeasurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+            // Landscape has no room for a row of its own; the cutout is at the side there, so the
+            // padlock sits in the middle of the status bar.
+            val landscape = constraints.maxWidth > constraints.maxHeight
+            val padlockTop =
+                if (landscape) {
+                    (statusBarPlaceable.measuredHeight - padlockPlaceable.measuredHeight) / 2
+                } else {
+                    statusBarPlaceable.measuredHeight
+                }
+            val contentTop =
+                when {
+                    landscape -> statusBarPlaceable.measuredHeight
+                    padlock -> statusBarPlaceable.measuredHeight + padlockPlaceable.measuredHeight
+                    else -> max(statusBarPlaceable.measuredHeight, lockIconBounds.bottom)
+                }
+            val lowerRegionPlaceable =
+                lowerRegionMeasurable.measure(
+                    Constraints(
+                        maxWidth = constraints.maxWidth.coerceAtLeast(0),
+                        maxHeight = (constraints.maxHeight - contentTop).coerceAtLeast(0),
+                    )
+                )
+            val lowerTop = constraints.maxHeight - lowerRegionPlaceable.measuredHeight
+            // The region keeps its usual lower edge, so the clocks centred in it stay in place.
+            var upperBottom = lockIconPlaceable[LockIconAlignmentLines.StockTop]
+            if (!isUdfpsSupported) upperBottom -= ambientIndicationPlaceable.measuredHeight
+            val upperRegionPlaceable =
+                upperRegionMeasurable.measure(
+                    Constraints(
+                        maxWidth = constraints.maxWidth.coerceAtLeast(0),
+                        maxHeight = (upperBottom - contentTop).coerceAtLeast(0),
+                    )
+                )
+            val settingsMenuPlaceable = settingsMenuMeasurable.measure(constraints)
+            return@Layout layout(constraints.maxWidth, constraints.maxHeight) {
+                statusBarPlaceable.place(0, 0)
+                padlockPlaceable.place(
+                    (constraints.maxWidth - padlockPlaceable.measuredWidth) / 2,
+                    padlockTop,
+                )
+                upperRegionPlaceable.placeRelative(0, contentTop)
+                lockIconPlaceable.place(lockIconBounds.left, lockIconBounds.top)
+                ambientIndicationPlaceable.placeRelative(
+                    0,
+                    lowerTop - ambientIndicationPlaceable.measuredHeight,
+                )
+                lowerRegionPlaceable.place(0, lowerTop)
+                settingsMenuPlaceable.placeRelative(
+                    (constraints.maxWidth - settingsMenuPlaceable.measuredWidth) / 2,
+                    constraints.maxHeight - settingsMenuPlaceable.measuredHeight,
+                )
+            }
+        }
 
         var upperRegionMaxHeight = lockIconBounds.top - statusBarPlaceable.measuredHeight
         var lowerRegionMaxHeight = constraints.maxHeight - lockIconBounds.bottom
@@ -298,6 +385,33 @@ private fun LockscreenScope<ContentScope>.LockscreenSceneLayout(
                 constraints.maxHeight - settingsMenuPlaceable.measuredHeight,
             )
         }
+    }
+}
+
+/** The padlock at the top, for UDFPS devices whose sensor keeps the fingerprint hint. */
+@Composable
+private fun TopPadlock(viewModel: DeviceEntryIconViewModel) {
+    val iconType by
+        viewModel.iconType.collectAsStateWithLifecycle(DeviceEntryIconView.IconType.NONE)
+    val viewAlpha by viewModel.deviceEntryViewAlpha.collectAsStateWithLifecycle(0f)
+    Box(
+        Modifier.padding(top = LockIconElementProvider.TopLockMargin)
+            .size(LockIconElementProvider.TopLockRadius * 2)
+            .graphicsLayer {
+                alpha = if (iconType == DeviceEntryIconView.IconType.NONE) 0f else viewAlpha
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter =
+                painterResource(
+                    if (iconType == DeviceEntryIconView.IconType.UNLOCK) R.drawable.ic_unlocked
+                    else R.drawable.ic_lock
+                ),
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
