@@ -249,7 +249,8 @@ constructor(
         }
 
     val chips: StateFlow<MultipleOngoingActivityChipsModel> =
-        unrefinedChips
+        // Refiners may read the island's claims, so refine again whenever those change.
+        combine(unrefinedChips, IslandChipClaims.claims) { unrefinedChips, _ -> unrefinedChips }
             .map { unrefinedChips ->
                 chipsRefiners.fold(unrefinedChips) { currentOutput, refiner ->
                     refiner.transform(currentOutput)

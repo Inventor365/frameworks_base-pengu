@@ -21,11 +21,14 @@ import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.log.LogBuffer
 import com.android.systemui.log.LogBufferFactory
 import com.android.systemui.statusbar.chips.notification.domain.interactor.StatusBarNotificationChipsInteractor
+import com.android.systemui.statusbar.chips.ui.viewmodel.IslandChipsRefiner
 import com.android.systemui.statusbar.chips.ui.viewmodel.OngoingActivityChipsRefiner
+import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.multibindings.ClassKey
 import dagger.multibindings.IntoMap
+import dagger.multibindings.IntoSet
 import dagger.multibindings.Multibinds
 
 @Module
@@ -50,4 +53,8 @@ abstract class StatusBarChipsModule {
     /** Provides the base empty set for [OngoingActivityChipsRefiner]. */
     @Multibinds
     abstract fun provideOngoingActivityChipRefinerSet(): Set<OngoingActivityChipsRefiner>
+
+    @Binds
+    @IntoSet
+    abstract fun bindIslandChipsRefiner(refiner: IslandChipsRefiner): OngoingActivityChipsRefiner
 }
