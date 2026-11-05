@@ -119,6 +119,8 @@ constructor(
 ) : Dumpable {
     companion object {
         private const val TAG = "LockscreenSmartspaceController"
+        // Google's daily and tomorrow weather forecast cards, which have no public constants.
+        private val WEATHER_FORECAST_FEATURES = setOf(54, 61)
 
         private const val MAX_RECENT_SMARTSPACE_DATA_FOR_DUMP = 5
     }
@@ -635,7 +637,11 @@ constructor(
     }
 
     private fun filterSmartspaceTarget(t: SmartspaceTarget): Boolean {
-        if (t.featureType == SmartspaceTarget.FEATURE_WEATHER) {
+        // The date row shows the weather, so a forecast card would be a second one.
+        if (
+            t.featureType == SmartspaceTarget.FEATURE_WEATHER ||
+                t.featureType in WEATHER_FORECAST_FEATURES
+        ) {
             return false
         }
         if (!showNotifications) {
