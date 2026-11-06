@@ -63,6 +63,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onLayoutRectChanged
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.dimensionResource
@@ -444,11 +445,17 @@ private fun ContentScope.QuickSettingsLayout(
     val scrollsWhole =
         qsContainerViewModel.penguin != null && !stockOverlay && isLandscapeSplitShade()
     val wholeScroll = rememberScrollState()
+    val wideFit = remember { QsWideFit() }
+    CompositionLocalProvider(LocalQsWideFit provides wideFit.takeIf { scrollsWhole }) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier =
             modifier
-                .thenIf(scrollsWhole) { Modifier.verticalScroll(wholeScroll) }
+                .thenIf(scrollsWhole) {
+                    Modifier.onSizeChanged { wideFit.viewportPx = it.height }
+                        .verticalScroll(wholeScroll)
+                        .onSizeChanged { wideFit.contentPx = it.height }
+                }
                 .padding(horizontal = QuickSettingsShade.Dimensions.HorizontalPadding),
     ) {
         val toolbarViewModel =
@@ -681,6 +688,7 @@ private fun ContentScope.QuickSettingsLayout(
                 VerticalSeparator(QuickSettingsShade.Dimensions.VerticalPadding)
             }
         }
+    }
     }
 }
 
