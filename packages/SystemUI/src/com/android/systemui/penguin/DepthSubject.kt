@@ -35,6 +35,12 @@ interface DepthSubject {
 
     fun setExpandedMediaArtVisible(visible: Boolean)
 
+    /**
+     * Window bounds of the lockscreen media card, or null when it is gone. The subject is not
+     * drawn over it, so the card stays readable.
+     */
+    fun setMediaCardBounds(bounds: android.graphics.Rect?)
+
     companion object {
         @JvmStatic var instance: DepthSubject? = null
 

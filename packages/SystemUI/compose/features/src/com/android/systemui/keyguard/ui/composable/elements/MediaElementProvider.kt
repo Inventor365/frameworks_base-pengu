@@ -16,6 +16,11 @@
 
 package com.android.systemui.keyguard.ui.composable.elements
 
+import com.android.systemui.penguin.DepthSubject
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -67,10 +72,30 @@ constructor(
             player?.ObserveSettings()
             val visible = viewModel.isMediaVisible && !viewModel.isDozing
             SideEffect { player?.setMediaVisible(visible) }
+            DisposableEffect(Unit) {
+                onDispose { DepthSubject.get()?.setMediaCardBounds(null) }
+            }
+            LaunchedEffect(visible) { if (!visible) DepthSubject.get()?.setMediaCardBounds(null) }
             AnimatedVisibility(
                 visible,
                 enter = expandVertically(expandFrom = Alignment.Top),
                 exit = fadeOut(),
+                // Keep the depth wallpaper subject from drawing over the card
+                modifier =
+                    Modifier.onGloballyPositioned { coords ->
+                        val b = coords.boundsInWindow()
+                        DepthSubject.get()
+                            ?.setMediaCardBounds(
+                                if (b.isEmpty) null
+                                else
+                                    android.graphics.Rect(
+                                        b.left.toInt(),
+                                        b.top.toInt(),
+                                        b.right.toInt(),
+                                        b.bottom.toInt(),
+                                    )
+                            )
+                    },
             ) {
                 if (player?.isEnabled == true) {
                     player.Card(
