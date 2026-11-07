@@ -936,6 +936,31 @@ constructor(
         return true
     }
 
+    fun hasClassicAudioSharingVolume(device: MediaDevice): Boolean {
+        val address = classicBluetoothAddress(device) ?: return false
+        return !isClassicAudioSharingPending() &&
+            mClassicSharingState.optJSONObject("volumes")?.has(address) == true &&
+            mClassicSharingState.optJSONObject("absolute")?.optBoolean(address) == true &&
+            getClassicAudioSharingMaxVolume() > 0
+    }
+
+    fun getClassicAudioSharingVolume(device: MediaDevice): Int {
+        val address = classicBluetoothAddress(device) ?: return 0
+        val volume = mClassicSharingState.optJSONObject("volumes")?.optInt(address, 0) ?: 0
+        return volume.coerceIn(0, getClassicAudioSharingMaxVolume())
+    }
+
+    fun getClassicAudioSharingMaxVolume(): Int = mClassicSharingState.optInt("maxVolume", 0)
+
+    fun setClassicAudioSharingVolume(device: MediaDevice, volume: Int) {
+        val address = classicBluetoothAddress(device) ?: return
+        mClassicSharingState.optJSONObject("volumes")?.put(address, volume)
+        val request = Intent(ACTION_CLASSIC_SHARING_SET_VOLUME).setPackage("com.android.bluetooth")
+        request.putExtra("device", address)
+        request.putExtra("volume", volume)
+        mContext.sendBroadcast(request, android.Manifest.permission.BLUETOOTH_PRIVILEGED)
+    }
+
     private fun requestClassicAudioSharing(addresses: List<String>) {
         mClassicSharingState.put("status", "connecting")
         mClassicSharingState.put("requested", org.json.JSONArray(addresses))
@@ -1278,6 +1303,8 @@ constructor(
             "com.android.bluetooth.action.QUERY_AUDIO_SHARING"
         private const val ACTION_CLASSIC_SHARING_STATE =
             "com.android.bluetooth.action.AUDIO_SHARING_STATE"
+        private const val ACTION_CLASSIC_SHARING_SET_VOLUME =
+            "com.android.bluetooth.action.SET_AUDIO_SHARING_VOLUME"
         private val DEBUG = Log.isLoggable(TAG, Log.DEBUG)
         private const val PAGE_CONNECTED_DEVICES_KEY = "top_level_connected_devices"
         private const val ALLOWLIST_DURATION_MS: Long = 20000

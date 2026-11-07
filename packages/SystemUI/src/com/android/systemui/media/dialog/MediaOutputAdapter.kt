@@ -292,7 +292,19 @@ class MediaOutputAdapter(controller: MediaSwitchingController) :
             colorTheme: ColorTheme,
         ) {
             val showSlider = connectionState == CONNECTED && !restrictVolumeAdjustment
-            if (showSlider) {
+            if (showSlider && mController.hasClassicAudioSharingVolume(device)) {
+                updateLayoutForSlider(showSlider = true)
+                initSeekbar(
+                    volumeChangeCallback = { volume: Int ->
+                        mController.setClassicAudioSharingVolume(device, volume)
+                    },
+                    deviceDrawable = mController.getDeviceIconDrawable(device),
+                    isVolumeControlAllowed = true,
+                    currentVolume = mController.getClassicAudioSharingVolume(device),
+                    maxVolume = mController.getClassicAudioSharingMaxVolume(),
+                    colorTheme = colorTheme,
+                )
+            } else if (showSlider) {
                 updateLayoutForSlider(showSlider = true)
                 initSeekbar(
                     volumeChangeCallback = { volume: Int ->

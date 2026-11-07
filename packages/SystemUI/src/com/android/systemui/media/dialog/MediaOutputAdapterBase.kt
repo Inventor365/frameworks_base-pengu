@@ -175,7 +175,8 @@ abstract class MediaOutputAdapterBase(protected val mController: MediaSwitchingC
                     selected -> CONNECTED
                     else -> DISCONNECTED
                 }
-                restrictVolumeAdjustment = restrictVolumeAdjustment || !currentlyConnected || pending
+                restrictVolumeAdjustment = restrictVolumeAdjustment || pending || !selected ||
+                    (!currentlyConnected && !mController.hasClassicAudioSharingVolume(device))
                 deviceDisabled = pending || (!selected && !mController.canAddClassicAudioSharingDevice())
                 clickListener = if (!deviceDisabled && (!selected || removable)) {
                     View.OnClickListener { onGroupActionTriggered(!selected, device) }
