@@ -52,6 +52,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -222,8 +223,11 @@ constructor(
                 }
             }
         var panelShape by remember { mutableStateOf<ShadeScrimShape?>(null) }
-        LaunchedEffect(cosSwitching, panelShape) {
-            contentViewModel.onPanelShapeInWindowChanged(panelShape.takeUnless { cosSwitching })
+        // The shape changes every frame the panel moves; reading it in composition would
+        // recompose the whole overlay each frame, so follow it in a flow instead.
+        LaunchedEffect(contentViewModel) {
+            snapshotFlow { panelShape.takeUnless { cosSwitching } }
+                .collect { contentViewModel.onPanelShapeInWindowChanged(it) }
         }
 
         Box(
