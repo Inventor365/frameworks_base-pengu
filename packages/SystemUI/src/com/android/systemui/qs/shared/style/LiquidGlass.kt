@@ -62,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import com.android.internal.graphics.drawable.BackgroundBlurDrawable
 import com.android.systemui.common.shared.model.Icon
+import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.rememberCosFeature
 import com.android.systemui.res.R
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -710,9 +712,14 @@ fun Modifier.glassBlurRegion(shape: Shape, material: Int = 0): Modifier {
     val view = LocalView.current
     val drawable = remember(view) { arrayOfNulls<BackgroundBlurDrawable>(1) }
     LiquidGlassTune.generation.value
+    val cosShade = rememberCosFeature(CosFeature.Shade)
+    val panelBlur = LiquidGlassTune.f("cos_panel_blur", 62.0f)
     val radius =
-        if (material >= 5) LiquidGlassTune.f("cos_panel_blur", 62.0f).toInt()
+        if (material >= 5) panelBlur.toInt()
         else if (material != 0) LiquidGlassTune.f("cos_blur", 62.0f).toInt()
+        // Over the COS shade glass, tiles at the panel's radius reuse its blur pass in
+        // SurfaceFlinger instead of blurring the screen a second time.
+        else if (cosShade) LiquidGlassTune.f("tile_blur_cos", panelBlur).toInt()
         else LiquidGlassTune.f("tile_blur", 90.0f).toInt()
     val allowed = LocalGlassBlurAllowed.current
     SideEffect { if (radius <= 0) drawable[0]?.setVisible(false, false) }
