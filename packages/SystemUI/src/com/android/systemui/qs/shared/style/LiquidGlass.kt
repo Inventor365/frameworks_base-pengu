@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -409,7 +410,7 @@ object LiquidGlass {
             rimPath.addRoundRect(rimRect, rimRadii, android.graphics.Path.Direction.CW)
             darkPaint.strokeWidth = hair
             darkPaint.color = android.graphics.Color.argb(dark, 0f, 0f, 0f)
-            canvas.drawPath(rimPath, darkPaint)
+            drawRoundRectStroke(canvas, rimRect, rimRadii, darkPaint)
         }
         val width = rimWidthDp * density
         rimRect.set(rect)
@@ -420,7 +421,15 @@ object LiquidGlass {
         rimPaint.strokeWidth = width
         rimPaint.shader =
             rimShader(rect.left, rect.top, rect.right, rect.bottom, LiquidGlassTune.f("view_rim", 0.3f))
-        canvas.drawPath(rimPath, rimPaint)
+        drawRoundRectStroke(canvas, rimRect, rimRadii, rimPaint)
+    }
+
+    // rimPath already holds this round rect. Equal circular corners stroke as a round rect,
+    // which Skia draws analytically instead of tessellating the path.
+    private fun drawRoundRectStroke(canvas: Canvas, rect: RectF, radii: FloatArray, paint: Paint) {
+        val r = radii[0]
+        if (radii.all { it == r }) canvas.drawRoundRect(rect, r, r, paint)
+        else canvas.drawPath(rimPath, paint)
     }
 
     internal val rimWidthDp: Float
@@ -528,10 +537,14 @@ fun Modifier.liquidGlassRim(shape: Shape, strength: Float = 1f): Modifier =
             } else null
         val width = LiquidGlass.rimWidthDp.dp.toPx()
         val inset = if (dark > 0f) hair else 0f
+        val rimSize = Size(size.width - width - inset * 2, size.height - width - inset * 2)
+        val rimOffset = width / 2f + inset
         val rim =
-            shape.toPath(Size(size.width - width - inset * 2, size.height - width - inset * 2), this)
-                .apply { translate(Offset(width / 2f + inset, width / 2f + inset)) }
-                .asAndroidPath()
+            shape.toPath(rimSize, this).apply { translate(Offset(rimOffset, rimOffset)) }.asAndroidPath()
+        // Simple rounded rects and circles stroke as round rects, which Skia draws analytically.
+        // Stroking them as paths tessellates every rim each frame and fills path atlases.
+        val rimRound = shape.simpleCornerRadius(rimSize, this)
+        val outerRound = if (outer != null) shape.simpleCornerRadius(Size(size.width - hair, size.height - hair), this) else null
         val rimPaint =
             android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 style = android.graphics.Paint.Style.STROKE
@@ -544,9 +557,49 @@ fun Modifier.liquidGlassRim(shape: Shape, strength: Float = 1f): Modifier =
                 LiquidGlass.drawGlow(it.nativeCanvas, glowShape, { edge }, bounds, density, strength)
             }
             if (sheenOn) drawPath(edgePath, sheen)
-            if (outer != null) drawPath(outer, Color.Black.copy(alpha = dark * strength), style = Stroke(hair))
-            drawIntoCanvas { it.nativeCanvas.drawPath(rim, rimPaint) }
+            if (outer != null) {
+                val outerColor = Color.Black.copy(alpha = dark * strength)
+                if (outerRound != null) {
+                    drawRoundRect(
+                        outerColor,
+                        topLeft = Offset(hair / 2f, hair / 2f),
+                        size = Size(size.width - hair, size.height - hair),
+                        cornerRadius = CornerRadius(outerRound),
+                        style = Stroke(hair),
+                    )
+                } else {
+                    drawPath(outer, outerColor, style = Stroke(hair))
+                }
+            }
+            drawIntoCanvas {
+                if (rimRound != null) {
+                    it.nativeCanvas.drawRoundRect(
+                        rimOffset,
+                        rimOffset,
+                        rimOffset + rimSize.width,
+                        rimOffset + rimSize.height,
+                        rimRound,
+                        rimRound,
+                        rimPaint,
+                    )
+                } else {
+                    it.nativeCanvas.drawPath(rim, rimPaint)
+                }
+            }
         }
+    }
+
+// The corner radius when every corner of this shape at that size has the same circular radius
+private fun Shape.simpleCornerRadius(size: Size, scope: androidx.compose.ui.draw.CacheDrawScope): Float? =
+    when (val outline = createOutline(size, scope.layoutDirection, scope)) {
+        is Outline.Rectangle -> 0f
+        is Outline.Rounded ->
+            outline.roundRect.let { r ->
+                val c = r.topLeftCornerRadius
+                if (c.x == c.y && r.topRightCornerRadius == c && r.bottomRightCornerRadius == c &&
+                    r.bottomLeftCornerRadius == c) c.x else null
+            }
+        is Outline.Generic -> null
     }
 
 private fun Shape.toPath(size: Size, scope: androidx.compose.ui.draw.CacheDrawScope): Path =
