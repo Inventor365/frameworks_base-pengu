@@ -114,7 +114,6 @@ constructor(
                     SizedTileImpl(
                         it,
                         if (forceLargeTiles) largeTilesSpan.coerceAtMost(columns)
-                        else if (roundGrid) 1
                         else if (largeTiles.contains(it.spec)) largeTilesSpan
                         else 1
                     )
@@ -143,13 +142,16 @@ constructor(
 
                 Element(
                     it.tile.spec.toElementKey(),
-                    if (roundGrid) Modifier.fillMaxWidth().wrapContentWidth() else Modifier,
+                    if (roundGrid && it.width == 1) Modifier.fillMaxWidth().wrapContentWidth()
+                    else Modifier,
                 ) {
                     Tile(
                         tile = it.tile,
                         iconOnly =
                             if (forceLargeTiles) false
-                            else roundGrid || iconTilesViewModel.isIconTile(it.tile.spec),
+                            // Round grids keep tiles the user made large in edit mode
+                            else if (roundGrid) it.width == 1
+                            else iconTilesViewModel.isIconTile(it.tile.spec),
                         squishiness = tileSquishiness,
                         isHeaderTile = !isMainGrid,
                         tileHapticsViewModelFactory = tileHapticsViewModelFactory,
