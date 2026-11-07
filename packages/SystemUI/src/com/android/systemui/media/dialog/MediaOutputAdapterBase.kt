@@ -187,7 +187,10 @@ abstract class MediaOutputAdapterBase(protected val mController: MediaSwitchingC
                     mController.didClassicAudioSharingFail(device) ->
                         mContext.getString(R.string.media_output_dialog_connect_failed)
                     selected && removable ->
-                        mContext.getString(R.string.media_output_dialog_bluetooth_sharing)
+                        mContext.getString(
+                            R.string.media_output_dialog_bluetooth_sharing,
+                            mController.getClassicAudioSharingCodec(),
+                        )
                     else -> subtitle
                 }
             }

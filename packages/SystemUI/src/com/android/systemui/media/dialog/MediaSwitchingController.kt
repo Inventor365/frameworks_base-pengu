@@ -952,6 +952,8 @@ constructor(
 
     fun getClassicAudioSharingMaxVolume(): Int = mClassicSharingState.optInt("maxVolume", 0)
 
+    fun getClassicAudioSharingCodec(): String = mClassicSharingState.optString("codec", "SBC")
+
     fun setClassicAudioSharingVolume(device: MediaDevice, volume: Int) {
         val address = classicBluetoothAddress(device) ?: return
         mClassicSharingState.optJSONObject("volumes")?.put(address, volume)
