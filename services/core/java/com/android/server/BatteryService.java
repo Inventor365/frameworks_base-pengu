@@ -79,6 +79,9 @@ import android.util.EventLog;
 import android.util.Slog;
 import android.util.TimeUtils;
 import android.util.proto.ProtoOutputStream;
+// QTI_BEGIN
+import android.util.BoostFramework;
+// QTI_END
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.app.IBatteryStats;
@@ -168,6 +171,9 @@ public final class BatteryService extends SystemService {
     private HealthInfo mHealthInfo;
     private final HealthInfo mLastHealthInfo = new HealthInfo();
     private boolean mBatteryLevelCritical;
+// QTI_BEGIN: BoostFramework for battery perf hint
+    private BoostFramework mPerfBoost = new BoostFramework();
+// QTI_END
 
     /**
      * {@link HealthInfo#batteryStatus} value when {@link Intent#ACTION_BATTERY_CHANGED}
@@ -858,6 +864,13 @@ public final class BatteryService extends SystemService {
             if (mPlugType != mLastBroadcastPlugType) {
                 if (mLastBroadcastPlugType == BATTERY_PLUGGED_NONE) {
                     // discharging -> charging
+                    // QTI BEGIN
+                    if (mPerfBoost != null) {
+                        Slog.i(TAG, "PERF HINT BATTERY CHARGING");
+                        mPerfBoost.perfHint(BoostFramework.VENDOR_HINT_BATTERY_CHARGING, null);
+                    }
+                    // QTI END
+
                     mChargeStartLevel = mHealthInfo.batteryLevel;
                     mChargeStartTime = SystemClock.elapsedRealtime();
 
@@ -881,6 +894,13 @@ public final class BatteryService extends SystemService {
                     }
                 } else if (mPlugType == BATTERY_PLUGGED_NONE) {
                     // charging -> discharging or we just powered up
+                    // QTI BEGIN
+                    if (mPerfBoost != null) {
+                        Slog.i(TAG, "PERF HINT BATTERY DISCHARGING");
+                        mPerfBoost.perfHintRelease();
+                    }
+                    // QTI END
+
                     mDischargeStartTime = SystemClock.elapsedRealtime();
                     mDischargeStartLevel = mHealthInfo.batteryLevel;
 

@@ -85,6 +85,9 @@ public class QtiBackgroundManager {
     private static final int MSG_UI_AFFINITY_ENABLE = 1;
     private static final int MSG_UI_AFFINITY_DISABLE = 2;
 
+    private static final int MAX_FLUENCY_PERF_LOCK_RETRIES = 5;
+    private static final long FLUENCY_PERF_LOCK_RETRY_DELAY_MS = 10000;
+
     private static final int FREEZE_SUCCESS = 0;
     private static final int PID_NOT_FOUND = -1;
     private static final int BINDER_FREEZE_FAILED = -2;
@@ -121,7 +124,12 @@ public class QtiBackgroundManager {
     private boolean mUsePerfCoreAffinity = false;
     private boolean mUseBgMallocPurge = false;
     private boolean mUseIdleMallocPurge = false;
+    private boolean mEnableThpDefrag = true;
+    private boolean mEnableVmCompaction = true;
+    private int mFluencyPerfLockHandle = -1;
+    private int mFluencyPerfLockRetryCount = 0;
 
+    private final BoostFramework mPerf = new BoostFramework();
     private Freezer mFreezer;
     private Handler mHandler;
     private CpuLoadMonitor mCpuLoadMonitor;
@@ -132,6 +140,11 @@ public class QtiBackgroundManager {
     private AppKeepaliveManagement mAppKeepaliveManager;
     private UiFluencyModeMonitor mUiFluencyModeMonitor;
     private ActivityManagerService mAm;
+    private final Runnable mRetryFluencyPerfLock = () -> {
+        if (mUseUiFluencyMode && mFluencyPerfLockHandle < 0) {
+            acquireFluencyModePerfLocks();
+        }
+    };
 
     public void requestIdleProcessMallocPurge() {
         if (mUseIdleMallocPurge) {
@@ -162,6 +175,51 @@ public class QtiBackgroundManager {
         }
     }
 
+    private void acquireFluencyModePerfLocks() {
+        if (mFluencyPerfLockHandle >= 0) {
+            return;
+        }
+
+        final int[] args;
+        if (mEnableThpDefrag && mEnableVmCompaction) {
+            args = new int[] {
+                    BoostFramework.MPCTLV3_THP_DEFRAG, 0,
+                    BoostFramework.MPCTLV3_VM_COMPACTION_PROACTIVENESS, 0
+            };
+        } else if (mEnableThpDefrag) {
+            args = new int[] { BoostFramework.MPCTLV3_THP_DEFRAG, 0 };
+        } else if (mEnableVmCompaction) {
+            args = new int[] { BoostFramework.MPCTLV3_VM_COMPACTION_PROACTIVENESS, 0 };
+        } else {
+            return;
+        }
+
+        mFluencyPerfLockHandle = mPerf.perfLockAcquire(0, args);
+        if (mFluencyPerfLockHandle >= 0) {
+            Slog.i(TAG, LOG_PREFIX_CONFIG
+                    + " Successfully acquired UI fluency memory perf lock, handle: "
+                    + mFluencyPerfLockHandle);
+            mFluencyPerfLockRetryCount = 0;
+            mHandler.removeCallbacks(mRetryFluencyPerfLock);
+        } else {
+            Slog.w(TAG, LOG_PREFIX_CONFIG + " Failed to acquire UI fluency memory perf lock");
+            if (mUseUiFluencyMode
+                    && ++mFluencyPerfLockRetryCount <= MAX_FLUENCY_PERF_LOCK_RETRIES) {
+                mHandler.postDelayed(mRetryFluencyPerfLock,
+                        FLUENCY_PERF_LOCK_RETRY_DELAY_MS);
+            }
+        }
+    }
+
+    private void releaseFluencyModePerfLocks() {
+        mHandler.removeCallbacks(mRetryFluencyPerfLock);
+        mFluencyPerfLockRetryCount = 0;
+        if (mFluencyPerfLockHandle >= 0) {
+            mPerf.perfLockReleaseHandler(mFluencyPerfLockHandle);
+            mFluencyPerfLockHandle = -1;
+        }
+    }
+
     public class UiFluencyModeMonitor {
         private static final String SETTINGS_UI_FLUENCY_MODE = "ui_fluency_mode_enabled";
 
@@ -169,7 +227,7 @@ public class QtiBackgroundManager {
             if (mContentResolver == null) {
                 return;
             }
-            loadUiFluencyModeFlag();
+            initializeUiFluencyModeFromSetting();
 
             mContentResolver.registerContentObserver(
                 Settings.Global.getUriFor(SETTINGS_UI_FLUENCY_MODE),
@@ -177,28 +235,51 @@ public class QtiBackgroundManager {
                 new UiFluencyModeObserver(mHandler));
         }
 
-        private void loadUiFluencyModeFlag() {
+        private void initializeUiFluencyModeFromSetting() {
             try {
-                boolean oldUiFluencyMode = mUseUiFluencyMode;
+                boolean enabled = Settings.Global.getInt(
+                            mContentResolver,
+                            SETTINGS_UI_FLUENCY_MODE,
+                            0) == 1;
+                Slog.d(TAG, String.format("%s Initialized UI Fluency Mode from setting: %s",
+                        LOG_PREFIX_CONFIG, enabled));
+                mUseUiFluencyMode = enabled;
+
+                if (enabled) {
+                    acquireFluencyModePerfLocks();
+                }
+                mAppKeepaliveManager.updateLmkLazyKillFLag(enabled);
+                syncAppFreezerStateWithUiFluencyMode();
+            } catch (Exception e) {
+                mUseUiFluencyMode = false;
+                Slog.d(TAG, LOG_PREFIX_CONFIG
+                        + " UI Fluency Mode setting not found during boot, using default: false");
+            }
+        }
+
+        private void updateUiFluencyModeFromSetting() {
+            try {
+                boolean oldValue = mUseUiFluencyMode;
                 boolean newValue = Settings.Global.getInt(
                             mContentResolver,
                             SETTINGS_UI_FLUENCY_MODE,
                             0) == 1;
-                Slog.d(TAG, String.format("%s Loaded UI Fluency Mode: %s",
-                        LOG_PREFIX_CONFIG, newValue));
+                Slog.d(TAG, String.format("%s UI Fluency Mode setting changed: %s -> %s",
+                        LOG_PREFIX_CONFIG, oldValue, newValue));
                 mUseUiFluencyMode = newValue;
 
-                // handle ui fluency mode disabled
-                if (oldUiFluencyMode == true && newValue == false) {
+                if (newValue) {
+                    acquireFluencyModePerfLocks();
+                } else if (oldValue) {
                     handleUIFluencyModeDisabled();
+                    releaseFluencyModePerfLocks();
                 }
                 mAppKeepaliveManager.updateLmkLazyKillFLag(newValue);
                 syncAppFreezerStateWithUiFluencyMode();
             } catch (Exception e) {
-                // If setting doesn't exist, assume it's disabled for ui fluency mode
                 mUseUiFluencyMode = false;
-                Slog.d(TAG, String.format("%s Setting not found, using default: %s",
-                        LOG_PREFIX_CONFIG, mUseUiFluencyMode));
+                Slog.d(TAG, LOG_PREFIX_CONFIG
+                        + " Failed to read UI Fluency Mode setting, using default: false", e);
             }
         }
 
@@ -211,7 +292,7 @@ public class QtiBackgroundManager {
             public void onChange(boolean selfChange, Uri uri) {
                 super.onChange(selfChange, uri);
                 Slog.d(TAG, LOG_PREFIX_CONFIG + " UI fluency mode setting changed, reloading...");
-                loadUiFluencyModeFlag();
+                updateUiFluencyModeFromSetting();
             }
         }
     }
@@ -478,8 +559,6 @@ public class QtiBackgroundManager {
     }
 
     private void updateProperties() {
-        BoostFramework mPerf = new BoostFramework();
-
         mUseAppBgManager = Boolean.valueOf(mPerf.perfGetProp(
                 "ro.vendor.perf.qti_bg_manager.enable", "false"));
         mUseRestrictBgAutoStart = Boolean.valueOf(mPerf.perfGetProp(
@@ -533,6 +612,10 @@ public class QtiBackgroundManager {
                 "ro.vendor.perf.qti_bg_manager.enable_bg_malloc_purge", "true"));
         mUseIdleMallocPurge = Boolean.valueOf(mPerf.perfGetProp(
                 "ro.vendor.perf.qti_bg_manager.enable_idle_malloc_purge", "false"));
+        mEnableThpDefrag = Boolean.valueOf(mPerf.perfGetProp(
+                "ro.vendor.perf.qti_bg_manager.enable_thp_defrag", "false"));
+        mEnableVmCompaction = Boolean.valueOf(mPerf.perfGetProp(
+                "ro.vendor.perf.qti_bg_manager.enable_vm_compaction", "false"));
     }
 
     public class CpuLoadMonitor {
@@ -2319,6 +2402,8 @@ public class QtiBackgroundManager {
         pw.println("  qti_bg_manager.enable: " + mUseAppBgManager);
         pw.println("  qti_bg_manager.enable_bg_malloc_purge: " + mUseBgMallocPurge);
         pw.println("  qti_bg_manager.enable_idle_malloc_purge: " + mUseIdleMallocPurge);
+        pw.println("  qti_bg_manager.enable_thp_defrag: " + mEnableThpDefrag);
+        pw.println("  qti_bg_manager.enable_vm_compaction: " + mEnableVmCompaction);
         pw.println("  qti_bg_manager.enable_restrict_auto_start: " + mUseRestrictBgAutoStart);
         pw.println("  qti_bg_manager.enable_process_level_freezer: " + mUseProcessLevelFreezer);
         pw.println("  qti_bg_manager.enable_package_level_freezer: " + mUsePackageLevelFreezer);

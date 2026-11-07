@@ -179,6 +179,8 @@ public class BoostFramework {
     public static final int VENDOR_HINT_DRAG_END = 0x00001052;
     public static final int VENDOR_HINT_PIN_FILE = 0x0000105E;
     public static final int VENDOR_HINT_UNPIN_FILE = 0x0000105F;
+    public static final int VENDOR_HINT_BATTERY_CHARGING = 0x000010B3;
+
     //Ime Launch Boost Hint
     public static final int VENDOR_HINT_IME_LAUNCH_EVENT = 0x0000109F;
     //App exit animation boost
@@ -215,6 +217,8 @@ public class BoostFramework {
     //perf opcodes
     public static final int MPCTLV3_GPU_IS_APP_FG = 0X42820000;
     public static final int MPCTLV3_GPU_IS_APP_BG = 0X42824000;
+    public static final int MPCTLV3_THP_DEFRAG = 0x42C88000;
+    public static final int MPCTLV3_VM_COMPACTION_PROACTIVENESS = 0x42C8C000;
 
     public static final int VENDOR_EVENT_ACTIVITY_WINDOW_MODE_UPDATE = 0x00001066;
     public static final int VENDOR_EVENT_KILL_ABNORMAL = 0x00001068;
