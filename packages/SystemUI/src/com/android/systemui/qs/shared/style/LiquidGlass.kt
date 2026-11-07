@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.asComposePath
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -56,8 +57,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import com.android.internal.graphics.drawable.BackgroundBlurDrawable
@@ -516,60 +523,125 @@ fun liquidGlassEnabled(): Boolean {
 }
 
 fun Modifier.liquidGlassRim(shape: Shape, strength: Float = 1f): Modifier =
-    drawWithCache {
-        LiquidGlassTune.generation.value
-        val bounds = RectF(0f, 0f, size.width, size.height)
-        val edge = shape.toPath(size, this).asAndroidPath()
-        val glowShape = LiquidGlass.shapeHashOf(edge, bounds)
-        val sheen =
+    this then GlassRimElement(shape, strength)
+
+// An element that compares by value, so recomposing the shade every frame keeps the node and its
+// cached rim instead of rebuilding paths, gradients and glow keys for every glass element.
+private data class GlassRimElement(val shape: Shape, val strength: Float) :
+    ModifierNodeElement<GlassRimNode>() {
+    override fun create() = GlassRimNode(shape, strength)
+
+    override fun update(node: GlassRimNode) = node.update(shape, strength)
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "liquidGlassRim"
+    }
+}
+
+private class GlassRimNode(private var shape: Shape, private var strength: Float) :
+    Modifier.Node(), DrawModifierNode {
+    private var rim: GlassRim? = null
+
+    fun update(shape: Shape, strength: Float) {
+        this.shape = shape
+        this.strength = strength
+        rim = null
+        invalidateDraw()
+    }
+
+    override fun ContentDrawScope.draw() {
+        val generation = LiquidGlassTune.generation.value
+        val cached = rim
+        val r =
+            if (
+                cached != null &&
+                    cached.size == size &&
+                    cached.density == density &&
+                    cached.layoutDirection == layoutDirection &&
+                    cached.generation == generation
+            ) {
+                cached
+            } else {
+                GlassRim(shape, strength, size, Density(density, fontScale), layoutDirection, generation)
+                    .also { rim = it }
+            }
+        drawContent()
+        r.draw(this)
+    }
+}
+
+private class GlassRim(
+    private val shape: Shape,
+    private val strength: Float,
+    val size: Size,
+    densityScope: Density,
+    val layoutDirection: LayoutDirection,
+    val generation: Int,
+) {
+    val density = densityScope.density
+    private val bounds = RectF(0f, 0f, size.width, size.height)
+    private val glowRound = shape.simpleCornerRadius(size, densityScope, layoutDirection)
+    private val edge by lazy { shape.toPath(size, densityScope, layoutDirection).asAndroidPath() }
+    // Rounded shapes of one size differ only by their radius; anything else hashes its outline.
+    private val glowShape =
+        if (glowRound != null) glowRound.toBits() xor 0x5EED else LiquidGlass.shapeHashOf(edge, bounds)
+    private val sheenOn = LiquidGlassTune.f("sheen", 0.0f) > 0f
+    private val sheen =
+        if (sheenOn) {
             Brush.verticalGradient(
                 0f to Color.White.copy(alpha = LiquidGlassTune.f("sheen", 0.0f) * strength),
                 LiquidGlassTune.f("sheen_end", 0.45f) to Color.Transparent,
                 endY = size.height,
             )
-        val sheenOn = LiquidGlassTune.f("sheen", 0.0f) > 0f
-        val edgePath = edge.asComposePath()
-        val dark = LiquidGlassTune.f("edge_dark", 0.35f)
-        val hair = LiquidGlassTune.f("edge_dark_width", 0.8f).dp.toPx()
-        val outer =
-            if (dark > 0f) {
-                shape.toPath(Size(size.width - hair, size.height - hair), this).apply {
-                    translate(Offset(hair / 2f, hair / 2f))
-                }
-            } else null
-        val width = LiquidGlass.rimWidthDp.dp.toPx()
-        val inset = if (dark > 0f) hair else 0f
-        val rimSize = Size(size.width - width - inset * 2, size.height - width - inset * 2)
-        val rimOffset = width / 2f + inset
-        val rim =
-            shape.toPath(rimSize, this).apply { translate(Offset(rimOffset, rimOffset)) }.asAndroidPath()
-        // Simple rounded rects and circles stroke as round rects, which Skia draws analytically.
-        // Stroking them as paths tessellates every rim each frame and fills path atlases.
-        val rimRound = shape.simpleCornerRadius(rimSize, this)
-        val outerRound = if (outer != null) shape.simpleCornerRadius(Size(size.width - hair, size.height - hair), this) else null
-        val rimPaint =
-            android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                style = android.graphics.Paint.Style.STROKE
-                strokeWidth = width
-                shader = LiquidGlass.rimShader(0f, 0f, size.width, size.height, strength)
+        } else null
+    private val dark = LiquidGlassTune.f("edge_dark", 0.35f)
+    private val hair = with(densityScope) { LiquidGlassTune.f("edge_dark_width", 0.8f).dp.toPx() }
+    private val outerSize = Size(size.width - hair, size.height - hair)
+    // Simple rounded rects and circles stroke as round rects, which Skia draws analytically.
+    // Stroking them as paths tessellates every rim each frame and fills path atlases.
+    private val outerRound =
+        if (dark > 0f) shape.simpleCornerRadius(outerSize, densityScope, layoutDirection) else null
+    private val outer =
+        if (dark > 0f && outerRound == null) {
+            shape.toPath(outerSize, densityScope, layoutDirection).apply {
+                translate(Offset(hair / 2f, hair / 2f))
             }
-        onDrawWithContent {
-            drawContent()
+        } else null
+    private val width = with(densityScope) { LiquidGlass.rimWidthDp.dp.toPx() }
+    private val inset = if (dark > 0f) hair else 0f
+    private val rimSize = Size(size.width - width - inset * 2, size.height - width - inset * 2)
+    private val rimOffset = width / 2f + inset
+    private val rimRound = shape.simpleCornerRadius(rimSize, densityScope, layoutDirection)
+    private val rimPath =
+        if (rimRound == null) {
+            shape.toPath(rimSize, densityScope, layoutDirection)
+                .apply { translate(Offset(rimOffset, rimOffset)) }
+                .asAndroidPath()
+        } else null
+    private val rimPaint =
+        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = width
+            shader = LiquidGlass.rimShader(0f, 0f, size.width, size.height, strength)
+        }
+
+    fun draw(scope: ContentDrawScope) =
+        with(scope) {
             drawIntoCanvas {
                 LiquidGlass.drawGlow(it.nativeCanvas, glowShape, { edge }, bounds, density, strength)
             }
-            if (sheenOn) drawPath(edgePath, sheen)
-            if (outer != null) {
+            if (sheen != null) drawPath(edge.asComposePath(), sheen)
+            if (dark > 0f) {
                 val outerColor = Color.Black.copy(alpha = dark * strength)
                 if (outerRound != null) {
                     drawRoundRect(
                         outerColor,
                         topLeft = Offset(hair / 2f, hair / 2f),
-                        size = Size(size.width - hair, size.height - hair),
+                        size = outerSize,
                         cornerRadius = CornerRadius(outerRound),
                         style = Stroke(hair),
                     )
-                } else {
+                } else if (outer != null) {
                     drawPath(outer, outerColor, style = Stroke(hair))
                 }
             }
@@ -584,16 +656,20 @@ fun Modifier.liquidGlassRim(shape: Shape, strength: Float = 1f): Modifier =
                         rimRound,
                         rimPaint,
                     )
-                } else {
-                    it.nativeCanvas.drawPath(rim, rimPaint)
+                } else if (rimPath != null) {
+                    it.nativeCanvas.drawPath(rimPath, rimPaint)
                 }
             }
         }
-    }
+}
 
 // The corner radius when every corner of this shape at that size has the same circular radius
-private fun Shape.simpleCornerRadius(size: Size, scope: androidx.compose.ui.draw.CacheDrawScope): Float? =
-    when (val outline = createOutline(size, scope.layoutDirection, scope)) {
+private fun Shape.simpleCornerRadius(
+    size: Size,
+    density: Density,
+    layoutDirection: LayoutDirection,
+): Float? =
+    when (val outline = createOutline(size, layoutDirection, density)) {
         is Outline.Rectangle -> 0f
         is Outline.Rounded ->
             outline.roundRect.let { r ->
@@ -604,8 +680,8 @@ private fun Shape.simpleCornerRadius(size: Size, scope: androidx.compose.ui.draw
         is Outline.Generic -> null
     }
 
-private fun Shape.toPath(size: Size, scope: androidx.compose.ui.draw.CacheDrawScope): Path =
-    when (val outline = createOutline(size, scope.layoutDirection, scope)) {
+private fun Shape.toPath(size: Size, density: Density, layoutDirection: LayoutDirection): Path =
+    when (val outline = createOutline(size, layoutDirection, density)) {
         is Outline.Generic -> outline.path
         is Outline.Rounded -> Path().apply { addRoundRect(outline.roundRect) }
         is Outline.Rectangle -> Path().apply { addRect(outline.rect) }
