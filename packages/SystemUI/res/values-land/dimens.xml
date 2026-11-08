@@ -90,4 +90,6 @@
 
     <dimen name="custom_qs_tile_height">70dp</dimen>
 
+    <!-- Both Tall Stack rows must fit the short side -->
+    <fraction name="keyguard_clock_tall_stack_height">26%</fraction>
 </resources>

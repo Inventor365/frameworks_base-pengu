@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+     SPDX-FileCopyrightText: 2026 Lunaris-AOSP
+     SPDX-License-Identifier: Apache-2.0
+-->
+<!-- Sizes here are for previews; on the lock screen TallStackClock sizes the clock from the window. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/clock_frame"
+    android:tag="pivot_start"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_gravity="start|top"
+    android:gravity="start|top"
+    android:layoutDirection="ltr"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextClock
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/Taller"
+            android:format12Hour="hh"
+            android:format24Hour="HH"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:tag="tall_stack_hours"
+            android:textSize="150sp"
+            android:textColor="@android:color/white" />
+
+        <FrameLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:clipChildren="false">
+
+            <TextClock
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:alpha="0.6"
+                android:fontFamily="@font/bebasneue"
+                android:format12Hour="dd/MM"
+                android:format24Hour="dd/MM"
+                android:gravity="end|center_vertical"
+                android:includeFontPadding="false"
+                android:rotation="-90"
+                android:singleLine="true"
+                android:tag="tall_stack_date"
+                android:textSize="14sp"
+                android:textColor="@android:color/white" />
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+    <TextClock
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/Taller"
+        android:format12Hour="mm"
+        android:format24Hour="mm"
+        android:includeFontPadding="false"
+        android:singleLine="true"
+        android:tag="tall_stack_minutes"
+        android:layout_marginTop="-60sp"
+        android:textSize="150sp"
+        android:textColor="@android:color/white" />
+
+</LinearLayout>

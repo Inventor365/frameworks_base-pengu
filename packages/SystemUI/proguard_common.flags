@@ -48,3 +48,8 @@
   static *** v(...);
 }
 -maximumremovedandroidloglevel 2
+
+# ThemePicker sizes its Tall Stack clock previews with this, by reflection.
+-keep class com.android.systemui.clocks.TallStackClock {
+    public static void fit(android.view.View, float, float);
+}

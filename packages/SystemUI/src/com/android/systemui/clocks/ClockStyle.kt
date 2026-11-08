@@ -468,6 +468,7 @@ class ClockStyle @JvmOverloads constructor(
             }
 
             currentClockView?.let { view ->
+                TallStackClock.fit(view)
                 cacheClockViews(view)
                 disableClippingOnParents(view)
 
@@ -488,6 +489,11 @@ class ClockStyle @JvmOverloads constructor(
         forceTimeUpdate()
         visibility = if (clockStyle != 0) View.VISIBLE else View.GONE
         if (isDozing && clockStyle != 0) startAodTick()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        currentClockView?.let { TallStackClock.fit(it) }
     }
 
     private fun cacheClockViews(root: View) {
@@ -690,7 +696,8 @@ class ClockStyle @JvmOverloads constructor(
         val scale = if (isDozing) AOD_SCALE_DOWN else getScaleFactor()
         view.scaleX = scale
         view.scaleY = scale
-        view.pivotX = view.width / 2f
+        // Clocks laid out from the start edge grow from it rather than off the screen.
+        view.pivotX = if (view.tag == PIVOT_START_TAG) 0f else view.width / 2f
         view.pivotY = 0f
         disableClippingOnParents(view)
         if (naturalClockHeight == 0 && view.height > 0) {
@@ -1006,6 +1013,7 @@ class ClockStyle @JvmOverloads constructor(
             R.layout.keyguard_clock_space_age,      // 90
             R.layout.keyguard_clock_polyline,       // 91
             R.layout.keyguard_clock_oppo,           // 92
+            R.layout.keyguard_clock_tall_stack,     // 93
         )
 
         private val NO_COLOR_CLOCKS = hashSetOf(1, 2, 25, 26)
@@ -1034,6 +1042,7 @@ class ClockStyle @JvmOverloads constructor(
         private const val DOZE_PULSE_ACTION = "com.android.systemui.doze.pulse"
 
         private const val DEFAULT_STYLE = 0
+        private const val PIVOT_START_TAG = "pivot_start"
         private const val DEFAULT_OPACITY = 100
         private const val DEFAULT_MARGIN_TOP = 15
         private const val DEFAULT_CUSTOM_COLOR = Color.WHITE

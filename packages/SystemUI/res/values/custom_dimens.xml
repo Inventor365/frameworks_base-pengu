@@ -7,6 +7,9 @@
     <!-- Lockscreen clock -->
     <dimen name="custom_clock_frame_margin_top">0dp</dimen>
 
+    <!-- Height of each Tall Stack clock row, as a share of the window height -->
+    <fraction name="keyguard_clock_tall_stack_height">32%</fraction>
+
     <!-- Maximum size for weather icons shown in custom lockscreen clocks -->
     <dimen name="weather_image_max_size">24dp</dimen>
 
