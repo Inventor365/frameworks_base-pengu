@@ -161,6 +161,7 @@ import com.android.internal.util.Preconditions;
 import com.android.server.DisplayThread;
 import com.android.server.IoThread;
 import com.android.server.LocalServices;
+import com.android.server.wm.WindowManagerInternal;
 import com.android.server.SystemService;
 import com.android.server.Watchdog;
 import com.android.server.attention.AttentionManagerService;
@@ -1040,6 +1041,36 @@ public class InputManagerService extends IInputManager.Stub
         return injectInputEventToTarget(event, mode, Process.INVALID_UID);
     }
 
+    /**
+     * LMO freeform windows live on their own displays but are drawn inside the default display, so
+     * the navigation bar and back gesture (which inject Back for the default display) must reach
+     * the freeform display when it holds focus.
+     */
+    private void redirectBackToFocusedFreeformDisplay(InputEvent event) {
+        if (!(event instanceof KeyEvent)) {
+            return;
+        }
+        final KeyEvent key = (KeyEvent) event;
+        if (key.getKeyCode() != KeyEvent.KEYCODE_BACK
+                || (key.getFlags() & KeyEvent.FLAG_VIRTUAL_HARD_KEY) == 0
+                || key.getDisplayId() != Display.DEFAULT_DISPLAY) {
+            return;
+        }
+        final WindowManagerInternal wm = LocalServices.getService(WindowManagerInternal.class);
+        if (wm == null) {
+            return;
+        }
+        final int focusedDisplayId = wm.getTopFocusedDisplayId();
+        if (focusedDisplayId == Display.DEFAULT_DISPLAY) {
+            return;
+        }
+        final DisplayInfo info = mDisplayManagerInternal.getDisplayInfo(focusedDisplayId);
+        if (info != null && info.type == Display.TYPE_OVERLAY && info.name != null
+                && info.name.startsWith("lmo-freeform:")) {
+            key.setDisplayId(focusedDisplayId);
+        }
+    }
+
     @Override // Binder call
     public boolean injectInputEventToTarget(@NonNull InputEvent event, int mode, int targetUid) {
         if (!checkCallingPermission(android.Manifest.permission.INJECT_EVENTS,
@@ -1062,6 +1093,7 @@ public class InputManagerService extends IInputManager.Stub
         final boolean injectIntoUid = targetUid != Process.INVALID_UID;
         final int result;
         try {
+            redirectBackToFocusedFreeformDisplay(event);
             result = mNative.injectInputEvent(event, injectIntoUid,
                     targetUid, mode, INJECTION_TIMEOUT_MILLIS,
                     WindowManagerPolicy.FLAG_DISABLE_KEY_REPEAT);
