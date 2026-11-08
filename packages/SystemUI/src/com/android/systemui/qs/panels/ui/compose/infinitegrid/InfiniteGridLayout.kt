@@ -114,7 +114,7 @@ constructor(
                     SizedTileImpl(
                         it,
                         if (forceLargeTiles) largeTilesSpan.coerceAtMost(columns)
-                        else if (largeTiles.contains(it.spec)) largeTilesSpan
+                        else if (largeTiles.contains(it.spec)) largeTilesSpan.coerceAtMost(columns)
                         else 1
                     )
                 }
