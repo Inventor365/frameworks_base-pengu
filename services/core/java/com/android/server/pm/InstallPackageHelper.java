@@ -263,6 +263,13 @@ final class InstallPackageHelper {
     private static final String PROPERTY_NO_RIL = "ro.radio.noril";
 
     private static final String PROPERTY_QSPA_Enabled = "ro.boot.vendor.qspa";
+
+    /**
+     * System apps whose original-package is another app. Gboard names the AOSP keyboard, and
+     * running under that name and its data it cannot start.
+     */
+    private static final Set<String> IGNORED_ORIGINAL_PACKAGE_OWNERS =
+            Set.of("com.google.android.inputmethod.latin");
     /**
      * Tracks packages that need to be disabled.
      * Map of package name to its path on the file system.
@@ -4659,6 +4666,14 @@ final class InstallPackageHelper {
         final boolean isSystemApp = AndroidPackageLegacyUtils.isSystem(parsedPackage);
         synchronized (mPm.mLock) {
             platformPackage = mPm.getPlatformPackage();
+            // isSystem() is only set by applyPolicy after this; at boot the scan flags say it.
+            final boolean ignoreOriginalPackages =
+                    (isSystemApp || (scanFlags & SCAN_AS_SYSTEM) != 0)
+                    && IGNORED_ORIGINAL_PACKAGE_OWNERS.contains(parsedPackage.getPackageName());
+            if (ignoreOriginalPackages) {
+                // Undo the rename an older build made, so the app gets its own name back.
+                mPm.mSettings.removeRenamedPackageLPw(parsedPackage.getPackageName());
+            }
             final String renamedPkgName = mPm.mSettings.getRenamedPackageLPr(
                     AndroidPackageUtils.getRealPackageOrNull(parsedPackage, isSystemApp));
             realPkgName = ScanPackageUtils.getRealPackageName(parsedPackage, renamedPkgName,
@@ -4666,7 +4681,8 @@ final class InstallPackageHelper {
             if (realPkgName != null) {
                 ScanPackageUtils.ensurePackageRenamed(parsedPackage, renamedPkgName);
             }
-            originalPkgSetting = getOriginalPackageLocked(parsedPackage, renamedPkgName);
+            originalPkgSetting = ignoreOriginalPackages
+                    ? null : getOriginalPackageLocked(parsedPackage, renamedPkgName);
             installedPkgSetting = mPm.mSettings.getPackageLPr(parsedPackage.getPackageName());
             if (mPm.mTransferredPackages.contains(parsedPackage.getPackageName())) {
                 Slog.w(TAG, "Package " + parsedPackage.getPackageName()
