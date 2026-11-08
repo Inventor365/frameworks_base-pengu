@@ -19,6 +19,7 @@ package com.android.systemui.shade.ui
 import android.content.Context
 import android.graphics.Color
 import com.android.internal.graphics.ColorUtils
+import com.android.systemui.common.shared.colors.SurfaceEffectColors
 import com.android.systemui.qs.shared.style.LiquidGlass
 import com.android.systemui.qs.shared.style.LiquidGlassTune
 import com.android.systemui.res.R
@@ -63,6 +64,18 @@ object ShadeColors {
         } else {
             notificationScrimFallback(context)
         }
+    }
+
+    /**
+     * Opaque surface for notifications and their footer when the shade cannot blur: the tile
+     * surface over the fallback panel, so both read as the same colour.
+     */
+    @JvmStatic
+    fun fallbackCardSurface(context: Context): Int {
+        return ColorUtils.compositeColors(
+            SurfaceEffectColors.surfaceEffect1(context),
+            shadePanelFallback(context),
+        )
     }
 
     @JvmStatic

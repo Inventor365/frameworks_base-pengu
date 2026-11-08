@@ -48,6 +48,7 @@ import com.android.systemui.penguin.CosFeatures;
 import com.android.systemui.qs.shared.style.LiquidGlass;
 import com.android.systemui.res.R;
 import com.android.systemui.scene.shared.flag.SceneContainerFlag;
+import com.android.systemui.shade.ui.ShadeColors;
 import com.android.systemui.statusbar.notification.ColorUpdateLogger;
 import com.android.systemui.statusbar.notification.row.FooterViewButton;
 import com.android.systemui.statusbar.notification.row.StackScrollerDecorView;
@@ -330,8 +331,7 @@ public class FooterView extends StackScrollerDecorView {
                         historyBg.setAlpha(backgroundAlpha);
                     }
                 } else {
-                    scHigh = mContext.getColor(
-                            com.android.internal.R.color.materialColorSurfaceContainer);
+                    scHigh = ShadeColors.fallbackCardSurface(getContext());
                 }
             } else {
                 scHigh = mContext.getColor(
