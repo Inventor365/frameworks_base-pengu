@@ -5334,9 +5334,14 @@ class DisplayContent extends RootDisplayArea implements WindowManagerPolicy.Disp
         }
 
         final WindowState imeInputTargetWindow = mImeInputTarget.getWindowState();
+        final InsetsControlTarget imeHost = getImeHost(imeInputTargetWindow);
         if (!isImeControlledByApp() && mRemoteInsetsControlTarget != null
-                || getImeHost(imeInputTargetWindow) == mRemoteInsetsControlTarget) {
+                || imeHost == mRemoteInsetsControlTarget) {
             return mRemoteInsetsControlTarget;
+        } else if (imeInputTargetWindow != null && imeHost != imeInputTargetWindow) {
+            // The IME of this display is shown on another one, so no window here can control
+            // it. Without a control target, the IME request goes to that display's host.
+            return null;
         } else {
             return imeInputTargetWindow;
         }
