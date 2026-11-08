@@ -9958,10 +9958,24 @@ public class WindowManagerService extends IWindowManager.Stub
         mPointerDownOutsideFocusRunnable = null;
     }
 
+    private boolean isEdgeSwipeOverFocusedFreeformDisplay(InputTarget t) {
+        final DisplayContent touched = mRoot.getDisplayContent(t.getDisplayId());
+        final DisplayContent focused = mRoot.getTopFocusedDisplayContent();
+        return touched != null && touched.isDefaultDisplay && focused != null
+                && focused != touched && focused.isFreeformDisplay()
+                && touched.getDisplayPolicy().currentGestureStartedAtSideEdge();
+    }
+
     private void onPointerDownOutsideFocusLocked(InputTarget t, boolean fromHandler) {
         if (t == null || !t.receiveFocusFromTapOutside()) {
             // If the window that received the input event cannot receive keys, don't move the
             // display it's on to the top since that window won't be able to get focus anyway.
+            return;
+        }
+
+        if (isEdgeSwipeOverFocusedFreeformDisplay(t)) {
+            // A back swipe from the screen edge must reach the focused LMO freeform window instead
+            // of moving focus to the app underneath it on the default display.
             return;
         }
 

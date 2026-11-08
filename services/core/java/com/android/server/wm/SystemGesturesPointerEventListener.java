@@ -324,6 +324,15 @@ class SystemGesturesPointerEventListener implements PointerEventListener {
         }
     }
 
+    /** Whether the current touch began in the left or right edge zone where back swipes start. */
+    boolean currentGestureStartedAtSideEdge() {
+        if (mDownPointers == 0) {
+            return false;
+        }
+        final float x = mDownX[0];
+        return x <= mSwipeStartThreshold.left || x >= screenWidth - mSwipeStartThreshold.right;
+    }
+
     protected boolean currentGestureStartedInRegion(Region r) {
         return r.contains((int) mDownX[0], (int) mDownY[0]);
     }

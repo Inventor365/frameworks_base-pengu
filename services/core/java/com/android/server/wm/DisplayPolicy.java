@@ -303,6 +303,10 @@ public class DisplayPolicy {
     // Will be null in client transient mode.
     private SystemGesturesPointerEventListener mSystemGestures;
 
+    boolean currentGestureStartedAtSideEdge() {
+        return mSystemGestures != null && mSystemGestures.currentGestureStartedAtSideEdge();
+    }
+
     final DecorInsets mDecorInsets;
     /** Currently it can only be non-null when physical display switch happens. */
     private DecorInsets.Cache mCachedDecorInsets;
