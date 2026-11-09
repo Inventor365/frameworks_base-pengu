@@ -335,6 +335,7 @@ import com.android.server.webkit.WebViewUpdateService;
 import com.android.server.wm.ActivityTaskManagerService;
 import com.android.server.wm.WindowManagerGlobalLock;
 import com.android.server.wm.WindowManagerService;
+import com.android.server.yuki.RunawayDaemonGuard;
 import com.android.server.lineage.health.HealthInterfaceService;
 
 import dalvik.system.VMDebug;
@@ -2316,6 +2317,10 @@ public final class SystemServer implements Dumpable {
             } catch (Throwable e) {
                 reportWtf("initializing NetworkStackClient", e);
             }
+            t.traceEnd();
+
+            t.traceBegin("StartRunawayDaemonGuard");
+            mSystemServiceManager.startService(RunawayDaemonGuard.class);
             t.traceEnd();
 
             t.traceBegin("StartNetworkManagementService");
