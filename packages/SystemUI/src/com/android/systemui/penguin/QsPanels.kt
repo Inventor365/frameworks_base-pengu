@@ -143,7 +143,7 @@ interface QsTileStyle {
     val editToggleInset: Dp
 }
 
-class QsPanelsHost(val panels: QsPanels, val container: QuickSettingsContainerViewModel)
+data class QsPanelsHost(val panels: QsPanels, val container: QuickSettingsContainerViewModel)
 
 val LocalQsPanels = staticCompositionLocalOf<QsPanelsHost?> { null }
 

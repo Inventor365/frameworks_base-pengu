@@ -92,6 +92,7 @@ import com.android.systemui.penguin.QsPanelsHostScope
 import com.android.systemui.qs.ui.viewmodel.QuickSettingsSceneContentViewModel
 import com.android.systemui.qs.ui.viewmodel.QuickSettingsUserActionsViewModel
 import com.android.systemui.res.R
+import com.android.systemui.shade.shared.model.ShadeMode
 import com.android.systemui.scene.session.ui.composable.SaveableSession
 import com.android.systemui.scene.shared.model.Scenes
 import com.android.systemui.scene.ui.composable.Scene
@@ -138,6 +139,8 @@ constructor(
     override fun ContentScope.Content(modifier: Modifier) {
         val viewModel =
             rememberViewModel("QuickSettingsScene-viewModel") { contentViewModelFactory.create() }
+        // Dual Shade draws the shade with overlays; don't keep this scene composed out of sight.
+        if (viewModel.shadeMode is ShadeMode.Dual && !isAlwaysComposedContentVisible()) return
         val notificationsPlaceholderViewModel =
             rememberViewModel("QuickSettingsScene-notifPlaceholderViewModel") {
                 notificationsPlaceholderViewModelFactory.create(Scenes.QuickSettings)

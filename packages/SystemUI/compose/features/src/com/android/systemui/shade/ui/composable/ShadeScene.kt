@@ -171,6 +171,8 @@ constructor(
     override fun ContentScope.Content(modifier: Modifier) {
         val viewModel =
             rememberViewModel("ShadeScene-viewModel") { contentViewModelFactory.create() }
+        // Dual Shade draws the shade with overlays; don't keep this scene composed out of sight.
+        if (viewModel.shadeMode is ShadeMode.Dual && !isAlwaysComposedContentVisible()) return
         val headerViewModel =
             rememberViewModel("ShadeScene-headerViewModel") {
                 viewModel.shadeHeaderViewModelFactory.create()

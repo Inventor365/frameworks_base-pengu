@@ -107,7 +107,8 @@ constructor(
 
     override val userActions: Flow<Map<UserAction, UserActionResult>> = actionsViewModel.actions
 
-    override val alwaysCompose: Boolean = false
+    // Composed only while shown, or beside COS Quick Settings so switching to it is instant.
+    override val alwaysCompose: Boolean = true
 
     override suspend fun activate(): Nothing {
         actionsViewModel.activate()
@@ -115,6 +116,12 @@ constructor(
 
     @Composable
     override fun ContentScope.Content(modifier: Modifier) {
+        val cosShade = rememberCosFeature(CosFeature.Shade)
+        val quickSettingsShown by
+            remember(layoutState) {
+                derivedStateOf { Overlays.QuickSettingsShade in layoutState.currentOverlays }
+            }
+        if (!isAlwaysComposedContentVisible() && !(cosShade && quickSettingsShown)) return
         val notificationStackPadding =
             dimensionResource(id = R.dimen.notification_side_paddings_dual)
 

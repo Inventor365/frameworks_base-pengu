@@ -76,6 +76,8 @@ constructor(
             }
             .hydratedStateOf()
 
+    val shadeMode: ShadeMode by shadeModeInteractor.shadeMode.hydratedStateOf()
+
     private val footerActionsControllerInitialized = AtomicBoolean(false)
 
     /**

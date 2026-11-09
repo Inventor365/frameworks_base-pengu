@@ -170,9 +170,12 @@ constructor(
     @Composable
     override fun ContentScope.Content(modifier: Modifier) {
         val shown = isAlwaysComposedContentVisible()
-        val besideNotifications =
-            rememberCosFeature(CosFeature.Shade) &&
-                Overlays.NotificationsShade in layoutState.currentOverlays
+        val cosShade = rememberCosFeature(CosFeature.Shade)
+        val notificationsShown by
+            remember(layoutState) {
+                derivedStateOf { Overlays.NotificationsShade in layoutState.currentOverlays }
+            }
+        val besideNotifications = cosShade && notificationsShown
         if (!shown && !besideNotifications) return
         val coroutineScope = rememberCoroutineScope()
         val contentViewModel =
