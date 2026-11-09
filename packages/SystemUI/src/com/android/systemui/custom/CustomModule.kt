@@ -395,6 +395,7 @@ interface CustomModule {
                 category = TileCategory.UTILITIES,
             )
 
+        @Provides
         @IntoMap
         @StringKey(CPU_INFO_TILE_SPEC)
         fun provideCPUInfoConfig(uiEventLogger: QsEventLogger): QSTileConfig =
