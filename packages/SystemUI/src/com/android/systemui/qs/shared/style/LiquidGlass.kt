@@ -805,6 +805,11 @@ fun Modifier.glassBlurRegion(shape: Shape, material: Int = 0): Modifier {
     val originY = remember { mutableStateOf(0f) }
     val fade = LocalGlassBlurAlpha.current
     val clipBottom = LocalGlassClipBottom.current
+    // The COS lockscreen draws its art in this window, over anything the compositor blurs behind
+    // it, so glass in front of that art is drawn here instead.
+    val overArt = GlassBackdrop.drawing.value
+    val rimRect = remember { RectF() }
+    val rimRadii = remember { FloatArray(8) }
     LaunchedEffect(fade, allowed) {
         androidx.compose.runtime.snapshotFlow { if (allowed()) fade().coerceIn(0f, 1f) else 0f }
             .collect { alpha ->
@@ -855,6 +860,25 @@ fun Modifier.glassBlurRegion(shape: Shape, material: Int = 0): Modifier {
                     drawable[0]?.setVisible(false, false)
                     return@onDrawBehind
                 }
+                if (overArt) {
+                    drawable[0]?.setVisible(false, false)
+                    val r = minOf(corner, shown.height / 2f)
+                    drawRoundRect(
+                        Color.White.copy(alpha = OVER_ART_FILL * alpha),
+                        shown.topLeft,
+                        shown.size,
+                        CornerRadius(r),
+                    )
+                    rimRect.set(shown.left, shown.top, shown.right, shown.bottom)
+                    rimRadii.fill(r)
+                    drawIntoCanvas {
+                        val canvas = it.nativeCanvas
+                        val save = canvas.saveLayerAlpha(rimRect, (alpha * 255).toInt())
+                        LiquidGlass.drawRim(canvas, rimRect, rimRadii, density)
+                        canvas.restoreToCount(save)
+                    }
+                    return@onDrawBehind
+                }
                 val root = view.viewRootImpl ?: return@onDrawBehind
                 val blur =
                     drawable[0]
@@ -878,6 +902,8 @@ fun Modifier.glassBlurRegion(shape: Shape, material: Int = 0): Modifier {
             }
         }
 }
+
+private const val OVER_ART_FILL = 0.12f
 
 object LiquidGlassGlyphs {
     private val bySpec =
