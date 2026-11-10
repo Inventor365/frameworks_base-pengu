@@ -12,27 +12,23 @@ import java.io.FileInputStream;
 import android.os.Build;
 import android.security.KeyStore2;
 import android.security.KeyStoreException;
-import android.system.keystore2.Domain;
-import android.system.keystore2.KeyDescriptor;
-import android.system.keystore2.KeyEntryResponse;
 import android.os.SystemProperties;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Log;
 
 import com.android.internal.org.bouncycastle.asn1.ASN1InputStream;
-import com.android.internal.org.bouncycastle.asn1.ASN1Enumerated;
 import com.android.internal.org.bouncycastle.asn1.ASN1OctetString;
 import com.android.internal.org.bouncycastle.asn1.ASN1Sequence;
 import com.android.internal.org.bouncycastle.asn1.ASN1TaggedObject;
 
-import java.security.KeyPairGenerator;
-import java.security.KeyStore;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
-import java.security.cert.CertificateFactory;
 import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.security.*;
+import java.security.cert.*;
 
 /**
  * @hide
@@ -40,9 +36,16 @@ import java.io.ByteArrayInputStream;
 public final class AttestationUtils {
     private static final String TAG = "AttestationUtils";
 
+    private static final File CONFIG_DIR = new File("/data/system/trickystore");
+    private static final File BOOT_KEY_FILE = new File(CONFIG_DIR, "boot_key");
+    private static final File HBK_FILE = new File(CONFIG_DIR, "hbk");
+
     private static volatile byte[] sBootKey;
     private static volatile byte[] sBootHash;
+    private static volatile byte[] sModuleHash;
     private static volatile boolean sTeeBroken = false;
+    // True while the cached boot key/hash was derived from the keybox, so it must be
+    // re-derived when the keybox changes. Persisted random values are not affected.
     private static volatile boolean sBootKeyFallback;
     private static volatile boolean sBootHashFallback;
     private static volatile int sKeyMintAidlVersion;
@@ -50,20 +53,35 @@ public final class AttestationUtils {
     private AttestationUtils() {}
 
     public static byte[] getModuleHash() {
-        try {
-            byte[] modulesDer = KeyStore2.getInstance()
-                    .getSupplementaryAttestationInfo(Tag.MODULE_HASH);
-            if (modulesDer == null || modulesDer.length == 0) {
-                Log.w(TAG, "MODULE_HASH supplementary data unavailable");
+        byte[] cached = sModuleHash;
+        if (cached != null) {
+            return cached.length == 0 ? null : cached;
+        }
+        synchronized (AttestationUtils.class) {
+            cached = sModuleHash;
+            if (cached != null) {
+                return cached.length == 0 ? null : cached;
+            }
+            try {
+                byte[] modulesDer = KeyStore2.getInstance()
+                        .getSupplementaryAttestationInfo(Tag.MODULE_HASH);
+                if (modulesDer == null || modulesDer.length == 0) {
+                    Log.w(TAG, "MODULE_HASH supplementary data unavailable");
+                    sModuleHash = new byte[0];
+                    return null;
+                }
+                cached = MessageDigest.getInstance("SHA-256").digest(modulesDer);
+                sModuleHash = cached;
+                return cached;
+            } catch (KeyStoreException | java.security.NoSuchAlgorithmException e) {
+                Log.w(TAG, "Unable to calculate MODULE_HASH from Keystore2", e);
+                sModuleHash = new byte[0];
+                return null;
+            } catch (RuntimeException e) {
+                Log.w(TAG, "MODULE_HASH query failed", e);
+                sModuleHash = new byte[0];
                 return null;
             }
-            return MessageDigest.getInstance("SHA-256").digest(modulesDer);
-        } catch (KeyStoreException | java.security.NoSuchAlgorithmException e) {
-            Log.w(TAG, "Unable to calculate MODULE_HASH from Keystore2", e);
-            return null;
-        } catch (RuntimeException e) {
-            Log.w(TAG, "MODULE_HASH query failed", e);
-            return null;
         }
     }
 
@@ -76,10 +94,9 @@ public final class AttestationUtils {
     }
 
     /**
-     * Called after a successful keybox replacement, not after a failed fetch.
-     * Must not take AttestationUtils.class: boot-hash derivation holds that lock
-     * while it may initialize TrickyStoreService and refresh the keybox.
-     * Volatile fields provide visibility without reversing the lock order.
+     * Called after a keybox replacement succeeds, not after a failed fetch. Deliberately not
+     * synchronized: the keybox is replaced from inside the service's own locks, and
+     * getBootKey()/getBootHash() take this class's lock before calling into the service.
      */
     public static void invalidateFallbackBootState() {
         if (sBootKeyFallback) sBootKey = null;
@@ -94,6 +111,10 @@ public final class AttestationUtils {
         return true;
     }
 
+    public static boolean isNullOrZeroBootHash(byte[] hash) {
+        return isNullOrZeroBootKey(hash);
+    }
+
     public static byte[] getBootKey() {
         byte[] key = sBootKey;
         if (!isNullOrZeroBootKey(key)) return key;
@@ -101,12 +122,13 @@ public final class AttestationUtils {
             key = sBootKey;
             if (isNullOrZeroBootKey(key)) {
                 key = getBootKeyFromProp();
-                sBootKeyFallback = isNullOrZeroBootKey(key);
-                if (isNullOrZeroBootKey(key)) key = getBootKeyFromKeybox();
+                boolean fromKeybox = false;
                 if (isNullOrZeroBootKey(key)) {
-                    Log.w(TAG, "No boot key from prop or keybox, using random bytes");
-                    key = generateRandomBytes(32);
+                    key = getBootKeyFromKeybox();
+                    fromKeybox = key != null;
                 }
+                if (isNullOrZeroBootKey(key)) key = loadOrCreatePersisted(BOOT_KEY_FILE);
+                sBootKeyFallback = fromKeybox;
                 sBootKey = key;
             }
         }
@@ -114,11 +136,11 @@ public final class AttestationUtils {
     }
 
     /**
-     * Deterministic boot-hash fallback derived from the active keybox, used before
-     * the random fallback so that — when the vbmeta prop is missing and the TEE is
-     * broken — two attestations in the same boot still agree on RootOfTrust instead
-     * of each getting fresh random bytes. Domain-separated from the boot KEY digest
-     * (which is a plain SHA-256 of the same cert) so the two fields don't collide.
+     * Derives a fallback verified-boot hash from the active keybox's issuer certificate, used
+     * ahead of the random fallback so that, when the vbmeta prop is missing, nothing persisted
+     * exists and the TEE is broken, the RootOfTrust hash is still deterministic for a given
+     * keybox instead of changing on every boot. Domain-separated from the boot KEY digest
+     * (a plain SHA-256 of the same cert) so the two fields don't collide.
      * Returns null if no keybox is loaded.
      */
     private static byte[] deriveBootHashFromKeybox() {
@@ -192,72 +214,74 @@ public final class AttestationUtils {
 
     public static byte[] getBootHash() {
         byte[] hash = sBootHash;
-        if (hash != null) return hash;
+        if (!isNullOrZeroBootHash(hash)) return hash;
         synchronized (AttestationUtils.class) {
             hash = sBootHash;
-            if (hash == null) {
+            if (isNullOrZeroBootHash(hash)) {
                 hash = getBootHashFromProp();
-                if (hash == null && !sTeeBroken) hash = extractBootHashFromTee();
-                sBootHashFallback = hash == null;
-                if (hash == null) hash = deriveBootHashFromKeybox();
-                if (hash == null) {
-                    Log.w(TAG, "Failed to get boot hash from prop, TEE, and keybox, using random bytes");
-                    hash = generateRandomBytes(32);
+                if (isNullOrZeroBootHash(hash)) hash = readPersisted(HBK_FILE);
+                if (isNullOrZeroBootHash(hash) && !sTeeBroken) {
+                    hash = extractBootHashFromTee();
+                    if (!isNullOrZeroBootHash(hash)) writePersisted(HBK_FILE, hash);
                 }
+                boolean fromKeybox = false;
+                if (isNullOrZeroBootHash(hash)) {
+                    hash = deriveBootHashFromKeybox();
+                    fromKeybox = hash != null;
+                }
+                if (isNullOrZeroBootHash(hash)) {
+                    Log.w(TAG, "Failed to get boot hash from prop, disk, TEE, and keybox, using random bytes");
+                    hash = generateRandomBytes(32);
+                    writePersisted(HBK_FILE, hash);
+                }
+                sBootHashFallback = fromKeybox;
                 sBootHash = hash;
             }
         }
         return hash;
     }
 
-    public static synchronized void initBootHash() {
+    public static void initBootHash() {
         Log.i(TAG, "initBootHash: Starting boot hash initialization");
-        byte[] hash = getBootHashFromProp();
-        if (hash != null) {
-            sBootHashFallback = false;
+        byte[] hash = readPersisted(HBK_FILE);
+        if (!isNullOrZeroBootHash(hash)) {
             sBootHash = hash;
-            Log.i(TAG, "initBootHash: Existing vbmeta digest property found");
+            Log.i(TAG, "initBootHash: Boot hash loaded from disk: " + bytesToHex(hash));
+            setVbmetaDigestProp(bytesToHex(hash));
             return;
         }
-
-        Log.i(TAG, "initBootHash: No prop; attempting early TEE extraction");
+        Log.i(TAG, "initBootHash: Attempting TEE extraction");
         hash = extractBootHashFromTee();
-        sBootHashFallback = hash == null;
-        if (hash == null) {
-            Log.w(TAG, "initBootHash: No TEE digest, trying keybox-derived fallback");
-            hash = deriveBootHashFromKeybox();
+        if (!isNullOrZeroBootHash(hash)) {
+            sBootHashFallback = false;
+            sBootHash = hash;
+            writePersisted(HBK_FILE, hash);
+            Log.i(TAG, "initBootHash: TEE extraction successful, setting prop");
+            setVbmetaDigestProp(bytesToHex(hash));
+            return;
         }
-        if (hash == null) {
-            Log.w(TAG, "initBootHash: No keybox available, using per-boot random fallback");
-            hash = generateRandomBytes(32);
-        }
-
+        hash = getBootHashFromProp();
         if (hash != null) {
             sBootHash = hash;
-            Log.i(TAG, "initBootHash: hash extracted/generated, setting prop");
-            setVbmetaDigestProp(bytesToHex(hash));
+            Log.i(TAG, "initBootHash: Boot hash already set from prop: " + bytesToHex(hash));
+            return;
+        }
+        hash = deriveBootHashFromKeybox();
+        if (hash != null) {
+            sBootHashFallback = true;
+            sBootHash = hash;
+            Log.w(TAG, "initBootHash: TEE extraction failed, using keybox-derived boot hash");
         } else {
-            Log.e(TAG, "initBootHash: Failed to extract/generate boot hash");
+            Log.e(TAG, "initBootHash: Failed to extract boot hash from TEE");
         }
     }
 
     private static void setVbmetaDigestProp(String digest) {
-        final String prop = "ro.boot.vbmeta.digest";
-        if (digest == null || !digest.matches("[0-9a-fA-F]{64}")) {
-            Log.e(TAG, "Rejecting invalid verified-boot digest format");
-            return;
-        }
         try {
-            SystemProperties.set(prop, digest.toLowerCase(java.util.Locale.ROOT));
-            String observed = SystemProperties.get(prop, "");
-            if (observed.equalsIgnoreCase(digest)) {
-                Log.i(TAG, "Verified-boot digest property update confirmed");
-            } else {
-                Log.e(TAG, "Verified-boot digest write returned but property read-back "
-                        + "did not match; length=" + observed.length());
-            }
-        } catch (RuntimeException e) {
-            Log.e(TAG, "Unable to publish TEE-provided digest to " + prop, e);
+            SystemProperties.set("ro.boot.vbmeta.digest", digest);
+            Log.i(TAG, "Set ro.boot.vbmeta.digest property to TEE boot hash");
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to set vbmeta.digest property", e);
         }
     }
 
@@ -267,35 +291,29 @@ public final class AttestationUtils {
         try {
             ks = KeyStore.getInstance("AndroidKeyStore");
             ks.load(null);
+            // A stale probe must never influence the next probe's result.
             if (ks.containsAlias(alias)) ks.deleteEntry(alias);
 
-            byte[] challenge = generateRandomBytes(32);
             KeyPairGenerator kpg = KeyPairGenerator.getInstance(
                     KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore");
             KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(alias,
                     KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
                     .setDigests(KeyProperties.DIGEST_SHA256)
-                    .setAttestationChallenge(challenge)
+                    .setAttestationChallenge(new byte[32])
                     .build();
             kpg.initialize(spec);
             kpg.generateKeyPair();
 
-            KeyDescriptor descriptor = new KeyDescriptor();
-            descriptor.alias = alias;
-            descriptor.domain = Domain.APP;
-            descriptor.nspace = KeyProperties.NAMESPACE_APPLICATION;
-            descriptor.blob = null;
-            KeyEntryResponse entry = KeyStore2.getInstance().getKeyEntry(descriptor);
-            if (entry == null || entry.metadata == null
-                    || entry.metadata.certificate == null) {
-                Log.w(TAG, "TEE probe returned no Keystore2 certificate metadata");
+            java.security.cert.Certificate[] chain = ks.getCertificateChain(alias);
+            if (chain == null || chain.length == 0
+                    || !(chain[0] instanceof X509Certificate)) {
+                Log.w(TAG, "TEE probe did not return an X.509 leaf");
                 return null;
             }
-            X509Certificate leaf = (X509Certificate) CertificateFactory.getInstance("X.509")
-                    .generateCertificate(new ByteArrayInputStream(entry.metadata.certificate));
-            byte[] extValue = leaf.getExtensionValue("1.3.6.1.4.1.11129.2.1.17");
+            byte[] extValue = ((X509Certificate) chain[0]).getExtensionValue(
+                    "1.3.6.1.4.1.11129.2.1.17");
             if (extValue == null) {
-                Log.w(TAG, "TEE probe leaf lacks an attestation extension");
+                Log.w(TAG, "TEE probe leaf has no attestation extension");
                 return null;
             }
 
@@ -305,52 +323,32 @@ public final class AttestationUtils {
                         new ASN1InputStream(octet.getOctets())) {
                     ASN1Sequence description = ASN1Sequence.getInstance(
                             descriptionStream.readObject());
-                    if (description.size() < 8) {
-                        Log.w(TAG, "TEE probe produced an incomplete KeyDescription");
-                        return null;
-                    }
-                    int attestationLevel = ASN1Enumerated.getInstance(
-                            description.getObjectAt(1)).getValue().intValue();
-                    int keymasterLevel = ASN1Enumerated.getInstance(
-                            description.getObjectAt(3)).getValue().intValue();
-                    if ((attestationLevel != 1 && attestationLevel != 2)
-                            || (keymasterLevel != 1 && keymasterLevel != 2)) {
-                        Log.w(TAG, "TEE probe was not hardware attested, attestationLevel="
-                                + attestationLevel + ", keymasterLevel=" + keymasterLevel);
-                        return null;
-                    }
-                    byte[] attestedChallenge = ASN1OctetString.getInstance(
-                            description.getObjectAt(4)).getOctets();
-                    if (!MessageDigest.isEqual(challenge, attestedChallenge)) {
-                        Log.w(TAG, "TEE probe attestation challenge mismatch");
-                        return null;
-                    }
+                    if (description.size() < 8) return null;
                     ASN1Sequence tee = ASN1Sequence.getInstance(description.getObjectAt(7));
                     for (int i = 0; i < tee.size(); i++) {
                         ASN1TaggedObject tagged = ASN1TaggedObject.getInstance(tee.getObjectAt(i));
                         if (tagged.getTagNo() != 704) continue;
                         ASN1Sequence rootOfTrust = ASN1Sequence.getInstance(
                                 tagged.getBaseObject());
+                        // The fourth RootOfTrust element is optional on older Keymaster.
                         if (rootOfTrust.size() < 4) {
-                            Log.i(TAG, "TEE reports legacy RootOfTrust without verifiedBootHash");
+                            Log.i(TAG, "Older Keymaster attestation has no verifiedBootHash");
                             return null;
                         }
                         byte[] hash = ASN1OctetString.getInstance(
                                 rootOfTrust.getObjectAt(3)).getOctets();
                         if (hash.length != 32) {
-                            Log.w(TAG, "TEE returned unexpected verifiedBootHash length: "
-                                    + hash.length);
+                            Log.w(TAG, "Unexpected verifiedBootHash length: " + hash.length);
                             return null;
                         }
-                        Log.i(TAG, "TEE probe returned a hardware-level verifiedBootHash");
                         return hash;
                     }
                 }
             }
-            Log.w(TAG, "TEE probe contained no RootOfTrust tag");
+            Log.w(TAG, "TEE attestation did not expose a RootOfTrust");
             return null;
         } catch (Exception e) {
-            Log.w(TAG, "TEE boot hash probe failed; RKP provisioning may be unavailable", e);
+            Log.w(TAG, "TEE boot hash probe failed", e);
             return null;
         } finally {
             if (ks != null) {
@@ -369,7 +367,8 @@ public final class AttestationUtils {
             return null;
         }
         try {
-            return hexStringToByteArray(digest);
+            byte[] hash = hexStringToByteArray(digest);
+            return isNullOrZeroBootHash(hash) ? null : hash;
         } catch (Exception e) {
             Log.e(TAG, "Failed to parse vbmeta.digest", e);
             return null;
@@ -395,6 +394,10 @@ public final class AttestationUtils {
         if (halVersion > 0 && sdkVersion >= 100) {
             return Math.min(sdkVersion, halVersion * 100);
         }
+        final int firstApiLevel = SystemProperties.getInt("ro.product.first_api_level", -1);
+        if (firstApiLevel > 0) {
+            return apiLevelToAttestVersion(firstApiLevel);
+        }
         return sdkVersion;
     }
 
@@ -404,29 +407,35 @@ public final class AttestationUtils {
     }
 
     private static int getSdkAttestVersion() {
-        switch (Build.VERSION.SDK_INT) {
-            case Build.VERSION_CODES.Q:
-            case Build.VERSION_CODES.R:
+        return apiLevelToAttestVersion(Build.VERSION.SDK_INT);
+    }
+
+    private static int apiLevelToAttestVersion(int apiLevel) {
+        switch (apiLevel) {
+            case 29:
+            case 30:
                 return 4;
-            case Build.VERSION_CODES.S:
-            case Build.VERSION_CODES.S_V2:
+            case 31:
+            case 32:
                 return 100;
-            case Build.VERSION_CODES.TIRAMISU:
+            case 33:
                 return 200;
-            case Build.VERSION_CODES.UPSIDE_DOWN_CAKE:
-            case Build.VERSION_CODES.VANILLA_ICE_CREAM:
+            case 34:
+            case 35:
                 return 300;
+            case 36:
+                return 400;
             default:
-                return Build.VERSION.SDK_INT >= 37 ? 500 : 400;
+                return apiLevel >= 37 ? 500 : 400;
         }
     }
 
     private static int getKeyMintAidlVersion() {
         int cached = sKeyMintAidlVersion;
-        if (cached > 0) return cached;
+        if (cached != 0) return cached;
         synchronized (AttestationUtils.class) {
             cached = sKeyMintAidlVersion;
-            if (cached > 0) return cached;
+            if (cached != 0) return cached;
 
             int declared = findDeclaredKeyMintVersion();
             if (declared < 1) declared = findVintfKeyMintVersion();
@@ -440,6 +449,7 @@ public final class AttestationUtils {
                         + ", runtime=" + running + ", effective=" + detected);
                 return detected;
             }
+            sKeyMintAidlVersion = -1;
             Log.w(TAG, "KeyMint HAL version unavailable; using Android SDK fallback");
             return -1;
         }
@@ -659,41 +669,24 @@ public final class AttestationUtils {
                 TrickyStoreService.getInstance().getCustomPatchLevelForPackage(packages), isLong);
     }
 
-    /** Check YYYYMM or YYYYMMDD patch dates (with optional dashes), including leap years. */
+    /** Whether [value] is a YYYYMM or YYYYMMDD date, dashes optional, that exists. */
     public static boolean isValidPatchLevel(String value) {
         return parsePatchDate(value) != null;
     }
 
-    private static final java.util.regex.Pattern PATCH_DATE_FORMAT =
-            java.util.regex.Pattern.compile(
-                    "(?:[0-9]{6}|[0-9]{8}|[0-9]{4}-[0-9]{2}|[0-9]{4}-[0-9]{2}-[0-9]{2})");
-
-    /** Returns year, month and day. Month-only patch dates resolve to the first day. */
+    /** {year, month, day} of a YYYYMM or YYYYMMDD value, dashes optional; null if invalid. */
     private static int[] parsePatchDate(String value) {
         if (value == null) return null;
-        String trimmed = value.trim();
-        if (!PATCH_DATE_FORMAT.matcher(trimmed).matches()) return null;
-        String normalized = trimmed.replace("-", "");
-        if (normalized.length() != 6 && normalized.length() != 8) return null;
+        String normalized = value.trim().replace("-", "");
+        if (normalized.length() != 8 && normalized.length() != 6) return null;
         for (int i = 0; i < normalized.length(); i++) {
-            char c = normalized.charAt(i);
-            if (c < '0' || c > '9') return null;
+            if (!Character.isDigit(normalized.charAt(i))) return null;
         }
-        try {
-            int year = Integer.parseInt(normalized.substring(0, 4));
-            int month = Integer.parseInt(normalized.substring(4, 6));
-            int day = normalized.length() == 8
-                    ? Integer.parseInt(normalized.substring(6, 8)) : 1;
-            return isValidPatchDate(year, month, day)
-                    ? new int[] {year, month, day} : null;
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private static boolean isValidPatchDate(int year, int month, int day) {
-        return year >= 1 && year <= 9999 && month >= 1 && month <= 12
-                && day >= 1 && day <= java.time.YearMonth.of(year, month).lengthOfMonth();
+        int year = Integer.parseInt(normalized.substring(0, 4));
+        int month = Integer.parseInt(normalized.substring(4, 6));
+        // A month-only value has no day; KeyMint's long form needs a real one.
+        int day = normalized.length() == 8 ? Integer.parseInt(normalized.substring(6, 8)) : 1;
+        return isValidPatchDate(year, month, day) ? new int[] {year, month, day} : null;
     }
 
     private static Integer parsePatchLevel(String value, boolean isLong) {
@@ -702,23 +695,37 @@ public final class AttestationUtils {
         }
         int[] date = parsePatchDate(value);
         if (date == null) {
-            Log.w(TAG, "Ignoring invalid patch level: " + value);
+            Log.e(TAG, "Invalid patch level: " + value);
             return null;
         }
-        return isLong ? date[0] * 10000 + date[1] * 100 + date[2]
-                : date[0] * 100 + date[1];
+        return isLong ? date[0] * 10000 + date[1] * 100 + date[2] : date[0] * 100 + date[1];
+    }
+
+    private static boolean isValidPatchDate(int year, int month, int day) {
+        return year >= 1 && month >= 1 && month <= 12 && day >= 1
+                && day <= java.time.YearMonth.of(year, month).lengthOfMonth();
     }
 
     public static int convertPatchLevel(String patchString, boolean isLong) {
-        int[] date = parsePatchDate(patchString);
-        if (date != null) {
-            return isLong ? date[0] * 10000 + date[1] * 100 + date[2]
-                    : date[0] * 100 + date[1];
+        try {
+            String[] parts = patchString.split("-");
+            if (parts.length >= 2) {
+                int year = Integer.parseInt(parts[0]);
+                int month = Integer.parseInt(parts[1]);
+                int day = parts.length >= 3 ? Integer.parseInt(parts[2]) : 1;
+                if (isValidPatchDate(year, month, day)) {
+                    return isLong ? year * 10000 + month * 100 + day : year * 100 + month;
+                }
+            }
+        } catch (Exception e) {
+            // Falls through to the current date below.
         }
-        // Retain the previous fixed fallback instead of asserting today's date is a
-        // device security patch. Invalid configured patch levels are ignored above.
         Log.e(TAG, "Invalid patch level format: " + patchString);
-        return 202404;
+        java.util.Calendar now = java.util.Calendar.getInstance(
+                java.util.TimeZone.getTimeZone("UTC"));
+        int year = now.get(java.util.Calendar.YEAR);
+        int month = now.get(java.util.Calendar.MONTH) + 1;
+        return isLong ? year * 10000 + month * 100 + 1 : year * 100 + month;
     }
 
     public static byte[] computeModuleHash() {
@@ -735,6 +742,59 @@ public final class AttestationUtils {
         byte[] bytes = new byte[length];
         new SecureRandom().nextBytes(bytes);
         return bytes;
+    }
+
+    /**
+     * Loads a persisted value from {@code file}, generating and persisting
+     * a fresh 32-byte random value on first run so it stays stable across
+     * daemon restarts and reboots instead of being re-randomized every time.
+     */
+    private static byte[] loadOrCreatePersisted(File file) {
+        byte[] existing = readPersisted(file);
+        if (existing != null) {
+            return existing;
+        }
+        byte[] fresh = generateRandomBytes(32);
+        writePersisted(file, fresh);
+        return fresh;
+    }
+
+    private static byte[] readPersisted(File file) {
+        if (!file.isFile()) {
+            return null;
+        }
+        try {
+            byte[] data = Files.readAllBytes(file.toPath());
+            if (data.length == 32) {
+                return data;
+            }
+            Log.w(TAG, "Persisted value at " + file + " has unexpected length "
+                    + data.length + ", ignoring");
+        } catch (IOException e) {
+            Log.w(TAG, "Failed to read persisted value from " + file, e);
+        }
+        return null;
+    }
+
+    private static void writePersisted(File file, byte[] data) {
+        try {
+            if (!CONFIG_DIR.isDirectory() && !CONFIG_DIR.mkdirs()) {
+                Log.w(TAG, "Failed to create " + CONFIG_DIR);
+                return;
+            }
+            File tmp = new File(CONFIG_DIR, file.getName() + ".tmp");
+            try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                fos.write(data);
+            }
+            if (!tmp.renameTo(file)) {
+                Log.w(TAG, "Failed to rename " + tmp + " to " + file);
+            } else {
+                file.setReadable(true, true);
+                file.setWritable(true, true);
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "Failed to persist value to " + file, e);
+        }
     }
 
     private static byte[] hexStringToByteArray(String hex) {

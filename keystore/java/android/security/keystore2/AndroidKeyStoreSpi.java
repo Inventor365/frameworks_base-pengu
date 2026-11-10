@@ -50,6 +50,7 @@ import android.util.Log;
 import com.android.internal.annotations.VisibleForTesting;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -90,6 +91,7 @@ import java.util.NoSuchElementException;
 
 import javax.crypto.SecretKey;
 
+import android.security.pif.PlayIntegritySpoofService;
 import android.security.trickystore.TrickyStoreService;
 import android.security.trickystore.CertificateHacker;
 
@@ -186,8 +188,14 @@ public class AndroidKeyStoreSpi extends KeyStoreSpi {
 
     @Override
     public Certificate[] engineGetCertificateChain(String alias) {
-        KeyEntryResponse response = getKeyMetadata(alias);
+        if (PlayIntegritySpoofService.shouldBlockCertificateChain()) {
+            throw new UnsupportedOperationException();
+        }
 
+        return getCertificateChain(alias, getKeyMetadata(alias));
+    }
+
+    private Certificate[] getCertificateChain(String alias, KeyEntryResponse response) {
         if (response == null || response.metadata.certificate == null) {
             return null;
         }
@@ -217,7 +225,7 @@ public class AndroidKeyStoreSpi extends KeyStoreSpi {
 
         caList[0] = leaf;
 
-        return hackCertificateChainIfNeeded(alias, caList);
+        return hackCertificateChainIfNeeded(alias, response.metadata.key, caList);
     }
 
     @Override
@@ -231,13 +239,10 @@ public class AndroidKeyStoreSpi extends KeyStoreSpi {
         byte[] encodedCert = response.metadata.certificate;
         if (encodedCert != null) {
             X509Certificate leaf = toCertificate(encodedCert);
-            if (leaf == null) return null;
-            // Ordinary X.509 keys need no second Keystore read. Attested keys
-            // may have a replacement leaf in the chain retrieval path.
-            if (leaf.getExtensionValue("1.3.6.1.4.1.11129.2.1.17") == null) {
+            if (leaf == null || leaf.getExtensionValue("1.3.6.1.4.1.11129.2.1.17") == null) {
                 return leaf;
             }
-            Certificate[] chain = engineGetCertificateChain(alias);
+            Certificate[] chain = getCertificateChain(alias, response);
             return chain != null && chain.length > 0 ? chain[0] : leaf;
         }
 
@@ -282,9 +287,9 @@ public class AndroidKeyStoreSpi extends KeyStoreSpi {
         }
     }
 
-    private static Certificate[] hackCertificateChainIfNeeded(
-            String alias, Certificate[] chain) {
-        if (chain == null || chain.length == 0
+    private Certificate[] hackCertificateChainIfNeeded(
+            String alias, KeyDescriptor key, Certificate[] chain) {
+        if (key == null || chain == null || chain.length == 0
                 || "TrickyStoreTeeCheck".equals(alias)
                 || "trickystore_attestation_key".equals(alias)) {
             return chain;
@@ -312,6 +317,15 @@ public class AndroidKeyStoreSpi extends KeyStoreSpi {
                 Certificate[] hackedChain = CertificateHacker.hackCertificateChain(chain, packages);
                 if (hackedChain != null) {
                     if (hackedChain != chain) {
+                        // Also persist replacements for keys created before this code
+                        // ran or before a keybox change. Otherwise each read signs the
+                        // original leaf again and returns different ECDSA bytes.
+                        ByteArrayOutputStream ca = new ByteArrayOutputStream();
+                        for (int i = 1; i < hackedChain.length; i++) {
+                            ca.write(hackedChain[i].getEncoded());
+                        }
+                        mKeyStore.updateSubcomponents(key, hackedChain[0].getEncoded(),
+                                hackedChain.length > 1 ? ca.toByteArray() : null);
                         Log.d(TAG, "TrickyStore: Updated certificate chain for uid="
                                 + callingUid);
                     }
