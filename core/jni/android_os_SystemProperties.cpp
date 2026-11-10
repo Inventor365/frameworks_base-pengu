@@ -826,9 +826,17 @@ int register_android_os_SystemProperties(JNIEnv *env)
           "([Ljava/lang/String;[Ljava/lang/String;Z)Z",
           (void*) PlayIntegritySpoofService_nativeSpoofProperties },
     };
+    // Optional: PlayIntegritySpoofService may not declare this native (newer
+    // PIF syncs spoof properties through AxSpoofManagerService and bionic's
+    // custom_rom_hide instead). A failed RegisterNatives leaves a pending
+    // NoSuchMethodError, and the next JNI call in zygote's startReg aborts
+    // (CheckJNI) - a boot loop on the boot animation. Never let it escape.
     jclass pifClazz = env->FindClass("android/security/pif/PlayIntegritySpoofService");
     if (pifClazz != nullptr) {
-        env->RegisterNatives(pifClazz, pif_methods, NELEM(pif_methods));
+        if (env->RegisterNatives(pifClazz, pif_methods, NELEM(pif_methods)) != JNI_OK) {
+            env->ExceptionClear();
+            ALOGW("PlayIntegritySpoofService has no nativeSpoofProperties; not registered");
+        }
         env->DeleteLocalRef(pifClazz);
     } else {
         env->ExceptionClear();
