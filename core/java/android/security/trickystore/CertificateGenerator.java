@@ -37,7 +37,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -59,9 +58,8 @@ public final class CertificateGenerator {
     private static final String TAG = "CertificateGenerator";
     private static final int MAX_ATTESTATION_CHALLENGE_SIZE = 128;
     private static final BouncyCastleProvider BC_PROVIDER = new BouncyCastleProvider();
-    private static final SecureRandom SERIAL_RANDOM = new SecureRandom();
 
-    public static final ASN1ObjectIdentifier ATTESTATION_OID = 
+    public static final ASN1ObjectIdentifier ATTESTATION_OID =
         new ASN1ObjectIdentifier("1.3.6.1.4.1.11129.2.1.17");
 
     private CertificateGenerator() {}
@@ -110,7 +108,7 @@ public final class CertificateGenerator {
             } else if (params.algorithm == 1) {
                 kpg = KeyPairGenerator.getInstance("RSA");
                 kpg.initialize(new RSAKeyGenParameterSpec(
-                    params.keySize, 
+                    params.keySize,
                     params.rsaPublicExponent != null ? params.rsaPublicExponent : RSAKeyGenParameterSpec.F4
                 ));
             } else {
@@ -148,10 +146,17 @@ public final class CertificateGenerator {
             Log.e(TAG, "Requested algorithm differs from generated key material");
             return null;
         }
-        KeyBoxManager.KeyBox keybox = keyboxManager.getKeyboxForLeaf(algorithm);
-
+        KeyBoxManager.KeyBox keybox = keyboxManager.getKeybox(algorithm);
         if (keybox == null) {
-            Log.e(TAG, "No keybox found for algorithm: " + algorithm);
+            // An X.509 issuer's key algorithm need not match the subject's key type.
+            String alternate = "EC".equals(algorithm) ? "RSA" : "EC";
+            keybox = keyboxManager.getKeybox(alternate);
+            if (keybox != null) {
+                Log.i(TAG, "Using " + alternate + " issuer for " + algorithm + " subject");
+            }
+        }
+        if (keybox == null) {
+            Log.e(TAG, "No suitable issuer keybox for " + algorithm);
             return null;
         }
 
@@ -179,13 +184,13 @@ public final class CertificateGenerator {
             int uid) throws Exception {
 
         BigInteger serial = params.certificateSerial != null ?
-            params.certificateSerial : generateRandomSerial();
+            params.certificateSerial : BigInteger.ONE;
         Date notBefore = params.certificateNotBefore != null ?
             params.certificateNotBefore : new Date();
-        Date notAfter = params.certificateNotAfter != null ? 
-            params.certificateNotAfter : 
+        Date notAfter = params.certificateNotAfter != null ?
+            params.certificateNotAfter :
             ((X509Certificate) keybox.certificates.get(0)).getNotAfter();
-        X500Name subject = params.certificateSubject != null ? 
+        X500Name subject = params.certificateSubject != null ?
             X500Name.getInstance(params.certificateSubject.getEncoded()) : new X500Name("CN=Android Keystore Key");
 
         SubjectPublicKeyInfo publicKeyInfo = SubjectPublicKeyInfo.getInstance(
@@ -206,12 +211,18 @@ public final class CertificateGenerator {
         }
         builder.addExtension(buildAttestExtension(params, securityLevel, uid));
 
-        // Sign for the keybox's key, which is not the leaf's when the keybox only has the
-        // other algorithm (see KeyBoxManager.getKeyboxForLeaf()).
-        boolean ecIssuer = "EC".equals(keybox.algorithm);
-        String sigAlg = ecIssuer ? "SHA256withECDSA" : "SHA256withRSA";
+        String issuerAlgorithm = keybox.keyPair.getPrivate().getAlgorithm();
+        String sigAlg;
+        if ("EC".equalsIgnoreCase(issuerAlgorithm)) {
+            sigAlg = "SHA256withECDSA";
+        } else if ("RSA".equalsIgnoreCase(issuerAlgorithm)) {
+            sigAlg = "SHA256withRSA";
+        } else {
+            throw new java.security.InvalidKeyException(
+                    "Unsupported issuer signing key algorithm: " + issuerAlgorithm);
+        }
         JcaContentSignerBuilder signerBuilder = new JcaContentSignerBuilder(sigAlg);
-        if (ecIssuer) {
+        if ("EC".equalsIgnoreCase(issuerAlgorithm)) {
             signerBuilder.setProvider(BC_PROVIDER);
         }
         ContentSigner signer = signerBuilder.build(keybox.keyPair.getPrivate());
@@ -222,16 +233,6 @@ public final class CertificateGenerator {
             new ByteArrayInputStream(holder.getEncoded()));
         result.verify(((X509Certificate) keybox.certificates.get(0)).getPublicKey());
         return result;
-    }
-
-    /**
-     * Returns a fresh random positive serial for a generated leaf certificate.
-     * KeyMint issues a random serial per key; a fixed serial shared by every
-     * generated leaf would be a trivial cross-certificate fingerprint.
-     */
-    private static BigInteger generateRandomSerial() {
-        // Uniform 63-bit positive (odd) value, well within X.509 serial limits.
-        return new BigInteger(63, SERIAL_RANDOM).setBit(0);
     }
 
     private static Extension buildAttestExtension(KeyGenParameters params, int securityLevel, int uid) {

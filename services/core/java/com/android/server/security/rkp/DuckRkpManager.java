@@ -122,9 +122,7 @@ public final class DuckRkpManager {
                 mFailure = saved.getString("error");
                 mDetail = saved.getInt("detail");
                 if (mAutomaticPaused && (mFailure.equals("hal_unsupported")
-                        || mFailure.equals("hal_rejected")
-                        || (mFailure.equals("http_error") && mDetail == 444))
-                        && DuckRkpNative.available()) {
+                        || mFailure.equals("hal_rejected")) && DuckRkpNative.available()) {
                     mAutomaticPaused = false;
                     mFailure = "";
                     mFailures = 0;
@@ -176,9 +174,8 @@ public final class DuckRkpManager {
         state.putBoolean("automatic_paused", mAutomaticPaused);
         state.putBoolean("waiting_for_network", mWaitingForNetwork);
         state.putLong("revision", mRevision);
-        long cooldownMs = mFailure.isEmpty() ? COOLDOWN_MS : 5000;
         state.putLong("retry_after_ms", Math.max(0,
-                cooldownMs - (SystemClock.elapsedRealtime() - mLastAttempt)));
+                COOLDOWN_MS - (SystemClock.elapsedRealtime() - mLastAttempt)));
         state.putString("stage", mStage);
         state.putString("error", mBusy && SystemClock.elapsedRealtime() - mStartedAt >= TIMEOUT_MS
                 ? "timeout" : mFailure);
@@ -192,11 +189,6 @@ public final class DuckRkpManager {
         }
         putEnabled(enabled);
         cancelProvisioning();
-        if (enabled) {
-            mAutomaticPaused = false;
-            mFailures = 0;
-            mNextAttempt = 0;
-        }
         if (!mAutomaticPaused) mFailure = "";
         saveAutomaticState();
         requestSchedule();
@@ -212,8 +204,7 @@ public final class DuckRkpManager {
             throw new IllegalStateException("Device RKP is disabled");
         }
         long now = SystemClock.elapsedRealtime();
-        long cooldownMs = (manual && !mFailure.isEmpty()) ? 5000 : COOLDOWN_MS;
-        if (mBusy || now - mLastAttempt < cooldownMs) {
+        if (mBusy || now - mLastAttempt < COOLDOWN_MS) {
             throw new IllegalStateException("An RKP request is active or was attempted recently");
         }
         if (manual) mFailures = 0;
@@ -480,10 +471,8 @@ public final class DuckRkpManager {
 
     public synchronized String getKeybox() {
         if (!masterEnabled()) return null;
-        String stored = importedKeybox();
-        if (stored != null && !stored.isEmpty() && (!isEnabled() || hasImportedKeybox())) {
-            return stored;
-        }
+        String imported = importedKeybox();
+        if (imported != null && !imported.isEmpty()) return imported;
         if (!isEnabled() || mExpiresAt <= System.currentTimeMillis()) return null;
         return mGenerated;
     }
@@ -493,14 +482,9 @@ public final class DuckRkpManager {
                 Settings.Secure.SPOOF_TRICKYSTORE_KEYBOX, UserHandle.USER_SYSTEM);
     }
 
-    /**
-     * Only a keybox the user imported blocks device RKP. A keybox without the user source
-     * was fetched in the background (AxSpoofManager) and is replaced, not protected.
-     */
     private boolean hasImportedKeybox() {
         String value = importedKeybox();
-        return value != null && !value.isEmpty() && "user".equals(
-                Settings.Secure.getStringForUser(mResolver, SOURCE_KEY, UserHandle.USER_SYSTEM));
+        return value != null && !value.isEmpty();
     }
 
     private boolean isEnabled() {

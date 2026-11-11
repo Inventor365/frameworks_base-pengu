@@ -76,9 +76,9 @@ public class TrickyStoreService {
         }
     }
 
-    // Kill switch for the background keybox revocation check (network, 24h cooldown,
-    // logging-only: it never changes keybox state). Evolver runs its own check.
-    private static final boolean ENABLE_REVOCATION_CHECK = true;
+    // Revocation check runs from system_server over the network (background thread,
+    // 24h cooldown) and is logging-only — it never changes keybox state.
+    private static final boolean ENABLE_REVOCATION_CHECK = false;
 
     // Publish package policy atomically. An attestation cannot see half a refresh.
     private volatile Map<String, Mode> mPackageModes = Collections.emptyMap();
@@ -119,49 +119,10 @@ public class TrickyStoreService {
             "com.topjohnwu.lsplant.manager",
             "me.weishu.exposed"
     );
-    // Apps that don't run integrity checks against the bootloader, so targeting them only
-    // adds work: root managers and tools, and a few general Google and utility apps. Taken
-    // from Tricky Addon's "unnecessary apps" list as shipped in Duck-ToolBox. Not applied
-    // to an existing target list, only offered by Evolver's picker and skipped when
-    // AxSpoofManager auto-targets a new install. Xposed managers are in XPOSED_PACKAGES.
-    public static final java.util.Set<String> UNNECESSARY_PACKAGES = java.util.Set.of(
-            // Root managers
-            "com.topjohnwu.magisk",
-            "io.github.vvb2060.magisk",
-            "io.github.huskydg.magisk",
-            "me.weishu.kernelsu",
-            "com.rifsxd.ksunext",
-            "com.sukisu.ultra",
-            "me.bmax.apatch",
-            "me.garfieldhan.apatch.next",
-            // Root related tools
-            "com.termux",
-            "bin.mt.plus",
-            "bin.mt.plus.canary",
-            "xzr.konabess",
-            "io.github.a13e300.ksuwebui",
-            "moe.shizuku.privileged.api",
-            "com.dergoogler.mmrl",
-            "com.dergoogler.mmrl.wx",
-            // General apps
-            "org.swiftapps.swiftbackup",
-            "com.google.android.apps.docs.editors.docs",
-            "com.google.android.apps.docs.editors.sheets",
-            "com.google.android.apps.docs.editors.slides",
-            "com.google.android.keep",
-            "com.google.android.apps.maps",
-            "com.google.earth",
-            "com.google.android.apps.translate",
-            "com.android.chrome",
-            "com.google.android.youtube",
-            "com.google.android.apps.youtube.music",
-            "org.zwanoo.android.speedtest"
-    );
     // Default TrickyStore targets, in the same syntax as SPOOF_TRICKYSTORE_TARGET:
     // "pkg" is AUTO, "pkg?" leaf hack, "pkg!" cert generation, "pkg-" skip.
     // AxSpoofManager writes this into a target setting that was never set, so a
-    // fresh install attests GMS and friends without anyone opening Evolver, and
-    // Evolver's reset and app picker read the same list rather than keeping a copy.
+    // fresh install attests GMS and friends by default.
     public static final String DEFAULT_TARGET_LIST = String.join("\n",
             "android",
             // GMS and friends, AUTO mode
@@ -354,11 +315,6 @@ public class TrickyStoreService {
             return;
         }
         try {
-            if (!isValidKeyboxXml(xml)) {
-                mLastKeyboxFingerprint = null;
-                Log.e(TAG, "Keybox XML failed structural validation (missing keys or identifier)");
-                return;
-            }
             if (ENABLE_REVOCATION_CHECK) {
                 checkKeyboxRevocation(xml);
             }
@@ -381,42 +337,6 @@ public class TrickyStoreService {
         }
     }
 
-    // KeyBoxManager accepts algorithm="ec", single quotes and extra attributes, so the
-    // structural pre-check has to as well.
-    private static final java.util.regex.Pattern KEY_ECDSA = java.util.regex.Pattern.compile(
-            "<Key\\s[^>]*?algorithm\\s*=\\s*[\"'](?:ecdsa|ec)[\"']",
-            java.util.regex.Pattern.CASE_INSENSITIVE);
-    private static final java.util.regex.Pattern KEY_RSA = java.util.regex.Pattern.compile(
-            "<Key\\s[^>]*?algorithm\\s*=\\s*[\"']rsa[\"']",
-            java.util.regex.Pattern.CASE_INSENSITIVE);
-
-    private boolean isValidKeyboxXml(String xml) {
-        String problem = keyboxProblem(xml);
-        if (problem != null) {
-            Log.e(TAG, "Keybox validation failed: " + problem);
-            return false;
-        }
-        if (!KEY_ECDSA.matcher(xml).find()) Log.w(TAG, "Keybox warning: missing ECDSA key block");
-        if (!KEY_RSA.matcher(xml).find())   Log.w(TAG, "Keybox warning: missing RSA key block");
-        return true;
-    }
-
-    /**
-     * Structural check of a keybox document before it is parsed.
-     *
-     * @return null if acceptable, otherwise a short reason
-     */
-    public static String keyboxProblem(String xml) {
-        if (xml == null) return "Keybox is empty";
-        if (!KEY_ECDSA.matcher(xml).find() && !KEY_RSA.matcher(xml).find()) {
-            return "No ECDSA or RSA key block";
-        }
-        if (!xml.contains("<serial>") && !xml.contains("DeviceID")) {
-            return "No serial or DeviceID";
-        }
-        return null;
-    }
-
     private static String sha256(String text) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
@@ -427,18 +347,29 @@ public class TrickyStoreService {
         }
     }
 
-    /**
-     * Returns the keybox XML text of a payload that is either the XML itself or its base64
-     * encoding, or null if it is neither.
-     */
-    public static String decodeKeybox(String payload) {
-        String trimmed = payload.trim();
+    /** Handle leading BOM and zero-width markers before identifying XML or base64. */
+    private static String stripLeadingKeyboxMarkers(String text) {
+        int index = 0;
+        while (index < text.length()) {
+            char ch = text.charAt(index);
+            if (!Character.isWhitespace(ch) && ch != '\uFEFF' && ch != '\u200B'
+                    && ch != '\u200C' && ch != '\u200D' && ch != '\u2060') {
+                break;
+            }
+            index++;
+        }
+        return text.substring(index).trim();
+    }
+
+    private String decodeKeybox(String payload) {
+        String trimmed = stripLeadingKeyboxMarkers(payload);
         if (trimmed.startsWith("<")) {
             return trimmed;
         }
         try {
             byte[] decoded = Base64.getDecoder().decode(trimmed);
-            String asXml = new String(decoded, StandardCharsets.UTF_8).trim();
+            String asXml = stripLeadingKeyboxMarkers(
+                    new String(decoded, StandardCharsets.UTF_8));
             if (asXml.startsWith("<")) {
                 return asXml;
             }
@@ -508,67 +439,74 @@ public class TrickyStoreService {
         flushPatchSection(next, currentPackage, system, vendor, boot, all);
     }
 
-    // YYYY-MM[-DD] where any field may be the literal YYYY / MM / DD placeholder.
+    // YYYY-MM[-DD], where each component may be a placeholder or a fixed number.
     private static final java.util.regex.Pattern PATCH_TEMPLATE = java.util.regex.Pattern
             .compile("^(YYYY|\\d{4})-(MM|\\d{2})(?:-(DD|\\d{2}))?$");
 
-    /**
-     * Resolves the "today" keyword and YYYY/MM/DD placeholders against the current UTC
-     * date. A fixed day is clamped to the length of a placeholder-resolved month. Anything
-     * that isn't a template, including plain dates, is returned unchanged.
-     */
+    /** Resolve date placeholders using UTC; preserve fixed dates and invalid values. */
     public static String resolvePatchTemplate(String value) {
         if (value == null) return null;
-        String v = value.trim();
-        java.util.Calendar cal = java.util.Calendar.getInstance(
-            java.util.TimeZone.getTimeZone("UTC"));
-        int nowYear = cal.get(java.util.Calendar.YEAR);
-        int nowMonth = cal.get(java.util.Calendar.MONTH) + 1;
-        int nowDay = cal.get(java.util.Calendar.DAY_OF_MONTH);
-        if (v.equalsIgnoreCase("today")) {
-            return String.format(java.util.Locale.US, "%04d-%02d-%02d", nowYear, nowMonth, nowDay);
+        String trimmed = value.trim();
+        java.util.Calendar now = java.util.Calendar.getInstance(
+                java.util.TimeZone.getTimeZone("UTC"));
+        int currentYear = now.get(java.util.Calendar.YEAR);
+        int currentMonth = now.get(java.util.Calendar.MONTH) + 1;
+        int currentDay = now.get(java.util.Calendar.DAY_OF_MONTH);
+        if ("today".equalsIgnoreCase(trimmed)) {
+            return String.format(java.util.Locale.US, "%04d-%02d-%02d",
+                    currentYear, currentMonth, currentDay);
         }
-        java.util.regex.Matcher m = PATCH_TEMPLATE.matcher(v);
-        if (!m.matches()) return value;
-        boolean yearTemplate = "YYYY".equals(m.group(1));
-        boolean monthTemplate = "MM".equals(m.group(2));
-        boolean dayTemplate = "DD".equals(m.group(3));
-        if (!yearTemplate && !monthTemplate && !dayTemplate) return value;
+        java.util.regex.Matcher matcher = PATCH_TEMPLATE.matcher(trimmed);
+        if (!matcher.matches()) return trimmed;
+        boolean yearPlaceholder = "YYYY".equals(matcher.group(1));
+        boolean monthPlaceholder = "MM".equals(matcher.group(2));
+        boolean dayPlaceholder = "DD".equals(matcher.group(3));
+        if (!yearPlaceholder && !monthPlaceholder && !dayPlaceholder) return trimmed;
 
-        int year = yearTemplate ? nowYear : Integer.parseInt(m.group(1));
-        int month = monthTemplate ? nowMonth : Integer.parseInt(m.group(2));
-        if (m.group(3) == null) {
+        int year = yearPlaceholder ? currentYear : Integer.parseInt(matcher.group(1));
+        int month = monthPlaceholder ? currentMonth : Integer.parseInt(matcher.group(2));
+        if (year < 1 || year > 9999 || month < 1 || month > 12) return trimmed;
+        if (matcher.group(3) == null) {
             return String.format(java.util.Locale.US, "%04d-%02d", year, month);
         }
-        int day = dayTemplate ? nowDay : Integer.parseInt(m.group(3));
-        if ((yearTemplate || monthTemplate) && month >= 1 && month <= 12) {
-            day = Math.min(day, java.time.YearMonth.of(year, month).lengthOfMonth());
-        }
+        int day = dayPlaceholder ? currentDay : Integer.parseInt(matcher.group(3));
+        // Preserve a valid day across month transitions. Only templated dates clamp.
+        int maxDay = java.time.YearMonth.of(year, month).lengthOfMonth();
+        if (day < 1) return trimmed;
+        day = Math.min(day, maxDay);
         return String.format(java.util.Locale.US, "%04d-%02d-%02d", year, month, day);
     }
 
-    /**
-     * Whether [value] is acceptable as a patch level setting: "no", "prop", a date, or a
-     * template that resolves to a date (see {@link #resolvePatchTemplate}).
-     */
+    /** Parse checks can be used by Settings without storing anything locally. */
     public static boolean isValidPatchValue(String value) {
         if (value == null) return false;
-        String v = value.trim();
-        if (v.equalsIgnoreCase("no") || v.equalsIgnoreCase("prop")) return true;
-        return AttestationUtils.isValidPatchLevel(resolvePatchTemplate(v));
+        String trimmed = value.trim();
+        if ("no".equalsIgnoreCase(trimmed) || "prop".equalsIgnoreCase(trimmed)) return true;
+        return AttestationUtils.isValidPatchLevel(resolvePatchTemplate(trimmed));
+    }
+
+    /** Reject invalid patch input before publishing a complete configuration snapshot. */
+    private static String resolveValidatedPatchValue(String value, String field, String pkg) {
+        if (value == null) return null;
+        if (!isValidPatchValue(value)) {
+            throw new IllegalArgumentException("Invalid " + field + " patch level for "
+                    + (pkg == null ? "global configuration" : "package " + pkg)
+                    + ": " + value);
+        }
+        return resolvePatchTemplate(value);
     }
 
     private void flushPatchSection(PatchConfigBuilder next,
             String pkg, String system, String vendor, String boot, String all) {
         if (system == null && vendor == null && boot == null && all == null) return;
-        String resolvedAll    = resolvePatchTemplate(all);
-        String resolvedSystem = resolvePatchTemplate(system);
-        String resolvedVendor = resolvePatchTemplate(vendor);
-        String resolvedBoot   = resolvePatchTemplate(boot);
+        String resolvedAll = resolveValidatedPatchValue(all, "all", pkg);
+        String resolvedSystem = resolveValidatedPatchValue(system, "system", pkg);
+        String resolvedVendor = resolveValidatedPatchValue(vendor, "vendor", pkg);
+        String resolvedBoot = resolveValidatedPatchValue(boot, "boot", pkg);
         CustomPatchLevel level = new CustomPatchLevel(
             resolvedSystem != null ? resolvedSystem : resolvedAll,
             resolvedVendor != null ? resolvedVendor : resolvedAll,
-            resolvedBoot   != null ? resolvedBoot   : resolvedAll,
+            resolvedBoot != null ? resolvedBoot : resolvedAll,
             resolvedAll
         );
         if (pkg == null) {

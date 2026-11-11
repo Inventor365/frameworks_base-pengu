@@ -1,6 +1,5 @@
 package android.security.trickystore;
 
-import android.security.pif.PlayIntegritySpoofService;
 import android.util.Log;
 
 import com.android.internal.org.bouncycastle.asn1.ASN1Boolean;
@@ -25,7 +24,6 @@ import com.android.internal.org.bouncycastle.crypto.digests.SHA256Digest;
 import com.android.internal.org.bouncycastle.crypto.params.ECDomainParameters;
 import com.android.internal.org.bouncycastle.crypto.params.ECPrivateKeyParameters;
 import com.android.internal.org.bouncycastle.crypto.params.RSAKeyParameters;
-import com.android.internal.org.bouncycastle.crypto.params.RSAPrivateCrtKeyParameters;
 import com.android.internal.org.bouncycastle.crypto.signers.ECDSASigner;
 import com.android.internal.org.bouncycastle.crypto.signers.RSADigestSigner;
 import com.android.internal.org.bouncycastle.jcajce.provider.asymmetric.ec.BCECPrivateKey;
@@ -48,6 +46,7 @@ import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -95,6 +94,11 @@ public final class CertificateHacker {
             }
             ASN1Sequence teeEnforced = (ASN1Sequence) encodables[7];
 
+            // Attestation-ID (hardware identity) overrides. Empty here: the leaf's
+            // real BRAND/DEVICE/PRODUCT/MANUFACTURER/MODEL tags pass through untouched.
+            // If a Build-spoof subsystem is added later, populate this map (tag -> UTF-8
+            // bytes) and the drop/re-add logic below keeps the certified identity and the
+            // GMS-visible Build fields in agreement.
             Map<Integer, byte[]> attestationIdOverrides = getAttestationIdOverrides();
 
             ASN1EncodableVector vector = new ASN1EncodableVector();
@@ -120,10 +124,13 @@ public final class CertificateHacker {
 
             String algorithm = leaf.getPublicKey().getAlgorithm();
             KeyBoxManager keyboxManager = TrickyStoreService.getInstance().getKeyBoxManager();
-            KeyBoxManager.KeyBox keybox = keyboxManager.getKeyboxForLeaf(algorithm);
-
+            KeyBoxManager.KeyBox keybox = keyboxManager.getKeybox(algorithm);
             if (keybox == null) {
-                Log.e(TAG, "No keybox for algorithm: " + algorithm);
+                String alternate = "EC".equalsIgnoreCase(algorithm) ? "RSA" : "EC";
+                keybox = keyboxManager.getKeybox(alternate);
+            }
+            if (keybox == null) {
+                Log.e(TAG, "No issuer keybox for subject algorithm: " + algorithm);
                 return chain;
             }
 
@@ -152,9 +159,18 @@ public final class CertificateHacker {
                 leafHolder.getSubjectPublicKeyInfo()
             );
 
+            String issuerAlgorithm = keybox.keyPair.getPrivate().getAlgorithm();
+            String signatureAlgorithm;
+            if ("EC".equalsIgnoreCase(issuerAlgorithm)) {
+                signatureAlgorithm = "SHA256withECDSA";
+            } else if ("RSA".equalsIgnoreCase(issuerAlgorithm)) {
+                signatureAlgorithm = "SHA256withRSA";
+            } else {
+                Log.e(TAG, "Unsupported issuer signing algorithm: " + issuerAlgorithm);
+                return chain;
+            }
             ContentSigner signer = createBCSigner(
-                signatureAlgorithm(leaf.getSigAlgName(), keybox.algorithm),
-                keybox.keyPair.getPrivate());
+                    signatureAlgorithm, keybox.keyPair.getPrivate());
 
             Extension hackedExtension = hackAttestExtension(
                 originalRootOfTrust, vector, encodables, attestationIdOverrides, packages);
@@ -199,23 +215,9 @@ public final class CertificateHacker {
         }
     }
 
-    /**
-     * The leaf's own signature algorithm when it fits the keybox key, otherwise the
-     * default for that key. They differ when an EC-only or RSA-only keybox signs the
-     * other algorithm's leaf, and an EC key can't produce an RSA signature.
-     */
-    private static String signatureAlgorithm(String leafSigAlg, String keyboxAlgorithm) {
-        final boolean ec = "EC".equals(keyboxAlgorithm);
-        if (leafSigAlg != null) {
-            final String upper = leafSigAlg.toUpperCase(java.util.Locale.ROOT);
-            if (ec ? upper.contains("ECDSA") : upper.contains("RSA")) return leafSigAlg;
-        }
-        return ec ? "SHA256withECDSA" : "SHA256withRSA";
-    }
-
     private static ContentSigner createBCSigner(String algorithm, PrivateKey privateKey) throws Exception {
         AlgorithmIdentifier sigAlgId = new DefaultSignatureAlgorithmIdentifierFinder().find(algorithm);
-        
+
         if (privateKey instanceof BCECPrivateKey) {
             BCECPrivateKey bcKey = (BCECPrivateKey) privateKey;
             ECParameterSpec ecSpec = bcKey.getParameters();
@@ -236,14 +238,10 @@ public final class CertificateHacker {
             return new ECContentSigner(sigAlgId, keyParam);
         } else if (privateKey instanceof RSAPrivateCrtKey) {
             RSAPrivateCrtKey rsaKey = (RSAPrivateCrtKey) privateKey;
-            RSAKeyParameters keyParam = new RSAPrivateCrtKeyParameters(
-                    rsaKey.getModulus(), rsaKey.getPublicExponent(),
-                    rsaKey.getPrivateExponent(), rsaKey.getPrimeP(),
-                    rsaKey.getPrimeQ(), rsaKey.getPrimeExponentP(),
-                    rsaKey.getPrimeExponentQ(), rsaKey.getCrtCoefficient());
+            RSAKeyParameters keyParam = new RSAKeyParameters(true, rsaKey.getModulus(), rsaKey.getPrivateExponent());
             return new RSAContentSigner(sigAlgId, keyParam);
         }
-        
+
         throw new IllegalArgumentException("Unsupported key type: " + privateKey.getClass());
     }
 
@@ -274,11 +272,11 @@ public final class CertificateHacker {
                 byte[] data = stream.toByteArray();
                 MessageDigest digest = MessageDigest.getInstance("SHA-256");
                 byte[] hash = digest.digest(data);
-                
+
                 ECDSASigner signer = new ECDSASigner();
                 signer.init(true, keyParam);
                 BigInteger[] sig = signer.generateSignature(hash);
-                
+
                 ASN1EncodableVector v = new ASN1EncodableVector();
                 v.add(new ASN1Integer(sig[0]));
                 v.add(new ASN1Integer(sig[1]));
@@ -324,50 +322,19 @@ public final class CertificateHacker {
         }
     }
 
-    // KeyMint attestation extension tag numbers for the hardware identity
-    // fields. Kept in one place so the drop-set built in
-    // getAttestationIdOverrides() and the re-add loop in
-    // hackAttestExtension() can't drift apart.
-    private static final int TAG_ATTESTATION_ID_BRAND = 710;
-    private static final int TAG_ATTESTATION_ID_DEVICE = 711;
-    private static final int TAG_ATTESTATION_ID_PRODUCT = 712;
-    private static final int TAG_ATTESTATION_ID_MANUFACTURER = 716;
-    private static final int TAG_ATTESTATION_ID_MODEL = 717;
-
     /**
-     * Builds the set of attestation-ID tags that should be overridden from
-     * the active PlayIntegritySpoofService profile, so that a Play Integrity
-     * check cross-referencing GMS-visible Build fields against the KeyMint
-     * hardware attestation certificate can't catch a mismatch between the
-     * two. Returns an empty map (no-op) when build spoofing isn't currently
-     * enabled/configured for this process, so unspoofed callers keep getting
-     * their real, untouched hardware identity in the attestation cert.
+     * Hardware-identity (attestation-ID) overrides, keyed by KeyMint tag number
+     * (710 BRAND, 711 DEVICE, 712 PRODUCT, 716 MANUFACTURER, 717 MODEL).
+     *
+     * This build has no Build-spoof subsystem, so the map is empty and the leaf's
+     * real identity tags pass through unchanged. To integrate one later, return a
+     * populated map here (tag -> UTF-8 bytes); hackCertificateChain() already drops
+     * the originals for any tag present in this map and hackAttestExtension() re-adds
+     * the override, so the attestation cert and the GMS-visible Build fields stay
+     * consistent with no other changes.
      */
     private static Map<Integer, byte[]> getAttestationIdOverrides() {
-        Map<Integer, byte[]> overrides = new java.util.HashMap<>();
-        try {
-            PlayIntegritySpoofService pif = PlayIntegritySpoofService.getInstance();
-            if (!pif.isSpoofBuildEnabled()) {
-                return overrides;
-            }
-
-            Map<String, String> buildFields = pif.getBuildFields();
-            putIfPresent(overrides, TAG_ATTESTATION_ID_BRAND, buildFields.get("BRAND"));
-            putIfPresent(overrides, TAG_ATTESTATION_ID_DEVICE, buildFields.get("DEVICE"));
-            putIfPresent(overrides, TAG_ATTESTATION_ID_PRODUCT, buildFields.get("PRODUCT"));
-            putIfPresent(overrides, TAG_ATTESTATION_ID_MANUFACTURER,
-                buildFields.get("MANUFACTURER"));
-            putIfPresent(overrides, TAG_ATTESTATION_ID_MODEL, buildFields.get("MODEL"));
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to read PIF build fields for attestation IDs", e);
-        }
-        return overrides;
-    }
-
-    private static void putIfPresent(Map<Integer, byte[]> map, int tag, String value) {
-        if (value != null && !value.isEmpty()) {
-            map.put(tag, value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        }
+        return Collections.emptyMap();
     }
 
     private static Extension hackAttestExtension(
@@ -383,7 +350,7 @@ public final class CertificateHacker {
         }
 
         byte[] bootHash = rootOfTrustOctet(originalRootOfTrust, 3);
-        if (AttestationUtils.isNullOrZeroBootHash(bootHash)) {
+        if (bootHash == null) {
             bootHash = AttestationUtils.getBootHash();
         }
 
@@ -418,10 +385,8 @@ public final class CertificateHacker {
             new ASN1Integer(AttestationUtils.getOsVersion())));
         ordered.put(704, new DERTaggedObject(704, hackedRootOfTrust));
 
-        // Re-add the hardware identity tags dropped in hackCertificateChain(),
-        // using the same certified profile PlayIntegritySpoofService serves
-        // to GMS/DroidGuard, so the attestation cert and the spoofed Build
-        // fields tell the same story.
+        // Re-add any hardware identity tags dropped in hackCertificateChain().
+        // Empty in this build (see getAttestationIdOverrides()).
         for (Map.Entry<Integer, byte[]> entry : attestationIdOverrides.entrySet()) {
             ordered.put(entry.getKey(), new DERTaggedObject(true, entry.getKey(),
                 new DEROctetString(entry.getValue())));

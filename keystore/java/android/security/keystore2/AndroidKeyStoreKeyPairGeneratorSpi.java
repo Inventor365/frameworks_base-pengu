@@ -832,16 +832,11 @@ public abstract class AndroidKeyStoreKeyPairGeneratorSpi extends KeyPairGenerato
             String[] packages = null;
             final int requesterUid = Process.myUid();
             // Only attested, standard RSA/EC keys are eligible. Ordinary keys,
-            // StrongBox keys, Curve25519 keys (XDH/Ed25519 normalize to EC but a
-            // plain EC software keypair generator cannot express them),
-            // attest-key-rooted chains and internal hardware probes must follow
-            // the stock Keystore path.
+            // StrongBox keys and internal hardware probes must follow Keystore.
             final boolean eligible = mSpec.getAttestationChallenge() != null
                     && !mSpec.isStrongBoxBacked()
                     && (mKeymasterAlgorithm == KeymasterDefs.KM_ALGORITHM_EC
                         || mKeymasterAlgorithm == KeymasterDefs.KM_ALGORITHM_RSA)
-                    && mAttestKeyDescriptor == null
-                    && !isCurve25519(mEcCurveName)
                     && !"TrickyStoreTeeCheck".equals(mEntryAlias)
                     && !"trickystore_attestation_key".equals(mEntryAlias);
             if (eligible) {
@@ -864,14 +859,40 @@ public abstract class AndroidKeyStoreKeyPairGeneratorSpi extends KeyPairGenerato
                 }
             }
 
-            if (needGenerate || needHack) {
+            if (needGenerate) {
                 metadata = buildSoftwareAttestedKey(
                         descriptor, iSecurityLevel, securityLevel, flags,
                         requesterUid, packages);
             } else {
-                metadata = iSecurityLevel.generateKey(descriptor,
-                        mAttestKeyDescriptor,
-                        constructKeyGenerationArguments(), flags, additionalEntropy);
+                KeyMetadata hardwareMetadata = null;
+                try {
+                    hardwareMetadata = iSecurityLevel.generateKey(descriptor,
+                            mAttestKeyDescriptor,
+                            constructKeyGenerationArguments(), flags, additionalEntropy);
+                } catch (KeyStoreException e) {
+                    if (!needHack) {
+                        throw e;
+                    }
+                    Log.w(TAG, "Hardware key generation failed; falling back to "
+                            + "software keybox for " + mEntryAlias, e);
+                }
+
+                if (needHack
+                        && (hardwareMetadata == null
+                            || hardwareMetadata.certificate == null)) {
+                    Log.i(TAG, "Hardware produced no usable attestation; using "
+                            + "software keybox for " + mEntryAlias);
+                    deleteKeyQuietly(descriptor);
+                    metadata = buildSoftwareAttestedKey(
+                            descriptor, iSecurityLevel, securityLevel, flags,
+                            requesterUid, packages);
+                } else {
+                    metadata = hardwareMetadata;
+                    if (needHack) {
+                        metadata = maybeUpdateAttestedCertificate(
+                                descriptor, metadata, packages);
+                    }
+                }
             }
 
             AndroidKeyStorePublicKey publicKey =
@@ -1024,6 +1045,16 @@ public abstract class AndroidKeyStoreKeyPairGeneratorSpi extends KeyPairGenerato
         return requireUpdatedMetadata(importedKeyDescriptor);
     }
 
+    private void deleteKeyQuietly(KeyDescriptor descriptor) {
+        try {
+            mKeyStore.deleteKey(descriptor);
+        } catch (KeyStoreException e) {
+            if (e.getErrorCode() != ResponseCode.KEY_NOT_FOUND) {
+                Log.w(TAG, "Failed to delete hardware key before software fallback", e);
+            }
+        }
+    }
+
     private byte[] encodeCertificateChain(List<Certificate> chain)
             throws CertificateEncodingException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -1043,6 +1074,52 @@ public abstract class AndroidKeyStoreKeyPairGeneratorSpi extends KeyPairGenerato
             throw new ProviderException("Keystore did not return updated key metadata");
         }
         return updated.metadata;
+    }
+
+    /**
+     * Keep the hardware key, but when leaf processing is enabled store its
+     * corresponding certificate metadata. On failure the unmodified hardware
+     * metadata is returned. The calling key must remain usable in either case.
+     */
+    private KeyMetadata maybeUpdateAttestedCertificate(KeyDescriptor descriptor,
+            KeyMetadata metadata, String[] packages) {
+        if (metadata == null || metadata.certificate == null) return metadata;
+        try {
+            CertificateFactory factory = CertificateFactory.getInstance("X.509");
+            List<Certificate> original = new ArrayList<>();
+            original.add(factory.generateCertificate(
+                    new ByteArrayInputStream(metadata.certificate)));
+            if (metadata.certificateChain != null && metadata.certificateChain.length > 0) {
+                original.addAll(factory.generateCertificates(
+                        new ByteArrayInputStream(metadata.certificateChain)));
+            }
+            Certificate[] originalArray = original.toArray(new Certificate[0]);
+            Certificate[] processed = CertificateHacker.hackCertificateChain(
+                    originalArray, packages);
+            if (processed == null || processed.length == 0
+                    || processed == originalArray) {
+                return metadata;
+            }
+            byte[] userCert = processed[0].getEncoded();
+            byte[] ca = processed.length > 1
+                    ? encodeCertificateChain(Arrays.asList(processed)
+                            .subList(1, processed.length)) : null;
+            KeyDescriptor generatedKeyDescriptor = metadata.key != null
+                    ? metadata.key : descriptor;
+            mKeyStore.updateSubcomponents(generatedKeyDescriptor, userCert, ca);
+            return requireUpdatedMetadata(generatedKeyDescriptor);
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to update generated hardware certificate; keeping native key", e);
+            try {
+                // The write can have succeeded before an error reading metadata.
+                // Returning the persisted metadata if possible avoids stale chains.
+                KeyDescriptor generatedKeyDescriptor = metadata.key != null
+                        ? metadata.key : descriptor;
+                return requireUpdatedMetadata(generatedKeyDescriptor);
+            } catch (Exception ignored) {
+                return metadata;
+            }
+        }
     }
 
     @RequiresPermission(value = android.Manifest.permission.READ_PRIVILEGED_PHONE_STATE,
