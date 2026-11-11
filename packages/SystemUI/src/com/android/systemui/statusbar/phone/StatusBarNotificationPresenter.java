@@ -38,6 +38,7 @@ import com.android.systemui.InitController;
 import com.android.systemui.dagger.SysUISingleton;
 import com.android.systemui.deviceentry.domain.interactor.DeviceUnlockedInteractor;
 import com.android.systemui.media.NotificationMediaManager;
+import com.android.systemui.penguin.LockscreenStack;
 import com.android.systemui.plugins.ActivityStarter;
 import com.android.systemui.plugins.ActivityStarter.OnDismissAction;
 import com.android.systemui.power.domain.interactor.PowerInteractor;
@@ -256,7 +257,9 @@ class StatusBarNotificationPresenter implements NotificationPresenter, CommandQu
                 mActivityStarter.dismissKeyguardThenExecute(() -> false /* dismissAction */
                         , null /* cancelRunnable */, false /* afterKeyguardGone */);
             } else if (mStatusBarStateController.getState() == StatusBarState.KEYGUARD) {
-                mShadeTransitionController.goToLockedShade(row, /* needsQSAnimation = */ true);
+                // The lock screen stack expands in place, with the card opened in it, instead
+                // of opening the shade.
+                LockscreenStack.expand();
             } else if (clickedEntry.isSensitive().getValue()
                         && mShadeTransitionController.isLockdownShade()) {
                 mStatusBarStateController.setLeaveOpenOnKeyguardHide(true);

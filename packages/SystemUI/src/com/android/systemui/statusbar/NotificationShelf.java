@@ -42,6 +42,7 @@ import androidx.annotation.NonNull;
 import com.android.app.animation.Interpolators;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.policy.SystemBarUtils;
+import com.android.systemui.penguin.LockscreenStack;
 import com.android.systemui.animation.ShadeInterpolation;
 import com.android.systemui.clocks.ClockStyle;
 import com.android.systemui.qs.shared.style.LiquidGlass;
@@ -260,7 +261,9 @@ public class NotificationShelf extends ActivatableNotificationView {
             viewState.hidden = !mAmbientState.isShadeExpanded()
                     || mAmbientState.isPulsing()
                     || algorithmState.firstViewInShelf == null
-                    || (mAmbientState.isOnKeyguard() && mDisableNotificationShelfOnKeyguard);
+                    || (mAmbientState.isOnKeyguard() && mDisableNotificationShelfOnKeyguard)
+                    // The lock screen stack expanded in place scrolls instead.
+                    || LockscreenStack.isExpanded();
 
             final int indexOfFirstViewInShelf = algorithmState.visibleChildren.indexOf(
                     algorithmState.firstViewInShelf);

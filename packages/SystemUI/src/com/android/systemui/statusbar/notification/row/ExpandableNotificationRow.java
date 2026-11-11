@@ -90,6 +90,7 @@ import com.android.internal.widget.CachingIconView;
 import com.android.internal.widget.CallLayout;
 import com.android.internal.widget.ConversationLayout;
 import com.android.internal.widget.MessagingLayout;
+import com.android.systemui.penguin.LockscreenStack;
 import com.android.systemui.Flags;
 import com.android.systemui.penguin.CosFeature;
 import com.android.systemui.penguin.CosFeatures;
@@ -3159,6 +3160,14 @@ public class ExpandableNotificationRow extends ActivatableNotificationView
     }
 
     @Override
+    public void setBlurRegionFade(float fade) {
+        super.setBlurRegionFade(fade);
+        if (mIsSummaryWithChildren) {
+            mChildrenContainer.setBlurRegionFade(fade);
+        }
+    }
+
+    @Override
     public void setBlurRegionSuppressed(boolean suppressed) {
         super.setBlurRegionSuppressed(suppressed);
         if (mIsSummaryWithChildren) {
@@ -3375,6 +3384,10 @@ public class ExpandableNotificationRow extends ActivatableNotificationView
             return canPromotedNotificationShowExpanded(allowOnKeyguard);
         }
 
+        if (LockscreenStack.isExpanded()) {
+            // The lock screen stack expanded in place only opens the cards opened by hand.
+            return !shouldShowPublic() && isUserExpanded();
+        }
         return (!shouldShowPublic()) && (!mOnKeyguard || allowOnKeyguard)
                 && (!hasUserChangedExpansion()
                 && (isSystemExpanded() || isSystemChildExpanded())
@@ -4739,9 +4752,13 @@ public class ExpandableNotificationRow extends ActivatableNotificationView
         // Row background should be opaque when it's displayed as a heads-up notification or
         // displayed on keyguard.
         // Also, for an unpinned HUN on the unlocked shade, the row bg should be transparent.
+        // On the lock screen a heads-up that is not pinned is not shown floating: it sits in
+        // the stack (folded or expanded in place) and keeps the glass of the cards around it.
+        final boolean inLockscreenStack = (mOnKeyguard || LockscreenStack.isExpanded())
+                && !isPinned();
         return super.usesTransparentBackground()
-                && !mustStayOnScreen()
+                && !(mustStayOnScreen() && !inLockscreenStack)
                 && !(isChildInGroup() && !mNotificationParent.usesTransparentBackground())
-                && !mHeadsupDisappearRunning;
+                && !(mHeadsupDisappearRunning && !inLockscreenStack);
     }
 }

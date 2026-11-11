@@ -44,6 +44,7 @@ import androidx.annotation.VisibleForTesting;
 import com.android.app.animation.Interpolators;
 import com.android.internal.jank.InteractionJankMonitor;
 import com.android.internal.jank.InteractionJankMonitor.Configuration;
+import com.android.systemui.penguin.LockscreenStack;
 import com.android.systemui.Flags;
 import com.android.systemui.Gefingerpoken;
 import com.android.systemui.common.shared.colors.SurfaceEffectColors;
@@ -371,7 +372,7 @@ public abstract class ActivatableNotificationView extends ExpandableOutlineView 
     protected boolean usesBlurredBackground() {
         return usesTransparentBackground() && lockscreenBlurForNotifications()
                 && mBgTint == NO_COLOR
-                && (mOnKeyguard || blursAsHeadsUp());
+                && (mOnKeyguard || blursAsHeadsUp() || LockscreenStack.isExpanded());
     }
 
     protected boolean blursAsHeadsUp() {
@@ -888,7 +889,14 @@ public abstract class ActivatableNotificationView extends ExpandableOutlineView 
         mBackgroundNormal.setOnKeyguard(mOnKeyguard);
         if (notificationRowTransparency()) {
             updateBackgroundTint();
+            // The stack expanded in place on the lock screen keeps the blurred cards.
+            mBackgroundNormal.setBlurBackgroundEnabled(usesBlurredBackground());
         }
+    }
+
+    /** Fades this row's background blur region with the stack, see {@link NotificationBackgroundView#setBlurRegionFade}. */
+    public void setBlurRegionFade(float fade) {
+        mBackgroundNormal.setBlurRegionFade(fade);
     }
 
     /** Suppresses/restores this row's background blur region while the stack is faded out. */
@@ -942,6 +950,11 @@ public abstract class ActivatableNotificationView extends ExpandableOutlineView 
 
     protected void dumpBackgroundView(IndentingPrintWriter pw, String[] args) {
         pw.println("Background View: " + mBackgroundNormal);
+        if (mBackgroundNormal != null) {
+            pw.println("Background glass: " + mBackgroundNormal.glassState()
+                    + " usesBlurred=" + usesBlurredBackground()
+                    + " bgTint=" + Integer.toHexString(mBgTint));
+        }
         if (DUMP_VERBOSE && mBackgroundNormal != null) {
             DumpUtilsKt.withIncreasedIndent(pw, () -> {
                 mBackgroundNormal.dump(pw, args);

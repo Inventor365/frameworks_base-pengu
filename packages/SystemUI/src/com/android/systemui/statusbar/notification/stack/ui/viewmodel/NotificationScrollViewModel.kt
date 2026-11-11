@@ -69,6 +69,7 @@ import dagger.Lazy
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import com.android.systemui.penguin.LockscreenStack
 import com.android.systemui.penguin.NowBarStack
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -529,8 +530,9 @@ constructor(
         combine(
             stackAppearanceInteractor.alphaForBrightnessMirror.dumpValue("maxAlpha"),
             NowBarStack.alpha,
-        ) { mirror, nowBar ->
-            mirror * nowBar
+            LockscreenStack.alpha,
+        ) { mirror, nowBar, stack ->
+            mirror * nowBar * stack
         }
 
     /** Scroll state of the notification shade. */
@@ -557,11 +559,14 @@ constructor(
 
     /** Whether the notification stack is scrollable or not. */
     val isScrollable: Flow<Boolean> =
-        combine(sceneInteractor.currentScene, sceneInteractor.currentOverlays) {
-                currentScene,
-                currentOverlays ->
+        combine(
+                sceneInteractor.currentScene,
+                sceneInteractor.currentOverlays,
+                LockscreenStack.expanded,
+            ) { currentScene, currentOverlays, expandedOnLockscreen ->
                 currentScene.showsScrollableStack() ||
-                    currentOverlays.any { it.showsScrollableStack() }
+                    currentOverlays.any { it.showsScrollableStack() } ||
+                    expandedOnLockscreen
             }
             .dumpWhileCollecting("isScrollable")
 

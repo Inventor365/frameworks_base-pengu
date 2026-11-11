@@ -67,6 +67,7 @@ import com.android.systemui.keyguard.ui.viewmodel.ViewStateAccessor
 import com.android.systemui.lifecycle.rememberViewModel
 import com.android.systemui.penguin.LockscreenClockFace
 import com.android.systemui.penguin.LockscreenPlayer
+import com.android.systemui.penguin.LockscreenStack
 import com.android.systemui.penguin.NowBarStack
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementContext
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementKeys
@@ -97,6 +98,7 @@ class LockscreenContent(
     private val interactionJankMonitor: InteractionJankMonitor,
     private val player: LockscreenPlayer? = null,
     private val clockFace: LockscreenClockFace? = null,
+    private val expandedStack: LockscreenExpandedStack? = null,
 ) {
     @Composable
     fun ContentScope.Content(modifier: Modifier = Modifier) {
@@ -223,6 +225,17 @@ class LockscreenContent(
                 }
                 .collect { NowBarStack.alpha.value = it }
         }
+        if (player != null) {
+            // The artwork is drawn in this window, over the cards' window blur.
+            LaunchedEffect(player) {
+                try {
+                    snapshotFlow { player.expansion > 0.01f }
+                        .collect { LockscreenStack.setArtShowing(it) }
+                } finally {
+                    LockscreenStack.setArtShowing(false)
+                }
+            }
+        }
         player?.ExpandedArt(
             alpha = {
                 val transition = layoutState.currentTransition as? TransitionState.Transition.ChangeScene
@@ -275,11 +288,24 @@ class LockscreenContent(
                     LockscreenElementContext(nonAuthUI = Modifier.nonAuthUI(viewModel)),
                 )
             }
+            expandedStack?.run {
+                ExpandedStack(
+                    Modifier.graphicsLayer {
+                        alpha =
+                            min(viewModel.alpha, contentAlphaAnimatable.value) *
+                                (if (glass) 1f - shaded() else 1f)
+                    }
+                )
+            }
         }
         player?.ArtGestures()
         if (fluidClock) {
             clockFace?.Overlay(
-                alpha = { min(viewModel.alpha, contentAlphaAnimatable.value) * (1f - covered()) },
+                alpha = {
+                    min(viewModel.alpha, contentAlphaAnimatable.value) *
+                        (1f - covered()) *
+                        (1f - LockscreenStack.clockCover)
+                },
                 unlocking = toGone,
             )
         }

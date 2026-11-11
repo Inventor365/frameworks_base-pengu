@@ -43,6 +43,7 @@ import androidx.annotation.VisibleForTesting;
 
 import com.android.internal.graphics.drawable.BackgroundBlurDrawable;
 import com.android.internal.util.ContrastColorUtil;
+import com.android.systemui.penguin.LockscreenStack;
 import com.android.systemui.Dumpable;
 import com.android.systemui.common.shared.colors.SurfaceEffectColors;
 import com.android.systemui.penguin.CosFeature;
@@ -89,6 +90,12 @@ public class NotificationBackgroundView extends View implements Dumpable,
     private BackgroundBlurDrawable mBackgroundBlurDrawable;
     // When true, the blur region is forced to alpha 0 (dropped from the aggregator) but kept around.
     private boolean mBlurRegionSuppressed;
+    private float mBlurRegionFade = 1f;
+    /** Re-tints the card when the media artwork starts or stops covering its window blur. */
+    private final Runnable mArtListener = () -> {
+        // A background not set up yet takes the art state when it is.
+        if (mBackground != null) setTint(mTintColor != 0 ? mTintColor : mNormalColor);
+    };
     @VisibleForTesting
     protected View.OnAttachStateChangeListener mOnAttachStateChangeListener;
 
@@ -263,7 +270,7 @@ public class NotificationBackgroundView extends View implements Dumpable,
 
     private void drawGlassRim(Canvas canvas, Rect bounds) {
         if (bounds == null || !LiquidGlass.isEnabled(getContext())
-                || (mCosMaterial != 0 && mBackgroundBlurDrawable != null)) {
+                || (mCosMaterial != 0 && mBackgroundBlurDrawable != null && !artCoversBlur())) {
             return;
         }
         mGlassBounds.set(bounds);
@@ -377,9 +384,7 @@ public class NotificationBackgroundView extends View implements Dumpable,
                                         NotificationBackgroundView.this);
                                 updateCosMaterial();
                                 setTint(mTintColor != 0 ? mTintColor : mNormalColor);
-                                if (mBlurRegionSuppressed) {
-                                    mBackgroundBlurDrawable.setAlpha(0);
-                                }
+                                mBackgroundBlurDrawable.setAlpha(blurRegionAlpha());
 
                                 updateBackgroundRadii();
                                 invalidate();
@@ -430,6 +435,26 @@ public class NotificationBackgroundView extends View implements Dumpable,
                         & Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES;
     }
 
+    /**
+     * Whether the lock screen's media artwork, drawn in this window, hides the window blur behind
+     * this card: the card then draws its frost and rim itself.
+     */
+    private boolean artCoversBlur() {
+        return mBackgroundBlurDrawable != null && LockscreenStack.getArtShowing();
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        LockscreenStack.addArtListener(mArtListener);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        LockscreenStack.removeArtListener(mArtListener);
+        super.onDetachedFromWindow();
+    }
+
     private boolean glassOnBlur() {
         return mBackgroundBlurDrawable != null && LiquidGlass.isEnabled(getContext());
     }
@@ -470,11 +495,13 @@ public class NotificationBackgroundView extends View implements Dumpable,
         // The light COS card glass was measured over COS's bright shade, but this shade is dark
         // glass in both themes. A light frost keeps the light theme's dark and accent text
         // readable on it, as on a heads-up card.
-        final int surface = cos
-                ? (mCosMaterial == COS_LIGHT_CARD_MATERIAL ? COS_LIGHT_CARD_FROST
-                        : Color.TRANSPARENT)
-                : glassOnBlur() && tintColor == mNormalColor
-                        ? Color.TRANSPARENT : surfaceFor(tintColor);
+        final int surface = artCoversBlur()
+                ? surfaceFor(tintColor)
+                : cos
+                        ? (mCosMaterial == COS_LIGHT_CARD_MATERIAL ? COS_LIGHT_CARD_FROST
+                                : Color.TRANSPARENT)
+                        : glassOnBlur() && tintColor == mNormalColor
+                                ? Color.TRANSPARENT : surfaceFor(tintColor);
         if (notificationRowTransparency()) {
             ((GradientDrawable) baseLayer.mutate()).setColor(surface);
         } else {
@@ -581,7 +608,7 @@ public class NotificationBackgroundView extends View implements Dumpable,
         }
         mBackground.setAlpha(drawableAlpha);
         if (mBackgroundBlurDrawable != null) {
-            mBackgroundBlurDrawable.setAlpha(mBlurRegionSuppressed ? 0 : drawableAlpha);
+            mBackgroundBlurDrawable.setAlpha(blurRegionAlpha());
         }
     }
 
@@ -592,9 +619,28 @@ public class NotificationBackgroundView extends View implements Dumpable,
         }
         mBlurRegionSuppressed = suppressed;
         if (mBackgroundBlurDrawable != null) {
-            mBackgroundBlurDrawable.setAlpha(suppressed ? 0 : mDrawableAlpha);
+            mBackgroundBlurDrawable.setAlpha(blurRegionAlpha());
             invalidate();
         }
+    }
+
+    /**
+     * Fades the blur region with the stack, which a blur region cannot take from its ancestors:
+     * without it the frosted card stays while the content on it fades out.
+     */
+    public void setBlurRegionFade(float fade) {
+        if (mBlurRegionFade == fade) {
+            return;
+        }
+        mBlurRegionFade = fade;
+        if (mBackgroundBlurDrawable != null) {
+            mBackgroundBlurDrawable.setAlpha(blurRegionAlpha());
+            invalidate();
+        }
+    }
+
+    private int blurRegionAlpha() {
+        return mBlurRegionSuppressed ? 0 : Math.round(mDrawableAlpha * mBlurRegionFade);
     }
 
     /**
@@ -684,6 +730,18 @@ public class NotificationBackgroundView extends View implements Dumpable,
             setDrawableAlpha(mDrawableAlpha);
         }
         invalidate();
+    }
+
+    /** One line of the card glass state, for the stack dump. */
+    public String glassState() {
+        return "blur=" + (mBackgroundBlurDrawable != null)
+                + " material=" + mCosMaterial
+                + " headsUpGlass=" + mHeadsUpGlass
+                + " art=" + LockscreenStack.getArtShowing()
+                + " suppressed=" + mBlurRegionSuppressed
+                + " fade=" + mBlurRegionFade
+                + " drawableAlpha=" + mDrawableAlpha
+                + " tint=" + Integer.toHexString(mTintColor);
     }
 
     @Override

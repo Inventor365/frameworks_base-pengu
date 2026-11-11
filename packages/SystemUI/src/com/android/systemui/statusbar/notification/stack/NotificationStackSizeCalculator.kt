@@ -21,6 +21,7 @@ import android.util.Log
 import android.view.View.GONE
 import androidx.annotation.VisibleForTesting
 import com.android.systemui.dagger.SysUISingleton
+import com.android.systemui.penguin.LockscreenStack
 import com.android.systemui.qs.shared.style.LiquidGlass
 import com.android.systemui.dagger.qualifiers.Application
 import com.android.systemui.media.controls.domain.pipeline.MediaDataManager
@@ -465,8 +466,10 @@ constructor(
 
     @VisibleForTesting
     fun onLockscreen(): Boolean {
+        // Expanded in place, the lock screen stack lists everything, like the locked shade.
         return statusBarStateController.state == KEYGUARD &&
-            lockscreenShadeTransitionController.fractionToShade == 0f
+            lockscreenShadeTransitionController.fractionToShade == 0f &&
+            !LockscreenStack.isExpanded()
     }
 
     @VisibleForTesting

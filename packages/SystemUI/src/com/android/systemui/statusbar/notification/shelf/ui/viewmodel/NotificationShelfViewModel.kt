@@ -17,6 +17,7 @@
 package com.android.systemui.statusbar.notification.shelf.ui.viewmodel
 
 import com.android.systemui.dagger.SysUISingleton
+import com.android.systemui.penguin.LockscreenStack
 import com.android.systemui.scene.shared.flag.SceneContainerFlag
 import com.android.systemui.statusbar.NotificationShelf
 import com.android.systemui.statusbar.notification.row.ui.viewmodel.ActivatableNotificationViewModel
@@ -66,6 +67,10 @@ constructor(
 
     /** Notifies that the user has clicked the shelf. */
     fun onShelfClicked() {
-        interactor.goToLockedShadeFromShelf()
+        if (SceneContainerFlag.isEnabled) {
+            LockscreenStack.expand()
+        } else {
+            interactor.goToLockedShadeFromShelf()
+        }
     }
 }

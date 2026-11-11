@@ -69,6 +69,7 @@ import com.android.systemui.dump.DumpManager;
 import com.android.systemui.media.controls.ui.controller.KeyguardMediaController;
 import com.android.systemui.penguin.CosFeature;
 import com.android.systemui.penguin.CosFeatures;
+import com.android.systemui.penguin.LockscreenStack;
 import com.android.systemui.plugins.ActivityStarter;
 import com.android.systemui.plugins.FalsingManager;
 import com.android.systemui.plugins.statusbar.NotificationMenuRowPlugin;
@@ -961,6 +962,11 @@ public class NotificationStackScrollLayoutController implements Dumpable {
         mTouchHandler = new TouchHandler();
         mView.setTouchHandler(mTouchHandler);
         mView.setResetUserExpandedStatesRunnable(mNotificationsController::resetUserExpandedStates);
+        // Cards opened in the expanded lock screen stack fold back with it.
+        LockscreenStack.addCollapseListener(() -> mView.post(() -> {
+            mNotificationsController.resetUserExpandedStates();
+            mGroupExpansionManager.collapseGroups();
+        }));
         mView.setClearAllAnimationListener(this::onAnimationEnd);
         mView.setClearAllListener((selection) -> mUiEventLogger.log(
                 NotificationPanelEvent.fromSelection(selection)));

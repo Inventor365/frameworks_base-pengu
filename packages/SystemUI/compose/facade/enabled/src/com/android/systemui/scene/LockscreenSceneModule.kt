@@ -26,6 +26,7 @@ import com.android.systemui.keyguard.KeyguardViewConfigurator
 import com.android.systemui.keyguard.domain.interactor.KeyguardClockInteractor
 import com.android.systemui.keyguard.qualifiers.KeyguardRootView
 import com.android.systemui.keyguard.ui.composable.LockscreenContent
+import com.android.systemui.keyguard.ui.composable.LockscreenExpandedStack
 import com.android.systemui.keyguard.ui.composable.LockscreenScene
 import com.android.systemui.keyguard.ui.composable.elements.ElementProviderModule
 import com.android.systemui.keyguard.ui.composable.elements.LockscreenElements
@@ -62,6 +63,7 @@ interface LockscreenSceneModule {
             interactionJankMonitor: InteractionJankMonitor,
             player: Optional<LockscreenPlayer>,
             clockFace: Optional<LockscreenClockFace>,
+            expandedStack: LockscreenExpandedStack,
         ): LockscreenContent {
             return LockscreenContent(
                 viewModelFactory,
@@ -72,6 +74,7 @@ interface LockscreenSceneModule {
                 interactionJankMonitor,
                 player.orElse(null),
                 clockFace.orElse(null),
+                expandedStack,
             )
         }
     }

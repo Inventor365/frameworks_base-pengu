@@ -20,7 +20,9 @@ import com.android.compose.animation.scene.ObservableTransitionState.Idle
 import com.android.compose.animation.scene.ObservableTransitionState.Transition
 import com.android.compose.animation.scene.SceneKey
 import com.android.systemui.dagger.SysUISingleton
+import com.android.systemui.penguin.LockscreenStack
 import com.android.systemui.penguin.isCosShadeSwitch
+import com.android.systemui.power.domain.interactor.PowerInteractor
 import com.android.systemui.scene.domain.interactor.SceneInteractor
 import com.android.systemui.scene.shared.model.Overlays
 import com.android.systemui.scene.shared.model.Scenes
@@ -48,6 +50,7 @@ constructor(
     private val sceneInteractor: SceneInteractor,
     private val sharedNotificationContainerInteractor: SharedNotificationContainerInteractor,
     private val notificationStackAppearanceInteractor: NotificationStackAppearanceInteractor,
+    private val powerInteractor: PowerInteractor,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
     val isStackConstrained: Flow<Boolean> =
@@ -97,19 +100,30 @@ constructor(
         calculateMaxNotifications: (Int, Boolean) -> Int
     ): Flow<LockscreenDisplayConfig> {
         @Suppress("UNCHECKED_CAST")
+        // The expanded stack folds back when the screen turns off.
+        val constrainedAndAwake =
+            combine(isStackConstrained, powerInteractor.isAwake) { constrained, awake ->
+                if (!awake) LockscreenStack.collapse()
+                constrained
+            }
         return combine(
-                isStackConstrained,
+                constrainedAndAwake,
                 notificationStackAppearanceInteractor.constrainedAvailableSpace,
                 sharedNotificationContainerInteractor.useExtraShelfSpace,
                 sharedNotificationContainerInteractor.notificationStackChanged,
-            ) { showLimited, availableHeight, useExtraShelfSpace, _ ->
-                if (showLimited) {
+                LockscreenStack.expanded,
+            ) { showLimited, availableHeight, useExtraShelfSpace, _, expanded ->
+                if (showLimited && expanded) {
+                    // Expanded in place: the whole list scrolls, as in the locked shade.
+                    LockscreenDisplayConfig(isOnLockscreen = false, maxNotifications = -1)
+                } else if (showLimited) {
                     LockscreenDisplayConfig(
                         isOnLockscreen = true,
                         maxNotifications =
                             calculateMaxNotifications(availableHeight, useExtraShelfSpace),
                     )
                 } else {
+                    LockscreenStack.collapse()
                     LockscreenDisplayConfig(isOnLockscreen = false, maxNotifications = -1)
                 }
             }

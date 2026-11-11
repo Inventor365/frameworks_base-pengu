@@ -23,9 +23,13 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +73,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollDispatcher
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.findRootCoordinates
@@ -110,6 +116,7 @@ import com.android.systemui.common.ui.compose.windowinsets.LocalScreenCornerRadi
 import com.android.systemui.notifications.intelligence.rules.shared.NmContextualDisplayLaunch
 import com.android.systemui.notifications.intelligence.rules.ui.viewmodel.NotificationRulesParentViewModel
 import com.android.systemui.notifications.ui.YSpace
+import com.android.systemui.penguin.LockscreenStack
 import com.android.systemui.res.R
 import com.android.systemui.scene.session.ui.composable.SaveableSession
 import com.android.systemui.scene.session.ui.composable.sessionCoroutineScope
@@ -187,6 +194,12 @@ fun ContentScope.ConstrainedNotificationStack(
                     val rawBounds = it.rawBoundsInWindow()
                     debugLog(viewModel) { "Constrained.container onPlaced bounds=$rawBounds" }
                     viewModel.setStackBounds(rawBounds)
+                    if (!LockscreenStack.isExpanded()) {
+                        LockscreenStack.stackAreaTop = rawBounds.top
+                        val column = it.boundsInWindow()
+                        LockscreenStack.stackAreaLeft = column.left
+                        LockscreenStack.stackAreaWidth = column.width
+                    }
                 }
                 .onUnplaced {
                     debugLog(viewModel) { "Constrained.container onUnplaced" }
@@ -206,6 +219,9 @@ fun ContentScope.ConstrainedNotificationStack(
                             coordinates.boundsInWindow().bottom
                         )
                         stackTopListener?.invoke(coordinates.positionInWindow().y)
+                        if (!LockscreenStack.isExpanded()) {
+                            LockscreenStack.stackTop = coordinates.positionInWindow().y
+                        }
                     },
         )
         HeadsUpNotificationPlaceholder(
@@ -224,6 +240,31 @@ fun ContentScope.ConstrainedNotificationStack(
 val LocalLockscreenStackAlignment = compositionLocalOf { Alignment.TopCenter }
 
 private val LockscreenStackBottomGap = 16.dp
+
+/**
+ * Runs [action] on a downward pull of [distance] or more. Only a downward pull is taken, so an
+ * upward swipe still unlocks and, when [enabled] is false, a pull still opens the shade.
+ */
+fun Modifier.onPullDown(enabled: () -> Boolean, distance: Dp = 48.dp, action: () -> Unit) =
+    pointerInput(Unit) {
+        val threshold = distance.toPx()
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            var pulled = 0f
+            val drag =
+                awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
+                    if (over > 0f && enabled()) {
+                        change.consume()
+                        pulled = over
+                    }
+                } ?: return@awaitEachGesture
+            verticalDrag(drag.id) { change ->
+                pulled += change.positionChange().y
+                change.consume()
+            }
+            if (pulled > threshold) action()
+        }
+    }
 
 /** Told where the top of the constrained lockscreen stack is, in window coordinates. */
 val LocalLockscreenStackTopListener = compositionLocalOf<((Float) -> Unit)?> { null }

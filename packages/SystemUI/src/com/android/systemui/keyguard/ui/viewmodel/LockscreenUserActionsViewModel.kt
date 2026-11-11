@@ -17,12 +17,15 @@
 package com.android.systemui.keyguard.ui.viewmodel
 
 import com.android.compose.animation.scene.Swipe
+import com.android.compose.animation.scene.SwipeDirection
 import com.android.compose.animation.scene.UserAction
 import com.android.compose.animation.scene.UserActionResult
 import com.android.systemui.communal.domain.interactor.CommunalInteractor
 import com.android.systemui.deviceentry.domain.interactor.DeviceEntryInteractor
+import com.android.systemui.penguin.LockscreenStack
 import com.android.systemui.scene.shared.model.Overlays
 import com.android.systemui.scene.shared.model.Scenes
+import com.android.systemui.scene.ui.viewmodel.SceneContainerArea
 import com.android.systemui.scene.ui.viewmodel.UserActionsViewModel
 import com.android.systemui.shade.domain.interactor.ShadeInteractor
 import com.android.systemui.shade.domain.interactor.ShadeModeInteractor
@@ -59,7 +62,8 @@ constructor(
                     deviceEntryInteractor.isUnlocked,
                     communalInteractor.isCommunalAvailable,
                     shadeModeInteractor.shadeMode,
-                ) { isDeviceUnlocked, isCommunalAvailable, shadeMode ->
+                    LockscreenStack.expanded,
+                ) { isDeviceUnlocked, isCommunalAvailable, shadeMode, stackExpanded ->
                     buildList {
                             if (isCommunalAvailable) {
                                 add(Swipe.Start to Scenes.Communal)
@@ -79,11 +83,22 @@ constructor(
                                 }
                             )
                         }
+                        // With the notification stack expanded in place, a pull down scrolls or
+                        // folds it; the shade then only opens from the top edge.
+                        .filterNot { (action, _) -> stackExpanded && action.opensShadeFromContent() }
                         .associate { it }
                 }
             }
             .collect { setActions(it) }
     }
+
+    private fun UserAction.opensShadeFromContent(): Boolean =
+        this is Swipe &&
+            direction == SwipeDirection.Down &&
+            pointerCount == 1 &&
+            (fromSource == null ||
+                fromSource == SceneContainerArea.StartHalf ||
+                fromSource == SceneContainerArea.EndHalf)
 
     @AssistedFactory
     interface Factory {

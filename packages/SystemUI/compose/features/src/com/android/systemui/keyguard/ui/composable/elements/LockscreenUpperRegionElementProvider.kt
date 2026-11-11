@@ -25,7 +25,6 @@ import android.view.LayoutInflater
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -37,6 +36,8 @@ import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.width
@@ -44,28 +45,32 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.graphics.BlurEffect
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.window.core.layout.WindowSizeClass
 import com.android.compose.animation.Easings
 import com.android.compose.animation.scene.ContentScope
@@ -73,17 +78,21 @@ import com.android.compose.animation.scene.ElementContentScope
 import com.android.compose.animation.scene.PropertyTransformationBuilder
 import com.android.compose.animation.scene.TransitionBuilder
 import com.android.compose.windowsizeclass.LocalWindowSizeClass
-import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.clocks.ClockStyle
+import com.android.systemui.customization.clocks.R as clocksR
+import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.keyguard.shared.model.ClockSize
+import com.android.systemui.keyguard.ui.viewmodel.KeyguardClockViewModel
 import com.android.systemui.keyguard.ui.viewmodel.LockscreenUpperRegionViewModel
 import com.android.systemui.keyguard.ui.viewmodel.LockscreenUpperRegionViewModel.Decision
 import com.android.systemui.lifecycle.rememberViewModel
-import com.android.systemui.notifications.ui.composable.LocalLockscreenStackAlignment
-import com.android.systemui.penguin.LockscreenPlayer
 import com.android.systemui.log.LogBuffer
 import com.android.systemui.log.core.Logger
 import com.android.systemui.log.dagger.KeyguardBlueprintLog
+import com.android.systemui.notifications.ui.composable.LocalLockscreenStackAlignment
+import com.android.systemui.notifications.ui.composable.onPullDown
+import com.android.systemui.penguin.LockscreenPlayer
+import com.android.systemui.penguin.LockscreenStack
 import com.android.systemui.plugins.keyguard.ui.composable.elements.BaseLockscreenElement.ElementSource
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElement
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementKeys.Clock
@@ -97,16 +106,13 @@ import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenMo
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenScope
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenScope.Companion.LockscreenElement
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenScope.Companion.NestedScenes
-import androidx.compose.ui.platform.LocalDensity
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.android.systemui.customization.clocks.R as clocksR
-import com.android.systemui.keyguard.ui.viewmodel.KeyguardClockViewModel
 import com.android.systemui.res.R
 import com.android.systemui.shade.ShadeDisplayAware
 import com.android.systemui.shade.shared.model.ShadeMode
 import com.google.errorprone.annotations.CompileTimeConstant
 import java.util.Optional
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 private val FOLD_PILL_OFFSET = 64.dp
 private const val FOLD_PILL_SCALE = 0.6f
@@ -144,7 +150,16 @@ constructor(
                     }
                 }
 
-            with(layout) { Layout() }
+            // The clock region (and the media player in it) scrolls up with the expanded
+            // notification list, fading as it goes, instead of the list sliding over it.
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    alpha = 1f - LockscreenStack.clockCover
+                    translationY = -LockscreenStack.coverScroll
+                }
+            ) {
+                with(layout) { Layout() }
+            }
         }
     }
 
@@ -169,13 +184,46 @@ constructor(
                 val folded by remember {
                     derivedStateOf { (player?.nowBarFraction ?: 0f) >= 0.5f }
                 }
-                AnimatedVisibility(
+                // Folding into the now bar takes the expanded stack with it.
+                LaunchedEffect(folded) { if (folded) LockscreenStack.collapse() }
+                val nowBar = player
+                // The stack's own view takes the touches on its cards: it asks here whether a pull
+                // down folds them into the now bar.
+                DisposableEffect(nowBar) {
+                    if (nowBar != null) {
+                        LockscreenStack.canPullDown = {
+                            !LockscreenStack.isExpanded() && nowBar.canFoldIntoNowBar
+                        }
+                        LockscreenStack.pullDown = { nowBar.foldIntoNowBar() }
+                    }
+                    onDispose {
+                        LockscreenStack.canPullDown = { false }
+                        LockscreenStack.pullDown = {}
+                    }
+                }
+                // Expanded in place, the stack is the lock screen's full height panel instead.
+                val expanded by LockscreenStack.expanded.collectAsStateWithLifecycle()
+                if (!expanded) AnimatedVisibility(
                     viewModel.isNotificationStackActive && !folded,
                     modifier = Modifier.padding(top = stackTopPadding),
                 ) {
                     LockscreenElement(
                         Notifications.Stack,
-                        modifier = Modifier.burnInAware(isClock = false),
+                        modifier =
+                            Modifier.burnInAware(isClock = false)
+                                // Lifted by a swipe up on its cards on its way to expanding
+                                // in place (taken by the stack's view, which gets the touches).
+                                .offset { IntOffset(0, LockscreenStack.lift.roundToInt()) }
+                                // Like the media card, pulling the folded stack down folds it
+                                // and the player into the now bar.
+                                .onPullDown(
+                                    enabled = {
+                                        !LockscreenStack.isExpanded() &&
+                                            nowBar?.canFoldIntoNowBar == true
+                                    }
+                                ) {
+                                    nowBar?.foldIntoNowBar()
+                                },
                     )
                 }
             }

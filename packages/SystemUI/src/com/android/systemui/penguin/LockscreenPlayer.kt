@@ -19,6 +19,12 @@ interface LockscreenPlayer {
     /** How far the player card and notifications have folded into the now bar, 0 to 1. */
     val nowBarFraction: Float
 
+    /** Whether the player can fold, with the notifications, into the now bar right now. */
+    val canFoldIntoNowBar: Boolean
+        get() = false
+
+    fun foldIntoNowBar() {}
+
     @Composable fun ObserveSettings()
 
     fun setMediaVisible(visible: Boolean)

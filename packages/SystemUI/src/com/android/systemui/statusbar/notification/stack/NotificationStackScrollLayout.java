@@ -43,6 +43,7 @@ import static com.android.systemui.util.DumpUtilsKt.visibilityString;
 
 import static java.lang.annotation.RetentionPolicy.SOURCE;
 
+import android.animation.ValueAnimator;
 import android.annotation.ColorInt;
 import android.annotation.FloatRange;
 import android.annotation.IntDef;
@@ -84,6 +85,7 @@ import android.view.WindowInsetsAnimation;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.AnimationUtils;
+import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
 import android.widget.OverScroller;
 import android.widget.ScrollView;
@@ -95,6 +97,7 @@ import com.android.internal.policy.SystemBarUtils;
 import com.android.keyguard.BouncerPanelExpansionCalculator;
 import com.android.keyguard.KeyguardSliceView;
 import com.android.systemui.Dependency;
+import com.android.systemui.penguin.LockscreenStack;
 import com.android.systemui.qs.shared.style.LiquidGlass;
 import com.android.systemui.Dumpable;
 import com.android.systemui.ExpandHelper;
@@ -633,6 +636,27 @@ public class NotificationStackScrollLayout
     private boolean mIsOnLockscreen;
     /** Whether child rows have been told to drop their background blur regions. */
     private boolean mBlurRegionsSuppressed;
+    private float mBlurRegionFade = 1f;
+    /** The folded lock screen stack follows a lifting finger at this rate. */
+    private static final float LIFT_RESISTANCE = 0.6f;
+    private static final float LIFT_OPEN_DISTANCE_DP = 48f;
+    private static final float LIFT_OPEN_VELOCITY_DP = 600f;
+    private boolean mLiftTracking;
+    private boolean mLifting;
+    private boolean mPullingDown;
+    private float mLiftDownX;
+    private float mLiftDownY;
+    private VelocityTracker mLiftVelocity;
+    private ValueAnimator mLiftSettle;
+    private boolean mEmptyTapTracking;
+    /** Per card {dy, scale, alpha} while the open lock screen list folds or opens. */
+    private final HashMap<View, float[]> mRestack = new HashMap<>();
+    private final ArrayList<ExpandableView> mRestackRows = new ArrayList<>();
+    private final int[] mRestackLocation = new int[2];
+    private static final float RESTACK_PEEK_DP = 8f;
+    private static final float RESTACK_SCALE_STEP = 0.05f;
+    private float mEmptyTapX;
+    private float mEmptyTapY;
 
     /** Pass splitShadeStateController to view and update split shade */
     public void passSplitShadeStateController(SplitShadeStateController splitShadeStateController) {
@@ -691,6 +715,7 @@ public class NotificationStackScrollLayout
 
     public NotificationStackScrollLayout(Context context, AttributeSet attrs) {
         super(context, attrs, 0, 0);
+        LockscreenStack.addRestackListener(this::updateRestack);
         Resources res = getResources();
         mDebugLines = notificationDebugDrawing();
         mDebugRemoveAnimation = SPEW;
@@ -1736,7 +1761,17 @@ public class NotificationStackScrollLayout
         if (!lockscreenBlurForNotifications()) {
             return;
         }
-        boolean suppressed = alpha < 0.01f;
+        if (mBlurRegionFade != alpha) {
+            mBlurRegionFade = alpha;
+            for (int i = 0; i < getChildCount(); i++) {
+                if (getChildAt(i) instanceof ActivatableNotificationView anv) {
+                    anv.setBlurRegionFade(alpha * restackAlpha(anv));
+                }
+            }
+        }
+        // The negative clip (the shade opening over the stack) cuts the rows' content out, but
+        // not their window blur, which would stay behind as empty glass cards.
+        boolean suppressed = alpha < 0.01f || mShouldUseNegativeRoundedRectClipping;
         if (mBlurRegionsSuppressed == suppressed) {
             return;
         }
@@ -3503,6 +3538,7 @@ public class NotificationStackScrollLayout
             if (mBlurRegionsSuppressed) {
                 row.setBlurRegionSuppressed(true);
             }
+            row.setBlurRegionFade(mBlurRegionFade * restackAlpha(row));
         }
         generateAddAnimation(child, false /* fromMoreCard */);
         updateAnimationState(child);
@@ -4092,6 +4128,10 @@ public class NotificationStackScrollLayout
             cancel.recycle();
             return handled;
         }
+        if (handleLockscreenStackLift(ev)) {
+            return true;
+        }
+        handleExpandedStackEmptyTap(ev);
         if (LiquidGlass.isEnabled(mContext)) {
             if (mGlassPress == null) mGlassPress = new NotificationGlassPress(this);
             mGlassPress.onTouch(this, ev);
@@ -4190,6 +4230,261 @@ public class NotificationStackScrollLayout
         }
         // dispatch all touches to TouchHandlers, so they can decide whether they want to handle it.
         return TouchLogger.logDispatchTouch(TAG, ev, super.dispatchTouchEvent(ev));
+    }
+
+    /**
+     * A swipe up on the folded lock screen stack lifts it under the finger and, past
+     * {@link #LIFT_OPEN_DISTANCE_DP} or on an upward fling, expands it in place; otherwise it settles
+     * back. Taken here because the rows would otherwise keep the gesture for themselves.
+     *
+     * @return whether the event belongs to the lift and must not be dispatched further.
+     */
+    private boolean handleLockscreenStackLift(MotionEvent ev) {
+        if (!SceneContainerFlag.isEnabled() || !mIsOnLockscreen || LockscreenStack.isExpanded()) {
+            mLiftTracking = false;
+            mLifting = false;
+            mPullingDown = false;
+            return false;
+        }
+        switch (ev.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN -> {
+                mLifting = false;
+                mPullingDown = false;
+                ExpandableView touched = getChildAtPosition(ev.getX(), ev.getY(),
+                        false /* requireMinHeight */, true /* ignoreDecors */,
+                        false /* ignoreWidth */);
+                mLiftTracking = touched != null && isOnDrawnPart(touched, ev.getX());
+                mLiftDownX = ev.getX();
+                mLiftDownY = ev.getY();
+                if (mLiftTracking) {
+                    if (mLiftSettle != null) mLiftSettle.cancel();
+                    if (mLiftVelocity == null) mLiftVelocity = VelocityTracker.obtain();
+                    mLiftVelocity.clear();
+                    mLiftVelocity.addMovement(ev);
+                }
+                return false;
+            }
+            case MotionEvent.ACTION_MOVE -> {
+                if (!mLiftTracking) return false;
+                mLiftVelocity.addMovement(ev);
+                float dx = ev.getX() - mLiftDownX;
+                float dy = ev.getY() - mLiftDownY;
+                if (!mLifting && !mPullingDown) {
+                    // Like the media card, a pull down on the folded cards folds them and the
+                    // player into the now bar.
+                    if (dy > mTouchSlop && dy > Math.abs(dx)
+                            && Boolean.TRUE.equals(LockscreenStack.getCanPullDown().invoke())) {
+                        mPullingDown = true;
+                        MotionEvent cancel = MotionEvent.obtain(ev);
+                        cancel.setAction(MotionEvent.ACTION_CANCEL);
+                        super.dispatchTouchEvent(cancel);
+                        if (mGlassPress != null) mGlassPress.onTouch(this, cancel);
+                        cancel.recycle();
+                        claimTouchFromSceneFramework(ev);
+                        return true;
+                    }
+                }
+                if (mPullingDown) return true;
+                if (!mLifting) {
+                    if (-dy > mTouchSlop && -dy > Math.abs(dx)) {
+                        mLifting = true;
+                        // The rows, the glass press and the scene framework let go of the
+                        // gesture.
+                        MotionEvent cancel = MotionEvent.obtain(ev);
+                        cancel.setAction(MotionEvent.ACTION_CANCEL);
+                        super.dispatchTouchEvent(cancel);
+                        if (mGlassPress != null) mGlassPress.onTouch(this, cancel);
+                        cancel.recycle();
+                        claimTouchFromSceneFramework(ev);
+                    } else {
+                        if (Math.abs(dx) > mTouchSlop || dy > mTouchSlop) mLiftTracking = false;
+                        return false;
+                    }
+                }
+                LockscreenStack.INSTANCE.setLift(
+                        Math.min(0f, dy + mTouchSlop) * LIFT_RESISTANCE);
+                return true;
+            }
+            case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                mLiftTracking = false;
+                if (mPullingDown) {
+                    mPullingDown = false;
+                    if (ev.getActionMasked() == MotionEvent.ACTION_UP && ev.getY() - mLiftDownY
+                            > LIFT_OPEN_DISTANCE_DP * getResources().getDisplayMetrics().density) {
+                        LockscreenStack.getPullDown().invoke();
+                    }
+                    return true;
+                }
+                if (!mLifting) return false;
+                mLifting = false;
+                mLiftVelocity.addMovement(ev);
+                mLiftVelocity.computeCurrentVelocity(1000);
+                float density = getResources().getDisplayMetrics().density;
+                float lifted = mLiftDownY - ev.getY();
+                boolean open = ev.getActionMasked() == MotionEvent.ACTION_UP
+                        && (lifted > LIFT_OPEN_DISTANCE_DP * density
+                        || mLiftVelocity.getYVelocity() < -LIFT_OPEN_VELOCITY_DP * density);
+                if (open) {
+                    // The list unfolds from where the finger left the folded card.
+                    LockscreenStack.setRestackLift(LockscreenStack.INSTANCE.getLift());
+                    LockscreenStack.INSTANCE.setLift(0f);
+                    LockscreenStack.expand();
+                } else {
+                    mLiftSettle = ValueAnimator.ofFloat(LockscreenStack.INSTANCE.getLift(), 0f);
+                    mLiftSettle.setDuration(250);
+                    mLiftSettle.setInterpolator(new DecelerateInterpolator());
+                    mLiftSettle.addUpdateListener(a ->
+                            LockscreenStack.INSTANCE.setLift((float) a.getAnimatedValue()));
+                    mLiftSettle.start();
+                }
+                return true;
+            }
+            default -> {
+                return mLifting || mPullingDown;
+            }
+        }
+    }
+
+    /**
+     * Whether {@code x} is on the drawn part of {@code child}: the shelf's view is as wide as the
+     * stack, but on the lock screen it only draws the pill, moved into place by its translation
+     * or centered in the view.
+     */
+    private static boolean isOnDrawnPart(ExpandableView child, float x) {
+        if (!(child instanceof NotificationShelf shelf)
+                || shelf.getActualWidth() >= shelf.getWidth()) {
+            return true;
+        }
+        float localX = x - shelf.getLeft() - shelf.getTranslationX();
+        float pill = shelf.getActualWidth();
+        return (localX >= 0 && localX <= pill)
+                || Math.abs(localX - shelf.getWidth() / 2f) <= pill / 2f;
+    }
+
+    /**
+     * A tap off the cards of the lock screen stack expanded in place folds it back. The tap never
+     * reaches the scene framework's empty space handling: a gesture this view started is cancelled
+     * there unless it scrolled.
+     */
+    private void handleExpandedStackEmptyTap(MotionEvent ev) {
+        if (!SceneContainerFlag.isEnabled() || !LockscreenStack.isExpanded()) {
+            mEmptyTapTracking = false;
+            return;
+        }
+        switch (ev.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN -> {
+                mEmptyTapTracking = getChildAtPosition(ev.getX(), ev.getY(),
+                        false /* requireMinHeight */, false /* ignoreDecors */,
+                        false /* ignoreWidth */) == null;
+                mEmptyTapX = ev.getX();
+                mEmptyTapY = ev.getY();
+            }
+            case MotionEvent.ACTION_MOVE -> {
+                if (Math.abs(ev.getX() - mEmptyTapX) > mTouchSlop
+                        || Math.abs(ev.getY() - mEmptyTapY) > mTouchSlop) {
+                    mEmptyTapTracking = false;
+                }
+            }
+            case MotionEvent.ACTION_UP -> {
+                if (mEmptyTapTracking) LockscreenStack.INSTANCE.requestCollapse();
+                mEmptyTapTracking = false;
+            }
+            default -> mEmptyTapTracking = false;
+        }
+    }
+
+    /**
+     * Draws the open lock screen list collapsing into the folded stack, as {@link
+     * LockscreenStack#getRestack} goes to 1: the first card moves into the folded card's place
+     * and the others shrink in behind it, peeking below, and fade. Only drawing changes; the cards
+     * keep their layout, which the folded stack then takes over.
+     */
+    private void updateRestack() {
+        // Positions are read live as each frame draws (the stack relays out under it as it folds),
+        // so a change only needs a redraw.
+        setChildrenDrawingOrderEnabled(LockscreenStack.getRestack() > 0f);
+        invalidate();
+    }
+
+    /** Computes the restack transforms from where the cards are now; called as the stack draws. */
+    private void computeRestack() {
+        final float p = LockscreenStack.getRestack();
+        if (p <= 0f && mRestack.isEmpty()) return;
+        mRestack.clear();
+        if (p > 0f) {
+            mRestackRows.clear();
+            for (int i = 0; i < getChildCount(); i++) {
+                if (getChildAt(i) instanceof ExpandableView child
+                        && child.getVisibility() != GONE
+                        && !(child instanceof StackScrollerDecorView)
+                        && !(child instanceof NotificationShelf)) {
+                    mRestackRows.add(child);
+                }
+            }
+            mRestackRows.sort(Comparator.comparingDouble(View::getTranslationY));
+            if (!mRestackRows.isEmpty()) {
+                getLocationInWindow(mRestackLocation);
+                final ExpandableView first = mRestackRows.get(0);
+                final float stackTop = LockscreenStack.getStackTop();
+                final float target = Float.isNaN(stackTop)
+                        ? first.getTranslationY()
+                        : stackTop - mRestackLocation[1] + LockscreenStack.getRestackLift();
+                final float peek = RESTACK_PEEK_DP * getResources().getDisplayMetrics().density;
+                final float firstHeight = first.getActualHeight();
+                for (int k = 0; k < mRestackRows.size(); k++) {
+                    final ExpandableView row = mRestackRows.get(k);
+                    final float top = row.getTranslationY();
+                    final int behind = Math.min(k, 2);
+                    final float scale = 1f - RESTACK_SCALE_STEP * behind;
+                    final float targetTop = k == 0 ? target
+                            : target + firstHeight + peek * behind
+                                    - row.getActualHeight() * scale;
+                    final float alpha = k == 0 ? 1f
+                            : k <= 2 ? 1f - p : Math.max(0f, 1f - 2f * p);
+                    mRestack.put(row, new float[] {
+                            (targetTop - top) * p, 1f + (scale - 1f) * p, alpha});
+                }
+            }
+        }
+        for (int i = 0; i < getChildCount(); i++) {
+            if (getChildAt(i) instanceof ActivatableNotificationView anv) {
+                anv.setBlurRegionFade(mBlurRegionFade * restackAlpha(anv));
+            }
+        }
+    }
+
+    private float restackAlpha(View child) {
+        // Also called while the view is constructed, before the map exists.
+        if (mRestack == null) return 1f;
+        final float[] xform = mRestack.get(child);
+        return xform == null ? 1f : xform[2];
+    }
+
+    @Override
+    protected int getChildDrawingOrder(int childCount, int drawingPosition) {
+        // While restacking, the first card is drawn last, over the cards shrinking behind it.
+        return mRestack == null || mRestack.isEmpty()
+                ? drawingPosition : childCount - 1 - drawingPosition;
+    }
+
+    private boolean drawRestackedChild(Canvas canvas, View child, long drawingTime) {
+        final float[] xform = mRestack.get(child);
+        final int save = canvas.save();
+        canvas.translate(0f, xform[0]);
+        final float pivotY = child.getTop() + child.getTranslationY();
+        canvas.scale(xform[1], xform[1], child.getLeft() + child.getWidth() / 2f, pivotY);
+        if (xform[2] < 1f) {
+            if (xform[2] <= 0f) {
+                canvas.restoreToCount(save);
+                return false;
+            }
+            canvas.saveLayerAlpha(child.getLeft(), pivotY, child.getRight(),
+                    pivotY + ((ExpandableView) child).getActualHeight(),
+                    Math.round(255 * xform[2]));
+        }
+        final boolean result = super.drawChild(canvas, child, drawingTime);
+        canvas.restoreToCount(save);
+        return result;
     }
 
     /**
@@ -6716,6 +7011,7 @@ public class NotificationStackScrollLayout
                             bottomRadius, bottomRadius, bottomRadius, bottomRadius},
                     Path.Direction.CW);
         }
+        updateChildrenBlurRegionSuppression(getAlpha());
         invalidate();
     }
 
@@ -6943,6 +7239,7 @@ public class NotificationStackScrollLayout
 
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
+        computeRestack();
         if (mBlurEffect != null || mBlurFade < 1f) {
             spewLog("Applying blur RenderEffect to NotificationStackScrollLayout");
             if (mBlurFade > 0f) {
@@ -7049,6 +7346,8 @@ public class NotificationStackScrollLayout
             boolean result = super.drawChild(canvas, child, drawingTime);
             canvas.restore();
             return result;
+        } else if (mRestack != null && mRestack.containsKey(child)) {
+            return drawRestackedChild(canvas, child, drawingTime);
         } else {
             return super.drawChild(canvas, child, drawingTime);
         }
@@ -7597,7 +7896,10 @@ public class NotificationStackScrollLayout
 
         @Override
         public boolean canChildBeExpanded(View v) {
-            return v instanceof ExpandableNotificationRow
+            // In the lock screen list expanded in place, a pull down folds the list back (like
+            // iOS); the cards open with their arrow.
+            return !LockscreenStack.isExpanded()
+                    && v instanceof ExpandableNotificationRow
                     && ((ExpandableNotificationRow) v).isExpandable()
                     && !((ExpandableNotificationRow) v).areGutsExposed()
                     && (mIsExpanded || !((ExpandableNotificationRow) v).isPinned());
