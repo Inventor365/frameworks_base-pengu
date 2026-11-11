@@ -68,6 +68,18 @@ object LockscreenStack {
             restackListeners.forEach(Runnable::run)
         }
 
+    /**
+     * Alpha of the collapsed stack before it hands over to the pill over the art: the cards
+     * collapse, this fades them out, then the pill fades in. Main thread.
+     */
+    @JvmStatic
+    var restackFade = 1f
+        set(value) {
+            if (field == value) return
+            field = value
+            restackListeners.forEach(Runnable::run)
+        }
+
     /** Where the folded card was lifted to when the stack opened, so the list unfolds from there. */
     @JvmStatic @Volatile var restackLift = 0f
 

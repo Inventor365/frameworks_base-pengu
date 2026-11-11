@@ -98,6 +98,7 @@ import com.android.keyguard.BouncerPanelExpansionCalculator;
 import com.android.keyguard.KeyguardSliceView;
 import com.android.systemui.Dependency;
 import com.android.systemui.penguin.LockscreenStack;
+import com.android.systemui.qs.shared.style.GlassBackdrop;
 import com.android.systemui.qs.shared.style.LiquidGlass;
 import com.android.systemui.Dumpable;
 import com.android.systemui.ExpandHelper;
@@ -653,7 +654,48 @@ public class NotificationStackScrollLayout
     private final HashMap<View, float[]> mRestack = new HashMap<>();
     private final ArrayList<ExpandableView> mRestackRows = new ArrayList<>();
     private final int[] mRestackLocation = new int[2];
+    private boolean mRestacking;
+    /** How far the shade has been revealed, 0 to 1: the cards cascade in with it. */
+    private float mShadeReveal = 1f;
+    private final HashMap<View, Integer> mRevealOrder = new HashMap<>();
+    private final ArrayList<View> mRevealRows = new ArrayList<>();
+    private static final float REVEAL_STEP = 0.07f;
+    private static final int REVEAL_ROWS = 8;
+    private static final float REVEAL_DROP_DP = 28f;
+    private static final float REVEAL_DROP_STEP_DP = 10f;
+    private boolean mRestackHandOff;
     private static final float RESTACK_PEEK_DP = 8f;
+    /** Alpha at which the folding front card hands over to the pill. */
+    /**
+     * Part of the hand-off the pill waits before fading in: its icons are only placed on the
+     * folded stack's first layout, so showing it at once flashes an empty pill for a frame.
+     */
+    private static final float PILL_FADE_DELAY = 0.25f;
+    /** Cards whose place the lock screen art currently frosts, see {@link #updateGlassBackdrop}. */
+    private HashSet<View> mBackdropRows = new HashSet<>();
+    private final int[] mBackdropLocation = new int[2];
+    // Each frame, as cards move and fade through their own render properties without a redraw
+    // of this layout.
+    private final ViewTreeObserver.OnPreDrawListener mBackdropUpdater = () -> {
+        updateGlassBackdrop();
+        return true;
+    };
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        getViewTreeObserver().addOnPreDrawListener(mBackdropUpdater);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        getViewTreeObserver().removeOnPreDrawListener(mBackdropUpdater);
+        for (View row : mBackdropRows) {
+            GlassBackdrop.INSTANCE.update(row, null);
+        }
+        mBackdropRows = new HashSet<>();
+        super.onDetachedFromWindow();
+    }
     private static final float RESTACK_SCALE_STEP = 0.05f;
     private float mEmptyTapX;
     private float mEmptyTapY;
@@ -1748,7 +1790,7 @@ public class NotificationStackScrollLayout
     @Override
     public void setAlpha(float alpha) {
         super.setAlpha(alpha);
-        updateChildrenBlurRegionSuppression(alpha);
+        updateChildrenBlurRegionSuppression(alpha * mBlurFade);
         if (Trace.isEnabled()) {
             Trace.setCounter(
                     trackGroup(/* groupName= */ "shade", /* trackName= */ "NSSLResultingAlpha"),
@@ -4402,7 +4444,24 @@ public class NotificationStackScrollLayout
     private void updateRestack() {
         // Positions are read live as each frame draws (the stack relays out under it as it folds),
         // so a change only needs a redraw.
-        setChildrenDrawingOrderEnabled(LockscreenStack.getRestack() > 0f);
+        final boolean restacking = LockscreenStack.getRestack() > 0f;
+        if (restacking != mRestacking) {
+            mRestacking = restacking;
+            mRestackHandOff = false;
+            if (restacking) {
+                mPillFadeStart = -1;
+            } else if (!LockscreenStack.isExpanded()) {
+                // The whole pill fades in once the folded stack has settled.
+                mPillFadeStart = SystemClock.uptimeMillis() + PILL_SETTLE_MS;
+            }
+            requestChildrenUpdate();
+        } else if (restacking && !mRestackHandOff && !LockscreenStack.isExpanded()) {
+            // The stack has folded: lay out the folded stack (and show its pill) now, so it fades
+            // in under the cards instead of appearing when they are done.
+            mRestackHandOff = true;
+            requestChildrenUpdate();
+        }
+        setChildrenDrawingOrderEnabled(restacking);
         invalidate();
     }
 
@@ -4439,7 +4498,14 @@ public class NotificationStackScrollLayout
                     final float targetTop = k == 0 ? target
                             : target + firstHeight + peek * behind
                                     - row.getActualHeight() * scale;
-                    final float alpha = k == 0 ? 1f
+                    // Over the art the folded stack is only the pill, so the front card
+                    // cross-fades into it; otherwise it stays as the folded stack's top card.
+                    // The collapsed list fades out; once folded, the folded stack's card fades
+                    // in instead of popping in at its folded size.
+                    final float alpha = k == 0
+                            ? (LockscreenStack.isExpanded()
+                                    ? LockscreenStack.getRestackFade()
+                                    : handOffShown(p))
                             : k <= 2 ? 1f - p : Math.max(0f, 1f - 2f * p);
                     mRestack.put(row, new float[] {
                             (targetTop - top) * p, 1f + (scale - 1f) * p, alpha});
@@ -4456,6 +4522,7 @@ public class NotificationStackScrollLayout
     private float restackAlpha(View child) {
         // Also called while the view is constructed, before the map exists.
         if (mRestack == null) return 1f;
+        if (child == mShelf) return pillFadeFactor();
         final float[] xform = mRestack.get(child);
         return xform == null ? 1f : xform[2];
     }
@@ -4465,6 +4532,149 @@ public class NotificationStackScrollLayout
         // While restacking, the first card is drawn last, over the cards shrinking behind it.
         return mRestack == null || mRestack.isEmpty()
                 ? drawingPosition : childCount - 1 - drawingPosition;
+    }
+
+    /**
+     * The ColorOS lock screen art is drawn in this window, over the cards' window blur, so a card
+     * on it would only get its faint tint. While that art shows, each card asks it to draw its
+     * blurred copy under the card, as the media player does. Called as the stack draws, so the
+     * frost follows scrolling, folding and fades.
+     */
+    private void updateGlassBackdrop() {
+        final boolean show = GlassBackdrop.INSTANCE.getDrawing().getValue()
+                && LockscreenStack.getArtShowing() && isAttachedToWindow() && isShown()
+                && getAlpha() * mBlurFade > 0f;
+        final HashSet<View> shown = new HashSet<>();
+        if (show) {
+            getLocationInWindow(mBackdropLocation);
+            final Rect clip = getClipBounds();
+            final float clipTop = clip != null ? clip.top : 0f;
+            final float clipBottom = clip != null ? clip.bottom : getHeight();
+            for (int i = 0; i < getChildCount(); i++) {
+                if (!(getChildAt(i) instanceof ExpandableNotificationRow row)
+                        || row.getVisibility() != VISIBLE) {
+                    continue;
+                }
+                final float baseTop = row.getTop() + row.getTranslationY();
+                float top = baseTop + row.getClipTopAmount();
+                float bottom = baseTop + row.getActualHeight() - row.getClipBottomAmount();
+                float left = row.getLeft() + row.getTranslationX();
+                float right = left + row.getWidth();
+                float alpha = getAlpha() * mBlurFade * row.getAlpha();
+                final float[] xform = mRestack.get(row);
+                if (xform != null) {
+                    // Same transform as drawRestackedChild.
+                    final float centerX = row.getLeft() + row.getWidth() / 2f;
+                    top = baseTop + (top - baseTop) * xform[1] + xform[0];
+                    bottom = baseTop + (bottom - baseTop) * xform[1] + xform[0];
+                    left = centerX + (left - centerX) * xform[1];
+                    right = centerX + (right - centerX) * xform[1];
+                    alpha *= xform[2];
+                }
+                top = Math.max(top, clipTop);
+                bottom = Math.min(bottom, clipBottom);
+                if (alpha <= 0f || bottom - top < 1f || right - left < 1f) {
+                    continue;
+                }
+                final float x = mBackdropLocation[0];
+                final float y = mBackdropLocation[1];
+                GlassBackdrop.INSTANCE.update(row, new GlassBackdrop.Region(
+                        new androidx.compose.ui.geometry.Rect(
+                                left + x, top + y, right + x, bottom + y),
+                        row.getTopCornerRadius(), alpha,
+                        GlassBackdrop.Motion.Companion.getNone()));
+                shown.add(row);
+            }
+        }
+        for (View gone : mBackdropRows) {
+            if (!shown.contains(gone)) {
+                GlassBackdrop.INSTANCE.update(gone, null);
+            }
+        }
+        mBackdropRows = shown;
+    }
+
+    /**
+     * Like the ColorOS shade, the cards unfold with the pull as a cascade: each drops in from a
+     * little above, growing and fading in, a beat after the one above it, and closing lifts the
+     * bottom ones away first. Driven by the shade's own progress, so it follows the finger.
+     */
+    public void setShadeReveal(float reveal) {
+        final float clamped = Math.max(0f, Math.min(1f, reveal));
+        if (clamped == mShadeReveal) return;
+        mShadeReveal = clamped;
+        invalidate();
+    }
+
+    private void computeRevealOrder() {
+        mRevealOrder.clear();
+        if (mShadeReveal >= 1f || mAmbientState.isOnKeyguard()) return;
+        mRevealRows.clear();
+        for (int i = 0; i < getChildCount(); i++) {
+            final View child = getChildAt(i);
+            if (child instanceof ExpandableView && child != mShelf
+                    && child.getVisibility() == VISIBLE) {
+                mRevealRows.add(child);
+            }
+        }
+        mRevealRows.sort(Comparator.comparingDouble(View::getTranslationY));
+        for (int k = 0; k < mRevealRows.size(); k++) {
+            mRevealOrder.put(mRevealRows.get(k), k);
+        }
+    }
+
+    private boolean drawRevealChild(Canvas canvas, View child, long drawingTime) {
+        final int k = Math.min(mRevealOrder.get(child), REVEAL_ROWS - 1);
+        final float start = REVEAL_STEP * k;
+        final float span = 1f - REVEAL_STEP * (REVEAL_ROWS - 1);
+        final float p = Math.max(0f, Math.min(1f, (mShadeReveal - start) / span));
+        if (p <= 0f) return false;
+        final float eased = Interpolators.LINEAR_OUT_SLOW_IN.getInterpolation(p);
+        final float density = getResources().getDisplayMetrics().density;
+        final float drop = (REVEAL_DROP_DP + REVEAL_DROP_STEP_DP * k) * density;
+        final float top = child.getTop() + child.getTranslationY();
+        final float height = child instanceof ExpandableView row
+                ? row.getActualHeight() : child.getHeight();
+        final float scale = 0.95f + 0.05f * eased;
+        final int save = canvas.save();
+        canvas.translate(0f, -drop * (1f - eased));
+        canvas.scale(scale, scale, child.getLeft() + child.getWidth() / 2f, top);
+        final float alpha = Math.min(1f, p * 1.6f);
+        if (alpha < 1f) {
+            canvas.saveLayerAlpha(child.getLeft(), top, child.getRight(), top + height,
+                    Math.round(255 * alpha));
+        }
+        final boolean result = super.drawChild(canvas, child, drawingTime);
+        canvas.restoreToCount(save);
+        return result;
+    }
+
+    private static final long PILL_FADE_MS = 200;
+    /** Wait after the fold for the folded stack's layout, which places the pill's icons. */
+    private static final long PILL_SETTLE_MS = 120;
+    /** When the pill starts fading in after a fold, or -1. */
+    private long mPillFadeStart = -1;
+
+    private float handOffShown(float restack) {
+        return Math.max(0f, (1f - restack - PILL_FADE_DELAY) / (1f - PILL_FADE_DELAY));
+    }
+
+    /** The pill's alpha after a fold: hidden while the cards fold, then a fade-in. */
+    private float pillAlpha() {
+        final float shown = pillFadeFactor();
+        if (mShelf != null) mShelf.setBlurRegionFade(mBlurRegionFade * shown);
+        if (mPillFadeStart >= 0 && shown >= 1f) {
+            mPillFadeStart = -1;
+            invalidate();
+        }
+        return shown;
+    }
+
+    private float pillFadeFactor() {
+        if (mRestacking && !LockscreenStack.isExpanded() && mPillFadeStart < 0) return 0f;
+        if (mPillFadeStart < 0) return 1f;
+        return Math.max(0f, Math.min(1f,
+                (SystemClock.uptimeMillis() - mPillFadeStart) / (float) PILL_FADE_MS));
     }
 
     private boolean drawRestackedChild(Canvas canvas, View child, long drawingTime) {
@@ -7011,7 +7221,7 @@ public class NotificationStackScrollLayout
                             bottomRadius, bottomRadius, bottomRadius, bottomRadius},
                     Path.Direction.CW);
         }
-        updateChildrenBlurRegionSuppression(getAlpha());
+        updateChildrenBlurRegionSuppression(getAlpha() * mBlurFade);
         invalidate();
     }
 
@@ -7050,9 +7260,13 @@ public class NotificationStackScrollLayout
                     R.dimen.max_shade_content_blur_radius) * 0.6f;
             mBlurFade = 1f - Math.min(1f, mBlurRadius / Math.max(max, 1f));
             mBlurEffect = null;
+            // The bouncer fades the drawn stack; the cards window blur, the shelf pills
+            // included, has to fade with it or it stays on screen.
+            updateChildrenBlurRegionSuppression(getAlpha() * mBlurFade);
             return;
         }
         mBlurFade = 1f;
+        updateChildrenBlurRegionSuppression(getAlpha());
         if (mBlurRadius > 0) {
             mBlurEffect =
                     RenderEffect.createBlurEffect(mBlurRadius, mBlurRadius, Shader.TileMode.CLAMP);
@@ -7240,6 +7454,7 @@ public class NotificationStackScrollLayout
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
         computeRestack();
+        computeRevealOrder();
         if (mBlurEffect != null || mBlurFade < 1f) {
             spewLog("Applying blur RenderEffect to NotificationStackScrollLayout");
             if (mBlurFade > 0f) {
@@ -7309,6 +7524,10 @@ public class NotificationStackScrollLayout
 
     @Override
     protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
+        if (mShadeReveal < 1f && mRevealOrder.containsKey(child)
+                && mBlurEffect == null && mBlurFade >= 1f) {
+            return drawRevealChild(canvas, child, drawingTime);
+        }
         boolean shouldUseClipping =
                 mShouldUseRoundedRectClipping || mShouldUseNegativeRoundedRectClipping;
         if (mBlurEffect != null || mBlurFade < 1f) {
@@ -7348,6 +7567,23 @@ public class NotificationStackScrollLayout
             return result;
         } else if (mRestack != null && mRestack.containsKey(child)) {
             return drawRestackedChild(canvas, child, drawingTime);
+        } else if (child == mShelf && (mPillFadeStart >= 0
+                || (mRestacking && !LockscreenStack.isExpanded()))) {
+            // After a fold the pill shows only once the cards are done, then fades in with its
+            // icons already placed, so it never shows empty.
+            final float shown = pillAlpha();
+            if (shown <= 0f) {
+                postInvalidateOnAnimation();
+                return false;
+            }
+            if (shown < 1f) postInvalidateOnAnimation();
+            final float tx = child.getTranslationX();
+            final float ty = child.getTranslationY();
+            final int save = canvas.saveLayerAlpha(child.getLeft() + tx, child.getTop() + ty,
+                    child.getRight() + tx, child.getBottom() + ty, Math.round(255 * shown));
+            final boolean result = super.drawChild(canvas, child, drawingTime);
+            canvas.restoreToCount(save);
+            return result;
         } else {
             return super.drawChild(canvas, child, drawingTime);
         }

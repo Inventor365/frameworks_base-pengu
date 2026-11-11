@@ -23,6 +23,21 @@ const val PANEL_SWITCH_FADE_OUT_END = 0.5f
 /** Part of a tablet panel switch after which the panel switched to fades in. */
 const val PANEL_SWITCH_FADE_IN_START = 0.3f
 
+/** Part of a phone panel switch over which the panel being left fades as it slides out. */
+const val SLIDE_SWITCH_FADE_OUT_END = 0.6f
+
+/** Part of a phone panel switch after which the panel switched to fades in as it slides in. */
+const val SLIDE_SWITCH_FADE_IN_START = 0.2f
+
+/** Alpha of a phone panel at [progress] of a sliding switch it is [leaving] or switching to. */
+fun slideSwitchAlpha(leaving: Boolean, progress: Float): Float =
+    if (leaving) {
+        1f - (progress / SLIDE_SWITCH_FADE_OUT_END).coerceIn(0f, 1f)
+    } else {
+        ((progress - SLIDE_SWITCH_FADE_IN_START) / (1f - SLIDE_SWITCH_FADE_IN_START))
+            .coerceIn(0f, 1f)
+    }
+
 /** Alpha of a tablet panel at [progress] of a switch it is [leaving] or switching to. */
 fun panelSwitchAlpha(leaving: Boolean, progress: Float): Float =
     if (leaving) {

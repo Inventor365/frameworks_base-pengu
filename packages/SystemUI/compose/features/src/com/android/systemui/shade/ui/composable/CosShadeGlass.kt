@@ -5,6 +5,7 @@
 
 package com.android.systemui.shade.ui.composable
 
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -76,12 +77,21 @@ private fun shadeVisibility(state: SceneTransitionLayoutState): Float {
     }
     val shown = state.transitionState.currentOverlays.any { it in Shades }
     return when {
-        transition?.toContent in Shades -> transition!!.progress
-        transition?.fromContent in Shades -> 1f - transition!!.progress
+        transition?.toContent in Shades -> leadingBlur(transition!!.progress)
+        transition?.fromContent in Shades -> leadingBlur(1f - transition!!.progress)
         shown -> 1f
         else -> 0f
     }.coerceIn(0f, 1f)
 }
+
+/**
+ * The glass is mostly there early in the pull, so the panel unfolds over blur rather than over
+ * the sharp screen; closing, it stays until the panel has nearly gone.
+ */
+private fun leadingBlur(shown: Float): Float =
+    LinearOutSlowInEasing.transform((shown / BLUR_LEAD).coerceIn(0f, 1f))
+
+private const val BLUR_LEAD = 0.35f
 
 private const val LAUNCH_FADE_MS = 250
 // The shade is removed on the frame after the launch ends; wait well past that before the glass

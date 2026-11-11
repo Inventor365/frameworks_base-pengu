@@ -195,6 +195,16 @@ public class NotificationShelf extends ActivatableNotificationView {
         return mShelfIcons;
     }
 
+    /** Whether any of the shelf's icons is placed and fully shown. */
+    public boolean hasShownIcons() {
+        if (mShelfIcons == null) return false;
+        for (int i = 0; i < mShelfIcons.getChildCount(); i++) {
+            final View icon = mShelfIcons.getChildAt(i);
+            if (icon.getVisibility() == VISIBLE && icon.getAlpha() > 0.99f) return true;
+        }
+        return false;
+    }
+
     @Override
     @NonNull
     public ExpandableViewState createExpandableViewState() {
@@ -1035,6 +1045,17 @@ public class NotificationShelf extends ActivatableNotificationView {
                     iconState.iconAppearAmount);
         }
         iconState.iconColor = shelfColor;
+    }
+
+    /**
+     * Places the icons straight in their spots instead of animating them in from the cards: while
+     * the lock screen stack folds, the cards are drawn somewhere other than where they are laid
+     * out, so icons flying in from them start outside the cards.
+     */
+    public void setIconAnimationsEnabled(boolean enabled) {
+        if (mShelfIcons != null) {
+            mShelfIcons.setAnimationsEnabled(enabled);
+        }
     }
 
     private NotificationIconContainer.IconState getIconState(StatusBarIconView icon) {

@@ -70,6 +70,7 @@ import com.android.systemui.penguin.CosFeature
 import com.android.systemui.penguin.CosShadeSwitch
 import com.android.systemui.penguin.panelSwitchAlpha
 import com.android.systemui.penguin.rememberCosFeature
+import com.android.systemui.penguin.slideSwitchAlpha
 import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenElementKeys
 import com.android.systemui.res.R
 import com.android.systemui.scene.session.ui.composable.SaveableSession
@@ -218,6 +219,26 @@ constructor(
                 }
 
                 val stackScrollView = stackScrollView.get()
+                if (rememberCosFeature(CosFeature.Shade)) {
+                    // The cards cascade in and out with the shade, following the finger.
+                    LaunchedEffect(layoutState, stackScrollView) {
+                        snapshotFlow {
+                                val transition = layoutState.currentTransition
+                                when {
+                                    transition == null || transition.key == CosShadeSwitch -> 1f
+                                    transition.toContent == Overlays.NotificationsShade ->
+                                        transition.progress
+                                    transition.fromContent == Overlays.NotificationsShade ->
+                                        1f - transition.progress
+                                    else -> 1f
+                                }.coerceIn(0f, 1f)
+                            }
+                            .collect { stackScrollView.revealWithShade(it) }
+                    }
+                    DisposableEffect(stackScrollView) {
+                        onDispose { stackScrollView.revealWithShade(1f) }
+                    }
+                }
                 val switchMotion = LocalCosSwitchMotion.current
                 if (switchMotion != null) {
                     LaunchedEffect(switchMotion, stackScrollView) {
@@ -228,27 +249,30 @@ constructor(
                         onDispose { stackScrollView.moveWithCosSwitch(0f) }
                     }
                 }
-                if (isTabletPanelSwitch()) {
-                    LaunchedEffect(layoutState, stackScrollView) {
-                        snapshotFlow {
-                                val transition =
-                                    layoutState.currentTransition
-                                        as? TransitionState.Transition.ReplaceOverlay
-                                if (transition?.key != CosShadeSwitch) {
-                                    1f
+                // The stack is a view outside the panel element, so it takes the panel's switch
+                // fade itself: a cross-fade between side-by-side tablet panels, a fade with the
+                // slide on phones.
+                val tabletSwitch = isTabletPanelSwitch()
+                LaunchedEffect(layoutState, stackScrollView, tabletSwitch) {
+                    snapshotFlow {
+                            val transition =
+                                layoutState.currentTransition
+                                    as? TransitionState.Transition.ReplaceOverlay
+                            if (transition?.key != CosShadeSwitch) {
+                                1f
+                            } else {
+                                val leaving = transition.fromContent == Overlays.NotificationsShade
+                                if (tabletSwitch) {
+                                    panelSwitchAlpha(leaving, transition.progress)
                                 } else {
-                                    panelSwitchAlpha(
-                                        leaving =
-                                            transition.fromContent == Overlays.NotificationsShade,
-                                        progress = transition.progress,
-                                    )
+                                    slideSwitchAlpha(leaving, transition.progress)
                                 }
                             }
-                            .collect { stackScrollView.fadeWithCosSwitch(it) }
-                    }
-                    DisposableEffect(stackScrollView) {
-                        onDispose { stackScrollView.fadeWithCosSwitch(1f) }
-                    }
+                        }
+                        .collect { stackScrollView.fadeWithCosSwitch(it) }
+                }
+                DisposableEffect(stackScrollView) {
+                    onDispose { stackScrollView.fadeWithCosSwitch(1f) }
                 }
                 ScrollingNotificationPanel(
                     tag = "NotifShadeOverlay",
@@ -316,6 +340,10 @@ private fun secureIntSetting(key: String, default: Int): Int {
 
 private fun NotificationScrollView.fadeWithCosSwitch(alpha: Float) {
     (asView() as? NotificationStackScrollLayout)?.setCosSwitchAlpha(alpha)
+}
+
+private fun NotificationScrollView.revealWithShade(reveal: Float) {
+    (asView() as? NotificationStackScrollLayout)?.setShadeReveal(reveal)
 }
 
 private fun NotificationScrollView.moveWithCosSwitch(x: Float) {

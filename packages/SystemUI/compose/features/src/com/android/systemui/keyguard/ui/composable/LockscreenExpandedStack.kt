@@ -7,7 +7,9 @@ package com.android.systemui.keyguard.ui.composable
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -70,7 +72,6 @@ import javax.inject.Inject
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -125,6 +126,7 @@ constructor(
                     pull = 0f
                     // Like iOS, the cards unfold from the folded card: it shows at once, the
                     // others spread out from behind it.
+                    LockscreenStack.restackFade = 1f
                     restack.snapTo(1f)
                     expansion.snapTo(1f)
                     restack.animateTo(0f, spring(dampingRatio = 0.86f, stiffness = 380f))
@@ -135,6 +137,11 @@ constructor(
                     // same cards: it takes over at once while they stay drawn collapsed until it
                     // has laid them out there, so nothing fades or blinks.
                     restack.animateTo(1f, spring(dampingRatio = 1f, stiffness = 520f))
+                    // The collapsed list fades out, then the folded stack fades in: a single card
+                    // would otherwise snap from its expanded to its folded size.
+                    animate(1f, 0f, animationSpec = tween(StackFadeMillis)) { value, _ ->
+                        LockscreenStack.restackFade = value
+                    }
                     fadeInFolded = true
                     LockscreenStack.collapse()
                 }
@@ -145,10 +152,16 @@ constructor(
                     LockscreenStack.coverScroll = 0f
                     if (fadeInFolded) {
                         fadeInFolded = false
-                        delay(HoldMillis)
+                        // Hand over to the folded stack: the cards ease from where they were
+                        // drawn collapsed into its layout as it settles, and its pill fades in.
+                        restack.animateTo(
+                            0f,
+                            tween(HandOffMillis, easing = FastOutSlowInEasing),
+                        )
                     }
                     restack.snapTo(0f)
                     LockscreenStack.restack = 0f
+                    LockscreenStack.restackFade = 1f
                 }
             }
         }
@@ -365,6 +378,7 @@ constructor(
         /** Clears the lock icon under the status bar. */
         val TopGap = 48.dp
         /** How long the cards stay drawn collapsed while the folded stack lays them out. */
-        const val HoldMillis = 400L
+        const val HandOffMillis = 320
+        const val StackFadeMillis = 160
     }
 }

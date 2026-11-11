@@ -19,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.min
@@ -107,14 +109,10 @@ class CosSwitchMotion {
 
 val LocalCosSwitchMotion = staticCompositionLocalOf<CosSwitchMotion?> { null }
 
+private val MaxRowTrail = 16.dp
+
 @Composable
-fun Modifier.cosSwitchRow(): Modifier {
-    val motion = LocalCosSwitchMotion.current ?: return this
-    val row = remember { CosSwitchMotion.Row() }
-    DisposableEffect(motion) {
-        motion.add(row)
-        onDispose { motion.rows.remove(row) }
-    }
-    return onGloballyPositioned { row.centerY = it.boundsInWindow().center.y }
-        .graphicsLayer { translationX = row.lag - motion.offset }
-}
+fun Modifier.cosSwitchRow(): Modifier =
+    // The rows move rigidly with their panel: a trailing row is still catching up when the
+    // switch ends, then jumps into place once the panel has settled.
+    this

@@ -21,6 +21,13 @@ package com.android.systemui.scene.ui.composable
 import android.os.Build
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.LocalOverscrollFactory
+import kotlin.math.abs
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.node.DelegatableNode
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.OverscrollFactory
+import androidx.compose.foundation.OverscrollEffect
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -299,6 +306,13 @@ private fun InternalSceneContainer(
             offsetOverscrollEffectFactory
         }
 
+    val verticalOverlayEffectFactory =
+        remember(overlayEffectFactory) { VerticalOnlyOverscrollFactory(overlayEffectFactory) }
+    val verticalQuickSettingsOverscroll =
+        remember(quickSettingsShadeOverscroll) {
+            quickSettingsShadeOverscroll?.let { VerticalOnlyOverscrollFactory(it) }
+        }
+
     Box(
         modifier =
             modifier.fillMaxSize().pointerInput(Unit) {
@@ -348,9 +362,9 @@ private fun InternalSceneContainer(
                     key = overlayKey,
                     userActions = userActionsByContentKey.getOrDefault(overlayKey, emptyMap()),
                     effectFactory =
-                        quickSettingsShadeOverscroll?.takeIf {
+                        verticalQuickSettingsOverscroll?.takeIf {
                             overlayKey == Overlays.QuickSettingsShade
-                        } ?: overlayEffectFactory,
+                        } ?: verticalOverlayEffectFactory,
                     alwaysCompose = overlay.alwaysCompose,
                     // The bouncer overlay is special and not rendered here, so avoid adding
                     // the fullscreen clickable which modals typically introduce. This avoids
@@ -392,4 +406,43 @@ private fun InternalSceneContainer(
 
 object SceneContainerDefaults {
     val SwipeVelocityThreshold = 250.dp
+}
+
+/**
+ * Overlays only overscroll vertically. A sideways switch between the shade panels ends with the
+ * swipe's left-over velocity, which would otherwise push the panel aside after it has settled.
+ */
+private class VerticalOnlyOverscrollFactory(private val delegate: OverscrollFactory) :
+    OverscrollFactory {
+    override fun createOverscrollEffect(): OverscrollEffect =
+        VerticalOnlyOverscrollEffect(delegate.createOverscrollEffect())
+
+    override fun equals(other: Any?): Boolean =
+        other is VerticalOnlyOverscrollFactory && other.delegate == delegate
+
+    override fun hashCode(): Int = delegate.hashCode()
+}
+
+private class VerticalOnlyOverscrollEffect(private val effect: OverscrollEffect) : OverscrollEffect {
+    override val isInProgress: Boolean
+        get() = effect.isInProgress
+
+    override val node: DelegatableNode
+        get() = effect.node
+
+    override fun applyToScroll(
+        delta: Offset,
+        source: NestedScrollSource,
+        performScroll: (Offset) -> Offset,
+    ): Offset =
+        if (abs(delta.x) > abs(delta.y)) performScroll(delta)
+        else effect.applyToScroll(delta, source, performScroll)
+
+    override suspend fun applyToFling(
+        velocity: Velocity,
+        performFling: suspend (Velocity) -> Velocity,
+    ) {
+        if (abs(velocity.x) > abs(velocity.y)) performFling(velocity)
+        else effect.applyToFling(velocity, performFling)
+    }
 }

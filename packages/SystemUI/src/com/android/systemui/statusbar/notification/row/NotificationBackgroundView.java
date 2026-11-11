@@ -410,6 +410,11 @@ public class NotificationBackgroundView extends View implements Dumpable,
                 mBackgroundBlurDrawable.setCallback(null);
             }
             mBackgroundBlurDrawable = null;
+            mCosMaterial = 0;
+            if (mBackground != null) {
+                setTint(mTintColor != 0 ? mTintColor : mNormalColor);
+            }
+            invalidate();
         }
     }
 
@@ -491,7 +496,10 @@ public class NotificationBackgroundView extends View implements Dumpable,
 
     public void setTint(int tintColor) {
         Drawable baseLayer = getBaseBackgroundLayer();
-        final boolean cos = mCosMaterial != 0 && tintColor == mNormalColor;
+        // The COS material is drawn by the window blur: a card that has lost its blur (moved
+        // from the lock screen into the shade) needs its own fill again.
+        final boolean cos = mCosMaterial != 0 && mBackgroundBlurDrawable != null
+                && tintColor == mNormalColor;
         // The light COS card glass was measured over COS's bright shade, but this shade is dark
         // glass in both themes. A light frost keeps the light theme's dark and accent text
         // readable on it, as on a heads-up card.
