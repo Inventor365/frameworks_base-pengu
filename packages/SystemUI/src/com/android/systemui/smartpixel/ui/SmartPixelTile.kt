@@ -144,7 +144,8 @@ class SmartPixelTile @Inject constructor(
         )
     }
 
-    override fun isAvailable(): Boolean = true
+    override fun isAvailable(): Boolean =
+        mContext.resources.getBoolean(com.android.internal.R.bool.config_supportSmartPixels)
 
     override fun getMetricsCategory(): Int = MetricsEvent.QS_PANEL
 }

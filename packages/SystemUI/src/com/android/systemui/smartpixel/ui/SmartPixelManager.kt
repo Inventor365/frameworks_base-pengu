@@ -16,16 +16,21 @@
 
 package com.android.systemui.smartpixel.ui
 
+import android.content.Context
 import com.android.systemui.CoreStartable
 import com.android.systemui.dagger.SysUISingleton
 import javax.inject.Inject
 
 @SysUISingleton
 class SmartPixelManager @Inject constructor(
+    private val context: Context,
     private val overlay: SmartPixelOverlay,
 ) : CoreStartable {
 
     override fun start() {
+        if (!context.resources.getBoolean(com.android.internal.R.bool.config_supportSmartPixels)) {
+            return
+        }
         overlay.init()
     }
 }

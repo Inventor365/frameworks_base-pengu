@@ -90,5 +90,9 @@
 
     <!-- Smart 5G -->
     <bool name="config_supportSmart5G">false</bool>
+
+    <!-- Whether Smart Pixels is offered. Turn off on panels that do not need burn-in
+         protection, such as LCDs. -->
+    <bool name="config_supportSmartPixels">true</bool>
     
 </resources>

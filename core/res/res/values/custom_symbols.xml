@@ -132,4 +132,7 @@
 
     <!-- Smart 5G -->
     <java-symbol type="bool" name="config_supportSmart5G" />
+
+    <!-- Smart Pixels -->
+    <java-symbol type="bool" name="config_supportSmartPixels" />
 </resources>
