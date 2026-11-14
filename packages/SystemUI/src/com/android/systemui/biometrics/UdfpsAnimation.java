@@ -152,7 +152,10 @@ public class UdfpsAnimation extends ImageView {
         });
     }
 
+    private int mStyleIdx = -1;
+
     private void updateAnimationStyle(int styleIdx) {
+        mStyleIdx = styleIdx;
         setBackground(null);
         if (recognizingAnim != null) {
             recognizingAnim.stop();
@@ -229,6 +232,12 @@ public class UdfpsAnimation extends ImageView {
     }
 
     public void show() {
+        // Pick up a style chosen in settings since the animation was set up.
+        final int styleIdx = Settings.System.getIntForUser(mContext.getContentResolver(),
+                Settings.System.UDFPS_ANIM_STYLE, 0, UserHandle.USER_CURRENT);
+        if (styleIdx != mStyleIdx) {
+            updateAnimationStyle(styleIdx);
+        }
         if (!mIsKeyguard || recognizingAnim == null) {
             return;
         }
