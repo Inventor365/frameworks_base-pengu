@@ -142,6 +142,10 @@ public class CustomTile extends QSTileImpl<State> implements TileChangeListener,
         return mComponent != null && "org.lineageos.settings.power.PowerProfileTileService".equals(mComponent.getClassName());
     }
 
+    private boolean isChargingControlTile() {
+        return mComponent != null && "org.lineageos.settings.charge.ChargingControlTileService".equals(mComponent.getClassName());
+    }
+
     @AssistedInject
     CustomTile(
             Lazy<QSHost> host,
@@ -364,24 +368,32 @@ public class CustomTile extends QSTileImpl<State> implements TileChangeListener,
         if (mListening == listening) return;
         mListening = listening;
 
-        if (isPowerProfileTile()) {
+        if (isPowerProfileTile() || isChargingControlTile()) {
             if (listening) {
                 if (!mPowerProfileReceiverRegistered) {
                     IntentFilter filter = new IntentFilter();
                     filter.addAction(org.lineageos.settings.power.PowerProfileUtils.ACTION_PROFILE_CHANGED);
+                    filter.addAction(org.lineageos.settings.charge.ChargingControlUtils.ACTION_CHARGING_CONTROL_CHANGED);
                     try {
                         mUserContext.registerReceiver(mPowerProfileReceiver, filter, Context.RECEIVER_EXPORTED);
                         mPowerProfileReceiverRegistered = true;
                     } catch (Exception e) {
-                        Log.e(TAG, "Failed to register PowerProfile receiver in CustomTile", e);
+                        Log.e(TAG, "Failed to register PowerProfile/ChargingControl receiver in CustomTile", e);
                     }
                 }
                 if (!mPowerProfileObserverRegistered) {
                     try {
-                        mUserContext.getContentResolver().registerContentObserver(
-                                Settings.System.getUriFor(org.lineageos.settings.power.PowerProfileUtils.POWER_PROFILE_SETTING),
-                                false,
-                                mPowerProfileObserver);
+                        if (isPowerProfileTile()) {
+                            mUserContext.getContentResolver().registerContentObserver(
+                                    Settings.System.getUriFor(org.lineageos.settings.power.PowerProfileUtils.POWER_PROFILE_SETTING),
+                                    false,
+                                    mPowerProfileObserver);
+                        } else {
+                            mUserContext.getContentResolver().registerContentObserver(
+                                    Settings.System.getUriFor(org.lineageos.settings.charge.ChargingControlUtils.FAST_CHARGE_MODE_SETTING),
+                                    false,
+                                    mPowerProfileObserver);
+                        }
                         mPowerProfileObserverRegistered = true;
                     } catch (Exception e) {
                         Log.e(TAG, "Failed to register content observer in CustomTile", e);
@@ -512,6 +524,24 @@ public class CustomTile extends QSTileImpl<State> implements TileChangeListener,
             });
             return;
         }
+        if (isChargingControlTile()) {
+            mExpandableClicked = expandable;
+            mUiHandler.post(() -> {
+                org.lineageos.settings.charge.ChargingControlDialog dialog =
+                        new org.lineageos.settings.charge.ChargingControlDialog(mUserContext);
+                if (expandable != null) {
+                    DialogTransitionAnimator.Controller controller = expandable.dialogTransitionController(
+                            new DialogCuj(InteractionJankMonitor.CUJ_SHADE_DIALOG_OPEN, "charging_control"));
+                    DialogTransitionAnimator animator = mTileServices.getDialogTransitionAnimator();
+                    if (controller != null && animator != null) {
+                        animator.show(dialog, controller);
+                        return;
+                    }
+                }
+                dialog.show();
+            });
+            return;
+        }
         if (mTile.getState() == Tile.STATE_UNAVAILABLE) {
             return;
         }
@@ -560,6 +590,29 @@ public class CustomTile extends QSTileImpl<State> implements TileChangeListener,
                 state.label = mUserContext.getString(com.android.systemui.res.R.string.powerprofile_title);
                 state.secondaryLabel = mUserContext.getString(current.getNameResId());
                 state.icon = ResourceIcon.get(current.getIconResId());
+            }
+            state.contentDescription = state.label;
+            state.stateDescription = null;
+            state.expandedAccessibilityClassName = Button.class.getName();
+            return;
+        }
+
+        if (isChargingControlTile()) {
+            state.iconSupplier = null;
+            String mode = org.lineageos.settings.charge.ChargingControlUtils.getFastChargeMode(mUserContext);
+            state.label = mUserContext.getString(com.android.systemui.res.R.string.charging_control_title);
+            if ("0".equals(mode)) {
+                state.state = Tile.STATE_INACTIVE;
+                state.secondaryLabel = mUserContext.getString(com.android.systemui.res.R.string.charging_control_tile_slow);
+                state.icon = ResourceIcon.get(com.android.systemui.res.R.drawable.ic_charging_slow);
+            } else if ("2".equals(mode)) {
+                state.state = Tile.STATE_ACTIVE;
+                state.secondaryLabel = mUserContext.getString(com.android.systemui.res.R.string.charging_control_tile_superfast);
+                state.icon = ResourceIcon.get(com.android.systemui.res.R.drawable.ic_charging_superfast);
+            } else {
+                state.state = Tile.STATE_ACTIVE;
+                state.secondaryLabel = mUserContext.getString(com.android.systemui.res.R.string.charging_control_tile_fast);
+                state.icon = ResourceIcon.get(com.android.systemui.res.R.drawable.ic_charging_fast);
             }
             state.contentDescription = state.label;
             state.stateDescription = null;
