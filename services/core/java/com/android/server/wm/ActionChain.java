@@ -213,6 +213,7 @@ public class ActionChain {
     void collectClose(@NonNull WindowContainer<?> wc) {
         if (!wc.mTransitionController.isShellTransitionsEnabled()) return;
         final Transition transition = expectCollecting();
+        if (transition == null) return;
         if (Transition.allowsInvisibleExistenceChange(wc) || wc.isVisibleRequested()) {
             transition.collectExistenceChange(wc);
         } else {
