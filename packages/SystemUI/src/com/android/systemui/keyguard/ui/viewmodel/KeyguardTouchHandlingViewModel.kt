@@ -20,6 +20,7 @@ package com.android.systemui.keyguard.ui.viewmodel
 import android.graphics.Rect
 import androidx.compose.runtime.getValue
 import com.android.systemui.Flags
+import com.android.systemui.biometrics.domain.interactor.UdfpsOverlayInteractor
 import com.android.systemui.communal.domain.interactor.CommunalInteractor
 import com.android.systemui.deviceentry.domain.interactor.DeviceEntryUdfpsInteractor
 import com.android.systemui.keyguard.domain.interactor.KeyguardTouchHandlingInteractor
@@ -48,6 +49,7 @@ constructor(
     private val sceneInteractor: SceneInteractor,
     communalInteractor: CommunalInteractor,
     deviceEntryUdfpsInteractor: DeviceEntryUdfpsInteractor,
+    private val udfpsOverlayInteractor: UdfpsOverlayInteractor,
 ) : HydratedActivatable() {
 
     /**
@@ -80,6 +82,18 @@ constructor(
         traceName = "KeyguardTouchHandlingViewModel.hydrator",
         initialValue = false,
     )
+
+    /**
+     * Whether ([x], [y]) on screen is on the under-display fingerprint sensor. A finger resting
+     * there to unlock is not a long-press on the lock screen.
+     */
+    fun isOnFingerprintSensor(x: Int, y: Int): Boolean {
+        val sensor = Rect(udfpsOverlayInteractor.udfpsOverlayParams.value.sensorBounds)
+        if (sensor.isEmpty) return false
+        // The finger covers more than the sensor itself.
+        sensor.inset(-sensor.width() / 2, -sensor.height() / 2)
+        return sensor.contains(x, y)
+    }
 
     /**
      * Notifies that the user has long-pressed on the lock screen.

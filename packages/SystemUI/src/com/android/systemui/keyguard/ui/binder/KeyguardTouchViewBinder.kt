@@ -89,6 +89,11 @@ object KeyguardTouchViewBinder {
                                 if (falsingManager.isFalseLongTap(FalsingManager.LOW_PENALTY)) {
                                     return
                                 }
+                                val location = IntArray(2)
+                                view.getLocationOnScreen(location)
+                                if (viewModel.isOnFingerprintSensor(x + location[0], y + location[1])) {
+                                    return
+                                }
 
                                 viewModel.onLongPress()
                             }
