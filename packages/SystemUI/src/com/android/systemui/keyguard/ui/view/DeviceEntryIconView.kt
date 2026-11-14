@@ -311,6 +311,13 @@ constructor(
         bgView.alpha = 0f
     }
 
+    /** True when [icon] will be drawn with the custom UDFPS pack icon (not the stock drawable). */
+    fun usesCustomUdfpsIcon(icon: IconType, aod: Boolean): Boolean =
+        icon == IconType.FINGERPRINT && !aod && packageInstalled &&
+            Settings.System.getIntForUser(
+                mContext.contentResolver, Settings.System.UDFPS_ICON, 0, UserHandle.USER_CURRENT
+            ) != 0
+
     fun getIconState(icon: IconType, aod: Boolean): IntArray {
         val lockIconState = IntArray(2)
         when (icon) {

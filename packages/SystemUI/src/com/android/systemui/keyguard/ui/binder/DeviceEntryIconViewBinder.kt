@@ -34,7 +34,6 @@ import com.android.internal.graphics.drawable.BackgroundBlurDrawable
 import com.android.systemui.Dependency
 import com.android.systemui.Flags
 import com.android.systemui.Flags.enableLockscreenBlur
-import com.android.systemui.biometrics.UdfpsIconDrawable
 import com.android.systemui.common.ui.view.BackgroundBlurAlphaSync
 import com.android.systemui.common.ui.view.TouchHandlingView
 import com.android.systemui.keyguard.ui.view.DeviceEntryIconView
@@ -307,7 +306,7 @@ object DeviceEntryIconViewBinder {
                             }
                             fgIconView.imageTintList =
                                 ColorStateList.valueOf(overrideColor?.toArgb() ?: viewModel.tint)
-                            if (fgIconView.drawable.current !is UdfpsIconDrawable) {
+                            if (!view.usesCustomUdfpsIcon(viewModel.type, viewModel.useAodVariant)) {
                                 fgIconView.setPadding(
                                     viewModel.padding,
                                     viewModel.padding,
