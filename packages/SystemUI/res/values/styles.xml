@@ -617,6 +617,21 @@
         <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 
+    <style name="Theme.PowerProfile.Dialog" parent="@style/Theme.SystemUI.Dialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.6</item>
+        <item name="android:alertDialogStyle">@style/AlertDialogStyle</item>
+    </style>
+
+    <style name="PowerProfileDialogButton" parent="@android:style/Widget.DeviceDefault.Button">
+        <item name="android:background">@drawable/power_profile_htsr_bg_active</item>
+        <item name="android:textColor">@androidprv:color/materialColorOnPrimaryContainer</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
     <style name="Theme.SystemUI.BottomSheet" parent="Theme.SystemUI.Dialog">
         <!-- default dialog background has insets -->
         <item name="android:windowBackground">@android:color/transparent</item>
