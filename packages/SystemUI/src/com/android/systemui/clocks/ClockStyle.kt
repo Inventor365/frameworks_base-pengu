@@ -395,12 +395,15 @@ class ClockStyle @JvmOverloads constructor(
                     applyClockAlpha()
                     view.scaleX = AOD_SCALE_DOWN
                     view.scaleY = AOD_SCALE_DOWN
+                    applyContainerHeight(AOD_SCALE_DOWN)
                 }
                 .start()
         } else {
             view.scaleX = AOD_SCALE_DOWN
             view.scaleY = AOD_SCALE_DOWN
             val targetScale = getScaleFactor()
+            // Grow the container first: it kept the smaller AOD height and would clip the clock.
+            applyContainerHeight(targetScale)
             view.animate()
                 .scaleX(targetScale)
                 .scaleY(targetScale)
@@ -700,6 +703,15 @@ class ClockStyle @JvmOverloads constructor(
         view.pivotX = if (view.tag == PIVOT_START_TAG) 0f else view.width / 2f
         view.pivotY = 0f
         disableClippingOnParents(view)
+        applyContainerHeight(scale)
+    }
+
+    /**
+     * Sizes the container for a clock drawn at [scale]. The container is what the keyguard clips
+     * to, so it has to follow the scale the clock is animating to, not only the one it started at.
+     */
+    private fun applyContainerHeight(scale: Float) {
+        val view = currentClockView ?: return
         if (naturalClockHeight == 0 && view.height > 0) {
             naturalClockHeight = view.height
         }
