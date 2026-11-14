@@ -19,12 +19,15 @@ import static android.view.WindowManager.LayoutParams.TYPE_QS_DIALOG;
 
 import android.app.IUriGrantsManager;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
+import android.database.ContentObserver;
 import android.graphics.drawable.Drawable;
 import android.metrics.LogMaker;
 import android.net.Uri;
@@ -52,6 +55,8 @@ import com.android.internal.jank.InteractionJankMonitor;
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
 import com.android.systemui.animation.ActivityTransitionAnimator;
+import com.android.systemui.animation.DialogCuj;
+import com.android.systemui.animation.DialogTransitionAnimator;
 import com.android.systemui.animation.Expandable;
 import com.android.systemui.dagger.qualifiers.Background;
 import com.android.systemui.dagger.qualifiers.Main;
@@ -116,6 +121,26 @@ public class CustomTile extends QSTileImpl<State> implements TileChangeListener,
     private int mServiceUid = Process.INVALID_UID;
 
     private final IUriGrantsManager mIUriGrantsManager;
+
+    private final BroadcastReceiver mPowerProfileReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            refreshState();
+        }
+    };
+    private boolean mPowerProfileReceiverRegistered = false;
+
+    private final ContentObserver mPowerProfileObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
+        @Override
+        public void onChange(boolean selfChange) {
+            refreshState();
+        }
+    };
+    private boolean mPowerProfileObserverRegistered = false;
+
+    private boolean isPowerProfileTile() {
+        return mComponent != null && "org.lineageos.settings.power.PowerProfileTileService".equals(mComponent.getClassName());
+    }
 
     @AssistedInject
     CustomTile(
@@ -339,6 +364,47 @@ public class CustomTile extends QSTileImpl<State> implements TileChangeListener,
         if (mListening == listening) return;
         mListening = listening;
 
+        if (isPowerProfileTile()) {
+            if (listening) {
+                if (!mPowerProfileReceiverRegistered) {
+                    IntentFilter filter = new IntentFilter();
+                    filter.addAction(org.lineageos.settings.power.PowerProfileUtils.ACTION_PROFILE_CHANGED);
+                    try {
+                        mUserContext.registerReceiver(mPowerProfileReceiver, filter, Context.RECEIVER_EXPORTED);
+                        mPowerProfileReceiverRegistered = true;
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to register PowerProfile receiver in CustomTile", e);
+                    }
+                }
+                if (!mPowerProfileObserverRegistered) {
+                    try {
+                        mUserContext.getContentResolver().registerContentObserver(
+                                Settings.System.getUriFor(org.lineageos.settings.power.PowerProfileUtils.POWER_PROFILE_SETTING),
+                                false,
+                                mPowerProfileObserver);
+                        mPowerProfileObserverRegistered = true;
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to register content observer in CustomTile", e);
+                    }
+                }
+            } else {
+                if (mPowerProfileReceiverRegistered) {
+                    try {
+                        mUserContext.unregisterReceiver(mPowerProfileReceiver);
+                    } catch (Exception ignored) {
+                    }
+                    mPowerProfileReceiverRegistered = false;
+                }
+                if (mPowerProfileObserverRegistered) {
+                    try {
+                        mUserContext.getContentResolver().unregisterContentObserver(mPowerProfileObserver);
+                    } catch (Exception ignored) {
+                    }
+                    mPowerProfileObserverRegistered = false;
+                }
+            }
+        }
+
         try {
             if (listening) {
                 updateDefaultTileAndIcon();
@@ -370,6 +436,20 @@ public class CustomTile extends QSTileImpl<State> implements TileChangeListener,
     @Override
     protected void handleDestroy() {
         super.handleDestroy();
+        if (mPowerProfileReceiverRegistered) {
+            try {
+                mUserContext.unregisterReceiver(mPowerProfileReceiver);
+            } catch (Exception ignored) {
+            }
+            mPowerProfileReceiverRegistered = false;
+        }
+        if (mPowerProfileObserverRegistered) {
+            try {
+                mUserContext.getContentResolver().unregisterContentObserver(mPowerProfileObserver);
+            } catch (Exception ignored) {
+            }
+            mPowerProfileObserverRegistered = false;
+        }
         if (mIsTokenGranted) {
             try {
                 if (DEBUG) Log.d(TAG, "Removing token");
@@ -411,6 +491,27 @@ public class CustomTile extends QSTileImpl<State> implements TileChangeListener,
 
     @Override
     protected void handleClick(@Nullable Expandable expandable) {
+        if (isPowerProfileTile()) {
+            if (!org.lineageos.settings.power.PowerProfileUtils.isPowerEnabled(mUserContext)) {
+                return;
+            }
+            mExpandableClicked = expandable;
+            mUiHandler.post(() -> {
+                org.lineageos.settings.power.PowerProfileDialog dialog =
+                        new org.lineageos.settings.power.PowerProfileDialog(mUserContext);
+                if (expandable != null) {
+                    DialogTransitionAnimator.Controller controller = expandable.dialogTransitionController(
+                            new DialogCuj(InteractionJankMonitor.CUJ_SHADE_DIALOG_OPEN, "power_profile"));
+                    DialogTransitionAnimator animator = mTileServices.getDialogTransitionAnimator();
+                    if (controller != null && animator != null) {
+                        animator.show(dialog, controller);
+                        return;
+                    }
+                }
+                dialog.show();
+            });
+            return;
+        }
         if (mTile.getState() == Tile.STATE_UNAVAILABLE) {
             return;
         }
@@ -445,6 +546,27 @@ public class CustomTile extends QSTileImpl<State> implements TileChangeListener,
 
     @Override
     protected void handleUpdateState(State state, Object arg) {
+        if (isPowerProfileTile()) {
+            state.iconSupplier = null;
+            if (!org.lineageos.settings.power.PowerProfileUtils.isPowerEnabled(mUserContext)) {
+                state.state = Tile.STATE_UNAVAILABLE;
+                state.label = mUserContext.getString(com.android.systemui.res.R.string.powerprofile_title);
+                state.secondaryLabel = mUserContext.getString(com.android.systemui.res.R.string.power_tile_disabled_subtitle);
+                state.icon = ResourceIcon.get(com.android.systemui.res.R.drawable.ic_power_default);
+            } else {
+                org.lineageos.settings.power.PowerProfileUtils.PowerProfile current =
+                        org.lineageos.settings.power.PowerProfileUtils.getCurrentProfile(mUserContext);
+                state.state = Tile.STATE_ACTIVE;
+                state.label = mUserContext.getString(com.android.systemui.res.R.string.powerprofile_title);
+                state.secondaryLabel = mUserContext.getString(current.getNameResId());
+                state.icon = ResourceIcon.get(current.getIconResId());
+            }
+            state.contentDescription = state.label;
+            state.stateDescription = null;
+            state.expandedAccessibilityClassName = Button.class.getName();
+            return;
+        }
+
         int tileState = mTile.getState();
         if (mServiceManager.hasPendingBind()) {
             tileState = Tile.STATE_UNAVAILABLE;

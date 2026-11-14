@@ -29,6 +29,7 @@ import com.android.systemui.qs.tiles.DataSwitchTile
 import com.android.systemui.qs.tiles.FPSInfoTile
 import com.android.systemui.qs.tiles.HeadsUpTile
 import com.android.systemui.qs.tiles.LocaleTile
+import com.android.systemui.qs.tiles.PowerProfileTile
 import com.android.systemui.qs.tiles.PreferredNetworkTile
 import com.android.systemui.qs.tiles.SleepModeTile
 import com.android.systemui.qs.tiles.SoundTile
@@ -109,6 +110,12 @@ interface CustomModule {
     @StringKey(PreferredNetworkTile.TILE_SPEC)
     fun bindPreferredNetworkTile(preferredNetworkTile: PreferredNetworkTile): QSTileImpl<*>
 
+    /** Inject PowerProfileTile into tileMap in QSModule */
+    @Binds
+    @IntoMap
+    @StringKey(PowerProfileTile.TILE_SPEC)
+    fun bindPowerProfileTile(powerProfileTile: PowerProfileTile): QSTileImpl<*>
+
     /** Inject SleepModeTile into tileMap in QSModule */
     @Binds  
     @IntoMap
@@ -161,6 +168,7 @@ interface CustomModule {
         const val FPS_INFO_TILE_SPEC = "fpsinfo"
         const val HEADS_UP_TILE_SPEC = "heads_up"
         const val LOCALE_TILE_SPEC = "locale"
+        const val POWER_PROFILE_TILE_SPEC = "power_profile"
         const val PREFERRED_NETWORK_TILE_SPEC = "preferred_network"
         const val SLEEP_MODE_TILE_SPEC = "sleep_mode"
         const val SMART_PIXELS_TILE_SPEC = "smart_pixels"
@@ -423,6 +431,21 @@ interface CustomModule {
                     ),
                 instanceId = uiEventLogger.getNewInstanceId(),
                 category = TileCategory.DISPLAY,
-            )                          
+            )
+
+        @Provides
+        @IntoMap
+        @StringKey(POWER_PROFILE_TILE_SPEC)
+        fun providePowerProfileTileConfig(uiEventLogger: QsEventLogger): QSTileConfig =
+            QSTileConfig(
+                tileSpec = TileSpec.create(POWER_PROFILE_TILE_SPEC),
+                uiConfig =
+                    QSTileUIConfig.Resource(
+                        iconRes = R.drawable.ic_power_default,
+                        labelRes = R.string.powerprofile_title
+                    ),
+                instanceId = uiEventLogger.getNewInstanceId(),
+                category = TileCategory.UTILITIES,
+            )
     }
 }

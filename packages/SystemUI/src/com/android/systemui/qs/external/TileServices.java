@@ -38,6 +38,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 
 import com.android.internal.statusbar.StatusBarIcon;
+import com.android.systemui.animation.DialogTransitionAnimator;
 import com.android.systemui.broadcast.BroadcastDispatcher;
 import com.android.systemui.dagger.SysUISingleton;
 import com.android.systemui.dagger.qualifiers.Background;
@@ -90,6 +91,8 @@ public class TileServices extends IQSService.Stub {
     private final TileLifecycleManager.Factory mTileLifecycleManagerFactory;
     private final CustomTileAddedRepository mCustomTileAddedRepository;
     private final DelayableExecutor mBackgroundExecutor;
+    @Nullable
+    private final DialogTransitionAnimator mDialogTransitionAnimator;
 
     private int mMaxBound = DEFAULT_MAX_BOUND;
 
@@ -106,7 +109,8 @@ public class TileServices extends IQSService.Stub {
             PanelInteractor panelInteractor,
             TileLifecycleManager.Factory tileLifecycleManagerFactory,
             CustomTileAddedRepository customTileAddedRepository,
-            @Background DelayableExecutor backgroundExecutor) {
+            @Background DelayableExecutor backgroundExecutor,
+            @Nullable DialogTransitionAnimator dialogTransitionAnimator) {
         mHost = host;
         mKeyguardStateController = keyguardStateController;
         mContext = mHost.getContext();
@@ -122,6 +126,32 @@ public class TileServices extends IQSService.Stub {
         mTileLifecycleManagerFactory = tileLifecycleManagerFactory;
         mCustomTileAddedRepository = customTileAddedRepository;
         mBackgroundExecutor = backgroundExecutor;
+        mDialogTransitionAnimator = dialogTransitionAnimator;
+    }
+
+    @VisibleForTesting
+    public TileServices(
+            QSHost host,
+            @Main Provider<Handler> handlerProvider,
+            BroadcastDispatcher broadcastDispatcher,
+            PackageManagerAdapter packageManagerAdapter,
+            UserTracker userTracker,
+            KeyguardStateController keyguardStateController,
+            CommandQueue commandQueue,
+            StatusBarIconController statusBarIconController,
+            PanelInteractor panelInteractor,
+            TileLifecycleManager.Factory tileLifecycleManagerFactory,
+            CustomTileAddedRepository customTileAddedRepository,
+            @Background DelayableExecutor backgroundExecutor) {
+        this(host, handlerProvider, broadcastDispatcher, packageManagerAdapter, userTracker,
+                keyguardStateController, commandQueue, statusBarIconController, panelInteractor,
+                tileLifecycleManagerFactory, customTileAddedRepository, backgroundExecutor,
+                null);
+    }
+
+    @Nullable
+    public DialogTransitionAnimator getDialogTransitionAnimator() {
+        return mDialogTransitionAnimator;
     }
 
     public Context getContext() {
@@ -280,9 +310,17 @@ public class TileServices extends IQSService.Stub {
         if (customTile != null) {
             verifyCaller(customTile);
             customTile.onDialogShown();
-            mPanelInteractor.forceCollapsePanels();
+            if (!shouldKeepShadeOpen(customTile)) {
+                mPanelInteractor.forceCollapsePanels();
+            }
             Objects.requireNonNull(mServices.get(customTile)).setShowingDialog(true);
         }
+    }
+
+    private boolean shouldKeepShadeOpen(CustomTileInterface customTile) {
+        if (customTile == null || customTile.getComponent() == null) return false;
+        String className = customTile.getComponent().getClassName();
+        return className.endsWith(".PowerProfileTileService");
     }
 
     @Override
