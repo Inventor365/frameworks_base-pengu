@@ -36,6 +36,8 @@ import android.os.UserHandle;
 import android.provider.Settings;
 import android.util.AttributeSet;
 import android.util.DisplayUtils;
+import android.view.DisplayInfo;
+import android.view.Display;
 import android.util.Log;
 import android.util.MathUtils;
 import android.view.Gravity;
@@ -205,7 +207,16 @@ public class UdfpsAnimation extends ImageView {
     }
 
     private float getDisplayFactor() {
-        return DisplayUtils.getScaleFactor(mContext);
+        final DisplayInfo info = new DisplayInfo();
+        mContext.getDisplay().getDisplayInfo(info);
+        final Display.Mode maxMode = DisplayUtils.getMaximumResolutionDisplayMode(
+                info.supportedModes);
+        if (maxMode == null) {
+            return 1f;
+        }
+        return DisplayUtils.getPhysicalPixelDisplaySizeRatio(
+                maxMode.getPhysicalWidth(), maxMode.getPhysicalHeight(),
+                info.getNaturalWidth(), info.getNaturalHeight());
     }
 
     public void updatePosition() {
