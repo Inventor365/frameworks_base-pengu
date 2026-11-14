@@ -72,6 +72,7 @@ import androidx.annotation.Nullable;
 import com.android.internal.R;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.logging.InstanceId;
+import com.android.internal.util.custom.CustomUtils;
 import com.android.internal.util.LatencyTracker;
 import com.android.keyguard.KeyguardUpdateMonitor;
 import com.android.keyguard.KeyguardUpdateMonitorCallback;
@@ -900,7 +901,7 @@ public class UdfpsController implements DozeReceiver, Dumpable {
         mDisableSmartPixels = mContext.getResources().getBoolean(
                 com.android.systemui.res.R.bool.config_disableSmartPixelsOnUDFPS);
 
-        if (com.android.internal.util.crdroid.Utils.isPackageInstalled(mContext,
+        if (CustomUtils.isPackageInstalled(mContext,
                 "com.crdroid.udfps.animations")) {
             updateUdfpsAnimation();
             mConfigurationController.addCallback(mConfigurationListener);

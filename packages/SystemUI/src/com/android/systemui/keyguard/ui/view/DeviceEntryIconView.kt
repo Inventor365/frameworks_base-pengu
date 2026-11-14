@@ -41,6 +41,7 @@ import com.android.systemui.common.ui.view.TouchHandlingView
 import com.android.systemui.log.TouchHandlingViewLogger
 import com.android.systemui.res.R
 import com.android.systemui.tuner.TunerService
+import com.android.internal.util.custom.CustomUtils
 
 class DeviceEntryIconView
 @JvmOverloads
@@ -76,7 +77,7 @@ constructor(
 
     private val fingerprintDrawable: UdfpsIconDrawable = UdfpsFpIconDrawable(context)
 
-    private val packageInstalled = com.android.internal.util.crdroid.Utils.isPackageInstalled(
+    private val packageInstalled = CustomUtils.isPackageInstalled(
         context, "com.crdroid.udfps.icons"
     )
 

@@ -34,7 +34,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.res.ResourcesCompat;
 
-import com.android.internal.util.crdroid.Utils;
+import com.android.internal.util.custom.CustomUtils;
 import com.android.systemui.res.R;
 
 /**
@@ -72,7 +72,7 @@ public abstract class UdfpsIconDrawable extends Drawable {
     }
 
     private void init() {
-        if (Utils.isPackageInstalled(mContext, udfpsResourcesPackage)) {
+        if (CustomUtils.isPackageInstalled(mContext, udfpsResourcesPackage)) {
             try {
                 PackageManager pm = mContext.getPackageManager();
                 udfpsRes = pm.getResourcesForApplication(udfpsResourcesPackage);
