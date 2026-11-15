@@ -485,10 +485,22 @@ public class ScrimController implements ViewTreeObserver.OnPreDrawListener, Dump
                 new ContentObserver(mHandler) {
                     @Override
                     public void onChange(boolean selfChange) {
-                        mHandler.post(() -> handleLiquidGlassChanged());
+                        mHandler.post(() -> handleShadeStyleChanged());
                     }
                 },
                 UserHandle.USER_ALL);
+        final ContentObserver qsStyleObserver = new ContentObserver(mHandler) {
+            @Override
+            public void onChange(boolean selfChange) {
+                handleShadeStyleChanged();
+            }
+        };
+        mContext.getContentResolver().registerContentObserver(
+                Settings.Secure.getUriFor(ShadeColors.QS_PANEL_STYLE_SETTING),
+                false, qsStyleObserver, UserHandle.USER_ALL);
+        mContext.getContentResolver().registerContentObserver(
+                Settings.Secure.getUriFor(ShadeColors.QS_ONE_UI_SETTING),
+                false, qsStyleObserver, UserHandle.USER_ALL);
         updateThemeColors();
         mNotificationsScrim.setScrimName(getScrimName(mNotificationsScrim));
         mScrimBehind.setScrimName(getScrimName(mScrimBehind));
@@ -601,10 +613,11 @@ public class ScrimController implements ViewTreeObserver.OnPreDrawListener, Dump
                 .getValue();
     }
 
-    private void handleLiquidGlassChanged() {
+    private void handleShadeStyleChanged() {
         if (Flags.notificationShadeBlur()) {
             for (ScrimState state : ScrimState.values()) {
                 state.setShadePanelColor(getShadePanelColor());
+                state.setNotificationScrimColor(getNotificationsScrimColor());
             }
         }
         applyAndDispatchState();

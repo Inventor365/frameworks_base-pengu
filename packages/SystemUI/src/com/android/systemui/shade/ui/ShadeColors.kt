@@ -18,6 +18,8 @@ package com.android.systemui.shade.ui
 
 import android.content.Context
 import android.graphics.Color
+import android.os.UserHandle
+import android.provider.Settings
 import com.android.internal.graphics.ColorUtils
 import com.android.systemui.common.shared.colors.SurfaceEffectColors
 import com.android.systemui.qs.shared.style.LiquidGlass
@@ -60,7 +62,11 @@ object ShadeColors {
     @JvmStatic
     fun notificationScrim(context: Context, blurSupported: Boolean): Int {
         return if (blurSupported) {
-            Color.TRANSPARENT
+            if (isStockQsStyle(context) && !LiquidGlass.enabled(context).value) {
+                notificationScrimStandard(context)
+            } else {
+                Color.TRANSPARENT
+            }
         } else {
             notificationScrimFallback(context)
         }
@@ -121,6 +127,22 @@ object ShadeColors {
     private fun shadePanelFallback(context: Context): Int {
         return context.getColor(R.color.shade_panel_fallback)
     }
+
+    /** Default or Stock QS style, which keep the AOSP dual-tone shade. */
+    @JvmStatic
+    private fun isStockQsStyle(context: Context): Boolean {
+        val resolver = context.contentResolver
+        if (Settings.Secure.getIntForUser(resolver, QS_ONE_UI_SETTING, 0,
+                UserHandle.USER_CURRENT) != 0) {
+            return false
+        }
+        val style = Settings.Secure.getIntForUser(resolver, QS_PANEL_STYLE_SETTING, 1,
+            UserHandle.USER_CURRENT)
+        return style == 0 || style == 6
+    }
+
+    const val QS_PANEL_STYLE_SETTING = "qs_panel_style"
+    const val QS_ONE_UI_SETTING = "qs_oneui_experimental"
 
     @JvmStatic
     private fun notificationScrimStandard(context: Context): Int {
