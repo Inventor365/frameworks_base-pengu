@@ -20,7 +20,6 @@ import com.android.systemui.dump.dumpManager
 import com.android.systemui.kosmos.Kosmos
 import com.android.systemui.kosmos.Kosmos.Fixture
 import com.android.systemui.kosmos.testDispatcher
-import com.android.systemui.media.controls.domain.pipeline.interactor.mediaCarouselInteractor
 import com.android.systemui.scene.domain.interactor.sceneInteractor
 import com.android.systemui.shade.domain.interactor.shadeInteractor
 import com.android.systemui.shade.domain.interactor.shadeModeInteractor
@@ -48,7 +47,6 @@ val Kosmos.notificationListViewModel by Fixture {
         activeNotificationsInteractor = activeNotificationsInteractor,
         notificationStackInteractor = notificationStackInteractor,
         headsUpNotificationInteractor = headsUpNotificationInteractor,
-        mediaCarouselInteractor = mediaCarouselInteractor,
         remoteInputInteractor = remoteInputInteractor,
         shadeInteractor = shadeInteractor,
         shadeModeInteractor = shadeModeInteractor,

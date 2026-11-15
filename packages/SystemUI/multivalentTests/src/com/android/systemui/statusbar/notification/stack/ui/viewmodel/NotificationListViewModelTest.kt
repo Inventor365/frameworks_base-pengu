@@ -183,7 +183,7 @@ class NotificationListViewModelTest(flags: FlagsParameterization) : SysuiTestCas
 
     @Test
     @EnableFlags(FLAG_SCENE_CONTAINER, FLAG_DUAL_SHADE)
-    fun shouldShowEmptyShadeView_dualShade_falseWhenNoNotifsWithMedia() =
+    fun shouldShowEmptyShadeView_dualShade_trueWhenNoNotifsWithMedia() =
         kosmos.runTest {
             enableDualShade()
             runCurrent()
@@ -201,9 +201,9 @@ class NotificationListViewModelTest(flags: FlagsParameterization) : SysuiTestCas
             mediaPipelineRepository.addCurrentUserMediaEntry(userMedia)
             runCurrent()
 
-            // THEN empty shade is not visible
+            // THEN empty shade is visible: media is not shown in the notifications shade
             assertThat(hasActiveMedia).isTrue()
-            assertThat(shouldShowEmptyShadeView).isFalse()
+            assertThat(shouldShowEmptyShadeView).isTrue()
 
             // WHEN media is dismissed
             mediaPipelineRepository.addCurrentUserMediaEntry(userMedia.copy(active = false))
