@@ -79,7 +79,24 @@ constructor(
         listenForDozingToDreaming()
         listenForDozingToGoneViaBiometrics()
         listenForWakeFromDozing()
+        listenForDozingToAod()
         listenForTransitionToCamera(scope, keyguardInteractor)
+    }
+
+    /**
+     * AOD can become available while the screen stays off (shake to show AOD opens a short AOD
+     * window). The panel is already in doze then, so show the AOD UI instead of a black screen.
+     */
+    private fun listenForDozingToAod() {
+        scope.launch {
+            keyguardInteractor.isAodAvailable
+                .filterRelevantKeyguardStateAnd { isAodAvailable -> isAodAvailable }
+                .collect {
+                    if (!powerInteractor.isInteractive.value) {
+                        startTransitionTo(KeyguardState.AOD, ownerReason = "isAodAvailable")
+                    }
+                }
+        }
     }
 
     private fun canDismissLockscreen(): Boolean {

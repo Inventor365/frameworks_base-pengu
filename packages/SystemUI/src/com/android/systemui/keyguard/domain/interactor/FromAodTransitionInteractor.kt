@@ -77,7 +77,21 @@ constructor(
         listenForAodToAwake()
         listenForAodToOccluded()
         listenForAodToPrimaryBouncer()
+        listenForAodToDozing()
         listenForTransitionToCamera(scope, keyguardInteractor)
+    }
+
+    /** AOD went away while the screen stays off (the shake window ended): back to dozing. */
+    private fun listenForAodToDozing() {
+        scope.launch {
+            keyguardInteractor.isAodAvailable
+                .filterRelevantKeyguardStateAnd { isAodAvailable -> !isAodAvailable }
+                .collect {
+                    if (!powerInteractor.isInteractive.value) {
+                        startTransitionTo(KeyguardState.DOZING, ownerReason = "!isAodAvailable")
+                    }
+                }
+        }
     }
 
     private fun canDismissLockscreen(): Boolean {
