@@ -111,7 +111,18 @@ object ShadeColors {
             // SplitShade (avoid adding the shade panel with scrim)
             return surfaceEffect0Color
         }
-        return shadePanel(context, blurSupported, withScrim = true)
+        val panel = shadePanel(context, blurSupported, withScrim = true)
+        if (isStockQsStyle(context) && !LiquidGlass.enabled(context).value) {
+            // Dual tone: tint the notification area so it stands apart from the QS panel.
+            val tone =
+                if (blurSupported) {
+                    notificationScrimStandard(context)
+                } else {
+                    notificationScrimFallback(context)
+                }
+            return ColorUtils.compositeColors(tone, panel)
+        }
+        return panel
     }
 
     @JvmStatic
