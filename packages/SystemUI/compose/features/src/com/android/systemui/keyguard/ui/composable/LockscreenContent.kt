@@ -211,7 +211,8 @@ class LockscreenContent(
             (toGone ?: overlaid { it == Overlays.Bouncer }).coerceIn(0f, 1f)
         }
         // The stack fades out in the first half of folding into the now bar, and is back in full
-        // as soon as the shade or bouncer covers the lock screen or the lock screen is left.
+        // as soon as the shade covers the lock screen or the lock screen is left. The glass
+        // bouncer is see-through, so the stack fades out under it instead.
         DisposableEffect(Unit) { onDispose { NowBarStack.alpha.value = 1f } }
         LaunchedEffect(Unit) {
             snapshotFlow {
@@ -220,8 +221,8 @@ class LockscreenContent(
                         (layoutState.currentTransition as? TransitionState.Transition.ChangeScene)
                             ?.takeIf { it.fromContent == contentKey }
                             ?.progress ?: 0f
-                    val away = max(covered(), leaving.coerceIn(0f, 1f))
-                    fold + (1f - fold) * away
+                    val away = max(shaded(), leaving.coerceIn(0f, 1f))
+                    (fold + (1f - fold) * away) * (1f - overlaid { it == Overlays.Bouncer })
                 }
                 .collect { NowBarStack.alpha.value = it }
         }
