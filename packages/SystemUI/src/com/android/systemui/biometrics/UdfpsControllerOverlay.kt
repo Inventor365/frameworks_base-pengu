@@ -300,7 +300,11 @@ constructor(
             listenForCurrentKeyguardState?.cancel()
             listenForCurrentKeyguardState =
                 scope.launch {
-                    currentStateUpdatedToOffAodDozingOrDreaming.collect { addViewIfPending() }
+                    merge(
+                            currentStateUpdatedToOffAodDozingOrDreaming,
+                            powerInteractor.detailedWakefulness.filter { it.isAwake() }.map {},
+                        )
+                        .collect { addViewIfPending() }
                 }
         }
     }
