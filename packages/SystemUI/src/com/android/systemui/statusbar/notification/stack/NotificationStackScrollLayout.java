@@ -637,6 +637,8 @@ public class NotificationStackScrollLayout
     private boolean mIsOnLockscreen;
     /** Whether child rows have been told to drop their background blur regions. */
     private boolean mBlurRegionsSuppressed;
+    /** Whether this stack, or an ancestor, is hidden, which a row's blur region does not follow. */
+    private boolean mBlurRegionsHidden;
     private float mBlurRegionFade = 1f;
     /** The folded lock screen stack follows a lifting finger at this rate. */
     private static final float LIFT_RESISTANCE = 0.6f;
@@ -1798,6 +1800,17 @@ public class NotificationStackScrollLayout
         }
     }
 
+    @Override
+    public void onVisibilityAggregated(boolean isVisible) {
+        super.onVisibilityAggregated(isVisible);
+        // The bouncer hides the stack without fading it; the rows' window blur would stay behind
+        // as empty glass cards under it.
+        if (mBlurRegionsHidden != !isVisible) {
+            mBlurRegionsHidden = !isVisible;
+            updateChildrenBlurRegionSuppression(getAlpha() * mBlurFade);
+        }
+    }
+
     /** Drop child blur regions while faded out (they ignore ancestor alpha), restore when visible. */
     private void updateChildrenBlurRegionSuppression(float alpha) {
         if (!lockscreenBlurForNotifications()) {
@@ -1813,7 +1826,8 @@ public class NotificationStackScrollLayout
         }
         // The negative clip (the shade opening over the stack) cuts the rows' content out, but
         // not their window blur, which would stay behind as empty glass cards.
-        boolean suppressed = alpha < 0.01f || mShouldUseNegativeRoundedRectClipping;
+        boolean suppressed =
+                alpha < 0.01f || mShouldUseNegativeRoundedRectClipping || mBlurRegionsHidden;
         if (mBlurRegionsSuppressed == suppressed) {
             return;
         }
