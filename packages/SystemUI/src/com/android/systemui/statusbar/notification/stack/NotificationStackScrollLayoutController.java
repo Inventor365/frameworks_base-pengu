@@ -962,10 +962,11 @@ public class NotificationStackScrollLayoutController implements Dumpable {
         mTouchHandler = new TouchHandler();
         mView.setTouchHandler(mTouchHandler);
         mView.setResetUserExpandedStatesRunnable(mNotificationsController::resetUserExpandedStates);
-        // Cards opened in the expanded lock screen stack fold back with it.
+        // Cards opened in the expanded lock screen stack fold back with it. Groups first:
+        // collapseGroups() only collapses user expanded groups, which the reset would clear.
         LockscreenStack.addCollapseListener(() -> mView.post(() -> {
-            mNotificationsController.resetUserExpandedStates();
             mGroupExpansionManager.collapseGroups();
+            mNotificationsController.resetUserExpandedStates();
         }));
         mView.setClearAllAnimationListener(this::onAnimationEnd);
         mView.setClearAllListener((selection) -> mUiEventLogger.log(
