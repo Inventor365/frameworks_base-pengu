@@ -389,6 +389,8 @@ class ClockStyle @JvmOverloads constructor(
                 .alpha(minOf(clockOpacity, AOD_OPACITY_CAP) / 100f)
                 .setDuration(AOD_ANIM_OUT_MS)
                 .setInterpolator(AccelerateInterpolator(1.5f))
+                // The frame follows the clock down, so what sits below it moves with the clock.
+                .setUpdateListener { applyContainerHeight(view.scaleY) }
                 .withEndAction {
                     applyClockAlpha()
                     view.scaleX = AOD_SCALE_DOWN
@@ -400,14 +402,17 @@ class ClockStyle @JvmOverloads constructor(
             view.scaleX = AOD_SCALE_DOWN
             view.scaleY = AOD_SCALE_DOWN
             val targetScale = getScaleFactor()
-            // Grow the container first: it kept the smaller AOD height and would clip the clock.
-            applyContainerHeight(targetScale)
+            applyContainerHeight(AOD_SCALE_DOWN)
             view.animate()
                 .scaleX(targetScale)
                 .scaleY(targetScale)
                 .alpha(clockOpacity / 100f)
                 .setDuration(AOD_ANIM_IN_MS)
                 .setInterpolator(OvershootInterpolator(1.2f))
+                // Follow the clock up. The overshoot draws into the gap below instead of
+                // bouncing the notification stack.
+                .setUpdateListener { applyContainerHeight(minOf(view.scaleY, targetScale)) }
+                .withEndAction { applyContainerHeight(targetScale) }
                 .start()
         }
     }
