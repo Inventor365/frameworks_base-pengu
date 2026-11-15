@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     xmlns:android="http://schemas.android.com/apk/res/android">
-    <RelativeLayout
+    <com.android.systemui.clocks.ClockScaleFrame
         android:id="@+id/clock_frame"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -14,5 +14,5 @@
             android:id="@+id/clock_view_stub"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"/>
-    </RelativeLayout>
+    </com.android.systemui.clocks.ClockScaleFrame>
 </com.android.systemui.clocks.ClockStyle>

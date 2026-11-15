@@ -96,8 +96,6 @@ class ClockStyle @JvmOverloads constructor(
     private var currentShiftX = 0
     private var currentShiftY = 0
 
-    private var naturalClockHeight = 0
-
     private var pendingLayoutListener: View.OnLayoutChangeListener? = null
     private var clockSizeListener: View.OnLayoutChangeListener? = null
 
@@ -450,8 +448,6 @@ class ClockStyle @JvmOverloads constructor(
         currentClockView = null
         textClocks.clear()
         styledTextViews.clear()
-        naturalClockHeight = 0
-        clockContainer?.minimumHeight = 0
 
         if (clockStyle in 1 until CLOCK_LAYOUTS.size) {
             val stub = clockStub
@@ -711,49 +707,7 @@ class ClockStyle @JvmOverloads constructor(
      * to, so it has to follow the scale the clock is animating to, not only the one it started at.
      */
     private fun applyContainerHeight(scale: Float) {
-        val view = currentClockView ?: return
-        measureNaturalHeight(view).takeIf { it > 0 }?.let { naturalClockHeight = it }
-
-        if (naturalClockHeight > 0) {
-            val scaledHeight = (naturalClockHeight * scale).toInt()
-            val container = clockContainer ?: return
-            // Scale only shrinks the drawing, not the layout: keep the clock at its natural
-            // height so the shorter container cannot squeeze it and clip its glyphs.
-            view.layoutParams?.let { lp ->
-                lp.height = if (scale >= 1.0f) {
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                } else {
-                    naturalClockHeight
-                }
-                view.layoutParams = lp
-            }
-            if (scale >= 1.0f) {
-                container.minimumHeight = scaledHeight
-                val lp = container.layoutParams
-                if (lp != null) {
-                    lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
-                    container.layoutParams = lp
-                }
-            } else {
-                container.minimumHeight = 0
-                val lp = container.layoutParams
-                if (lp != null) {
-                    lp.height = scaledHeight
-                    container.layoutParams = lp
-                }
-            }
-            container.requestLayout()
-        }
-    }
-
-    /** Height of the clock laid out at its current width with no height limit, before scaling. */
-    private fun measureNaturalHeight(view: View): Int {
-        val width = view.width.takeIf { it > 0 } ?: return 0
-        view.measure(
-            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-        )
-        return view.measuredHeight
+        (clockContainer as? ClockScaleFrame)?.drawScale = scale
     }
 
     private fun applyClockScaleAfterLayout(view: View) {
@@ -769,9 +723,6 @@ class ClockStyle @JvmOverloads constructor(
             ) {
                 v.removeOnLayoutChangeListener(this)
                 if (pendingLayoutListener === this) pendingLayoutListener = null
-                if (naturalClockHeight == 0) {
-                    naturalClockHeight = v.height
-                }
                 applyClockScale()
                 if (gradientEnabled) applyClockColors()
             }
