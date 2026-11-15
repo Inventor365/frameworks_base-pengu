@@ -10,7 +10,10 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.hardware.TriggerEvent
+import android.hardware.TriggerEventListener
 import android.os.Handler
+import android.os.PowerManager
 import android.os.SystemClock
 import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.dagger.qualifiers.Main
@@ -27,10 +30,37 @@ class ShakeSensorController @Inject constructor(
     companion object {
         private const val SHAKE_COOLDOWN_MS = 200L
         private const val SHAKE_TOTAL_THRESHOLD = 0.0f
+        /** How long the AP stays awake after the wake-up sensor fires, to confirm a shake. */
+        private const val CONFIRM_WINDOW_MS = 1500L
     }
 
     private val sensorManager = context.getSystemService(SensorManager::class.java)
     private val accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+    /**
+     * The accelerometer is not a wake-up sensor, so it reports nothing while the AP is suspended
+     * (always the case on doze without AOD, unless charging). A one-shot wake-up motion sensor
+     * wakes the AP when the device moves, and the accelerometer then confirms the shake.
+     */
+    private val wakeSensor: Sensor? =
+        listOf(Sensor.TYPE_PICK_UP_GESTURE, Sensor.TYPE_SIGNIFICANT_MOTION)
+            .firstNotNullOfOrNull { type -> sensorManager?.getDefaultSensor(type, true) }
+            ?.takeIf { it.reportingMode == Sensor.REPORTING_MODE_ONE_SHOT }
+    private val confirmWakeLock =
+        context.getSystemService(PowerManager::class.java)
+            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ShakeSensorController:confirm")
+            ?.apply { setReferenceCounted(false) }
+    private val wakeTrigger =
+        object : TriggerEventListener() {
+            override fun onTrigger(event: TriggerEvent?) {
+                mainHandler.post {
+                    if (!listening) return@post
+                    confirmWakeLock?.acquire(CONFIRM_WINDOW_MS)
+                    resetSamples()
+                    armWakeSensor()
+                }
+            }
+        }
 
     private var listening = false
     private var lastShakeElapsed = 0L
@@ -101,17 +131,25 @@ class ShakeSensorController @Inject constructor(
                 mainHandler,
             )
             listening = true
+            armWakeSensor()
         } else {
             sensorManager?.unregisterListener(sensorListener)
+            wakeSensor?.let { sensorManager?.cancelTriggerSensor(wakeTrigger, it) }
+            confirmWakeLock?.takeIf { it.isHeld }?.release()
             listening = false
             resetSamples()
         }
+    }
+
+    private fun armWakeSensor() {
+        wakeSensor?.let { sensorManager?.requestTriggerSensor(wakeTrigger, it) }
     }
 
     fun dump(pw: PrintWriter) {
         pw.println(" ShakeSensorController:")
         pw.println("  available=${accelerometer != null}")
         pw.println("  listening=$listening")
+        pw.println("  wakeSensor=${wakeSensor?.name}")
         pw.println("  shakeDeltaThreshold=$shakeDeltaThreshold")
     }
 
