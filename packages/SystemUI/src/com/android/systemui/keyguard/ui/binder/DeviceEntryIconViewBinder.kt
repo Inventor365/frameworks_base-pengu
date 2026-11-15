@@ -306,7 +306,7 @@ object DeviceEntryIconViewBinder {
                             }
                             fgIconView.imageTintList =
                                 ColorStateList.valueOf(overrideColor?.toArgb() ?: viewModel.tint)
-                            if (!view.usesCustomUdfpsIcon(viewModel.type, viewModel.useAodVariant)) {
+                            if (!view.usesCustomUdfpsIcon(viewModel.type)) {
                                 fgIconView.setPadding(
                                     viewModel.padding,
                                     viewModel.padding,

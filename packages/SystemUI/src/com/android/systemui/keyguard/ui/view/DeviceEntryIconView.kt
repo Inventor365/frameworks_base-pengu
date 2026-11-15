@@ -76,6 +76,7 @@ constructor(
             "system:" + Settings.System.UDFPS_ICON
 
     private val fingerprintDrawable: UdfpsIconDrawable = UdfpsFpIconDrawable(context)
+    private val aodFingerprintDrawable: UdfpsIconDrawable = UdfpsFpIconDrawable(context)
 
     private val packageInstalled = CustomUtils.isPackageInstalled(
         context, "com.crdroid.udfps.icons"
@@ -193,11 +194,21 @@ constructor(
         LottieCompositionFactory.fromRawRes(mContext, R.raw.udfps_aod_fp).addListener { result ->
             aodFpDrawable.setComposition(result)
         }
-        animatedIconDrawable.addState(
-            getIconState(IconType.FINGERPRINT, true),
-            aodFpDrawable,
-            R.id.udfps_aod_fp,
-        )
+        if (customUdfpsIcon) {
+            // The pack icon on AOD too; the binder still moves the view for burn-in.
+            aodFingerprintDrawable.setBounds(0, 0, bgView.width, bgView.height)
+            animatedIconDrawable.addState(
+                getIconState(IconType.FINGERPRINT, true),
+                aodFingerprintDrawable,
+                R.id.udfps_aod_fp,
+            )
+        } else {
+            animatedIconDrawable.addState(
+                getIconState(IconType.FINGERPRINT, true),
+                aodFpDrawable,
+                R.id.udfps_aod_fp,
+            )
+        }
 
         // WILDCARD: should always be the last state added since any states will match with this
         // and therefore won't get matched with subsequent states.
@@ -312,8 +323,8 @@ constructor(
     }
 
     /** True when [icon] will be drawn with the custom UDFPS pack icon (not the stock drawable). */
-    fun usesCustomUdfpsIcon(icon: IconType, aod: Boolean): Boolean =
-        icon == IconType.FINGERPRINT && !aod && packageInstalled &&
+    fun usesCustomUdfpsIcon(icon: IconType): Boolean =
+        icon == IconType.FINGERPRINT && packageInstalled &&
             Settings.System.getIntForUser(
                 mContext.contentResolver, Settings.System.UDFPS_ICON, 0, UserHandle.USER_CURRENT
             ) != 0
