@@ -270,6 +270,6 @@ class ShakeAodController @Inject constructor(
     private fun isShakeModeAvailable(): Boolean =
         shakeEnabled &&
             !inPocket &&
-            !ambientDisplayConfiguration.alwaysOnEnabled(userTracker.userId) &&
+            !ambientDisplayConfiguration.alwaysOnContentEnabled(userTracker.userId) &&
             !batteryController.isAodPowerSave
 }

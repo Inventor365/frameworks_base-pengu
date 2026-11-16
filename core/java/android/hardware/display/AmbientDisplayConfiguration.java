@@ -315,6 +315,16 @@ public class AmbientDisplayConfiguration {
      */
     @TestApi
     public boolean alwaysOnEnabled(int user) {
+        // The screen-off fingerprint icon is AOD with its content hidden.
+        return alwaysOnContentEnabled(user) || screenOffUdfpsIconEnabled(user);
+    }
+
+    /**
+     * Returns if Always-on-Display content is enabled, not only the screen-off fingerprint icon.
+     *
+     * @hide
+     */
+    public boolean alwaysOnContentEnabled(int user) {
         return alwaysOnEnabledSetting(user) || alwaysOnChargingEnabled(user);
     }
 
@@ -339,7 +349,7 @@ public class AmbientDisplayConfiguration {
     public boolean screenOffUdfpsIconEnabled(int user) {
         return boolSettingDefaultOff(Settings.Secure.DOZE_UDFPS_ICON, user)
                 && ambientDisplayAvailable()
-                && !alwaysOnEnabled(user)
+                && !alwaysOnContentEnabled(user)
                 && !accessibilityInversionEnabled(user);
     }
 
@@ -351,7 +361,7 @@ public class AmbientDisplayConfiguration {
     public boolean screenOffPeekEnabled(int user) {
         return boolSettingDefaultOff(Settings.Secure.DOZE_PEEK, user)
                 && ambientDisplayAvailable()
-                && !alwaysOnEnabled(user)
+                && !alwaysOnContentEnabled(user)
                 && !accessibilityInversionEnabled(user);
     }
 

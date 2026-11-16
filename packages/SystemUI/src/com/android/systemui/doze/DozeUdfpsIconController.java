@@ -123,26 +123,14 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
     }
 
     private boolean isIconWanted() {
-        return isIconEnabled()
-                && mKeyguardUpdateMonitor.isUdfpsEnrolled()
-                && mKeyguardUpdateMonitor.isFingerprintDetectionRunning();
+        return isIconEnabled() && mKeyguardUpdateMonitor.isUdfpsEnrolled();
     }
 
     private void update() {
         if (mMachine == null || mMachine.isUninitializedOrFinished()) {
             return;
         }
-        final boolean wanted = isIconWanted();
-        mDozeParameters.setUdfpsIconState(wanted, mPulsing);
-
-        final DozeMachine.State state = mMachine.getState();
-        if (wanted && state == DozeMachine.State.DOZE
-                && !mDozeHost.isPowerSaveActive() && !mDozeHost.isAlwaysOnSuppressed()) {
-            mMachine.requestState(DozeMachine.State.DOZE_AOD);
-        } else if (!wanted && isIconEnabled() && state == DozeMachine.State.DOZE_AOD
-                && !mDozeParameters.getAlwaysOnWithoutUdfpsIcon()) {
-            mMachine.requestState(DozeMachine.State.DOZE);
-        }
+        mDozeParameters.setUdfpsIconState(isIconWanted(), mPulsing);
     }
 
     @Override

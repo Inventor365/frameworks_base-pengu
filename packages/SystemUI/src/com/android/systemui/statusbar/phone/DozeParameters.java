@@ -332,7 +332,8 @@ public class DozeParameters implements
 
     /** Whether AOD is wanted for anything other than the screen-off fingerprint icon. */
     public boolean getAlwaysOnWithoutUdfpsIcon() {
-        boolean alwaysOnEnabled = mAmbientDisplayConfiguration.alwaysOnEnabled(mUserTracker.getUserId());
+        boolean alwaysOnEnabled =
+                mAmbientDisplayConfiguration.alwaysOnContentEnabled(mUserTracker.getUserId());
         boolean baseAlwaysOn = ((alwaysOnEnabled || mScreenOffPeekActive)
                 && !mBatteryController.isAodPowerSave())
                 || isMinModeActive();
