@@ -96,8 +96,10 @@ public class TileUtils {
     private static final String MANUFACTURER_SETTINGS =
             "com.android.settings.MANUFACTURER_APPLICATION_SETTING";
 
+    /** Manufacturer app settings go under Other options. */
     private static final String MANUFACTURER_DEFAULT_CATEGORY =
-            "com.android.settings.category.device";
+            "com.android.settings.category.ia.other";
+    private static final String MANUFACTURER_DEFAULT_GROUP = "other_miscellaneous";
 
     private static final String SETTINGS_CATEGORY_PREFIX = "com.android.settings.category.";
 
@@ -429,6 +431,10 @@ public class TileUtils {
         }
 
         tile.setGroupKey(metaData.getString(META_DATA_PREFERENCE_GROUP_KEY));
+        if (tile.getGroupKey() == null && MANUFACTURER_DEFAULT_CATEGORY.equals(categoryKey)
+                && MANUFACTURER_DEFAULT_CATEGORY.equals(defaultCategory)) {
+            tile.setGroupKey(MANUFACTURER_DEFAULT_GROUP);
+        }
 
         if (!tile.userHandle.contains(user)) {
             tile.userHandle.add(user);
