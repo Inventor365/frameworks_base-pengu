@@ -590,6 +590,8 @@ private class GlassRimNode(private var shape: Shape, private var strength: Float
 
     override fun ContentDrawScope.draw() {
         val generation = LiquidGlassTune.generation.value
+        // Shapes such as the QS tile shape animate their radius without changing identity.
+        val corner = shape.simpleCornerRadius(size, Density(density, fontScale), layoutDirection)
         val cached = rim
         val r =
             if (
@@ -597,7 +599,8 @@ private class GlassRimNode(private var shape: Shape, private var strength: Float
                     cached.size == size &&
                     cached.density == density &&
                     cached.layoutDirection == layoutDirection &&
-                    cached.generation == generation
+                    cached.generation == generation &&
+                    cached.corner == corner
             ) {
                 cached
             } else {
@@ -620,6 +623,7 @@ private class GlassRim(
     val density = densityScope.density
     private val bounds = RectF(0f, 0f, size.width, size.height)
     private val glowRound = shape.simpleCornerRadius(size, densityScope, layoutDirection)
+    val corner = glowRound
     private val edge by lazy { shape.toPath(size, densityScope, layoutDirection).asAndroidPath() }
     // Rounded shapes of one size differ only by their radius; anything else hashes its outline.
     private val glowShape =
