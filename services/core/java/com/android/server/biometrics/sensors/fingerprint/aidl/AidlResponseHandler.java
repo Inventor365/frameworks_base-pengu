@@ -124,6 +124,33 @@ public class AidlResponseHandler extends ISessionCallback.Stub {
                 challenge));
     }
 
+    /** OPlus HAL vendor command: int command id, int length, byte array. */
+    private static final int TRANSACTION_OPLUS_FINGERPRINT_CMD = 1001;
+    private static final int OPLUS_FINGERPRINT_CMD_TOUCH_DOWN = 0x4b1;
+
+    @Override
+    public boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags)
+            throws android.os.RemoteException {
+        if (code != TRANSACTION_OPLUS_FINGERPRINT_CMD) {
+            return super.onTransact(code, data, reply, flags);
+        }
+        final int start = data.dataPosition();
+        try {
+            data.enforceInterface(DESCRIPTOR);
+        } catch (SecurityException e) {
+            data.setDataPosition(start);
+        }
+        if (data.readInt() == OPLUS_FINGERPRINT_CMD_TOUCH_DOWN) {
+            handleResponse(AcquisitionClient.class, (c) -> c.onAcquired(
+                    android.hardware.biometrics.BiometricFingerprintConstants
+                            .FINGERPRINT_ACQUIRED_START, 0 /* vendorCode */));
+        }
+        if (reply != null && (flags & FLAG_ONEWAY) == 0) {
+            reply.writeNoException();
+        }
+        return true;
+    }
+
     /**
      * Handles acquired messages sent by the HAL (specifically for HIDL HAL).
      */
