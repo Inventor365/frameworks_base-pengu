@@ -308,14 +308,16 @@ public class UdfpsAnimation extends ImageView {
 
     private void startPlayback() {
         final Style style = mStyle;
-        if (style == null || mDecodeHandler == null) {
+        // Kept here: removeAnimation() clears the field while a step may still be decoding.
+        final Handler handler = mDecodeHandler;
+        if (style == null || handler == null) {
             return;
         }
         final int generation = ++mGeneration;
         mStartTime = SystemClock.uptimeMillis();
         setImageBitmap(mFirstFrame);
         final int shownFrame = mFirstFrame != null ? 0 : -1;
-        mDecodeHandler.post(() -> step(style, generation, shownFrame));
+        handler.post(() -> step(handler, style, generation, shownFrame));
     }
 
     /** Stops the frames and lets the decode buffers go; only the first frame stays decoded. */
@@ -328,7 +330,7 @@ public class UdfpsAnimation extends ImageView {
     }
 
     /** Decodes the frame due now and schedules the next one. Runs on the decode thread. */
-    private void step(Style style, int generation, int shownFrame) {
+    private void step(Handler handler, Style style, int generation, int shownFrame) {
         if (generation != mGeneration) {
             return;
         }
@@ -336,7 +338,7 @@ public class UdfpsAnimation extends ImageView {
         final int frame = style.frameAt(elapsed);
         if (frame != shownFrame) {
             final Bitmap bitmap = style.decode(frame, mBuffers[mNextBuffer]);
-            if (bitmap == null) {
+            if (bitmap == null || generation != mGeneration) {
                 return;
             }
             mBuffers[mNextBuffer] = bitmap;
@@ -349,7 +351,7 @@ public class UdfpsAnimation extends ImageView {
         }
         final long next = style.nextFrameTime(elapsed);
         if (next >= 0) {
-            mDecodeHandler.postAtTime(() -> step(style, generation, frame), mStartTime + next);
+            handler.postAtTime(() -> step(handler, style, generation, frame), mStartTime + next);
         }
     }
 
