@@ -184,6 +184,7 @@ public class BiometricUnlockController extends KeyguardUpdateMonitorCallback imp
     private final NotificationShadeWindowController mNotificationShadeWindowController;
     private final SessionTracker mSessionTracker;
     private final int mConsecutiveFpFailureThreshold;
+    private final boolean mWakeOnAodFingerprintFailure;
     private int mMode;
     private BiometricSourceType mBiometricType;
     private KeyguardViewController mKeyguardViewController;
@@ -342,6 +343,8 @@ public class BiometricUnlockController extends KeyguardUpdateMonitorCallback imp
         mHandler = handler;
         mConsecutiveFpFailureThreshold = resources.getInteger(
                 R.integer.fp_consecutive_failure_time_ms);
+        mWakeOnAodFingerprintFailure = resources.getBoolean(
+                R.bool.config_wakeOnAodFingerprintFailure);
         mKeyguardBypassController = keyguardBypassController;
         mKeyguardBypassController.setUnlockController(this);
         mMetricsLogger = metricsLogger;
@@ -902,7 +905,9 @@ public class BiometricUnlockController extends KeyguardUpdateMonitorCallback imp
         }
 
         final boolean screenOff = !mUpdateMonitor.isDeviceInteractive();
+        boolean woke = false;
         if (!mVibratorHelper.hasVibrator() && screenOff) {
+            woke = true;
             mLogger.d("wakeup device on authentication failure (device doesn't have a vibrator)");
             startWakeAndUnlock(
                     MODE_ONLY_WAKE,
@@ -919,6 +924,7 @@ public class BiometricUnlockController extends KeyguardUpdateMonitorCallback imp
             mLastFpFailureUptimeMillis = currUptimeMillis;
 
             if (mNumConsecutiveFpFailures >= UDFPS_ATTEMPTS_BEFORE_SHOW_BOUNCER) {
+                woke = true;
                 mLogger.logUdfpsAttemptThresholdMet(mNumConsecutiveFpFailures);
                 startWakeAndUnlock(
                         MODE_SHOW_BOUNCER,
@@ -927,6 +933,17 @@ public class BiometricUnlockController extends KeyguardUpdateMonitorCallback imp
                 UI_EVENT_LOGGER.log(BiometricUiEvent.BIOMETRIC_BOUNCER_SHOWN, getSessionId());
                 mNumConsecutiveFpFailures = 0;
             }
+        }
+
+        // Some panels leave AOD on touch down; don't leave them there after a rejection.
+        if (!woke && mWakeOnAodFingerprintFailure && screenOff
+                && biometricSourceType == BiometricSourceType.FINGERPRINT
+                && mStatusBarStateController.isDozing()) {
+            mLogger.d("wakeup device on fingerprint failure in AOD");
+            startWakeAndUnlock(
+                    MODE_ONLY_WAKE,
+                    BiometricUnlockSource.Companion.fromBiometricSourceType(biometricSourceType)
+            );
         }
 
         cleanup();

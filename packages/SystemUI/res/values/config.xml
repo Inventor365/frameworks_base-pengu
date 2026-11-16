@@ -1257,4 +1257,7 @@
     <!-- Packages to be hidden from the FGS manager. -->
     <string-array name="config_hideFgsManagerPackages" translatable="false">
     </string-array>
+
+    <!-- Whether a fingerprint rejected in AOD wakes the display. -->
+    <bool name="config_wakeOnAodFingerprintFailure">true</bool>
 </resources>
