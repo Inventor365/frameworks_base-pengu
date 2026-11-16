@@ -239,6 +239,8 @@ public class UdfpsController implements DozeReceiver, Dumpable {
     private boolean mScreenOn;
     private Runnable mAodInterruptRunnable;
     private boolean mOnFingerDown;
+    private boolean mUltrasonicDown;
+    private boolean mScreenOffPress;
     private boolean mAttemptedToDismissKeyguard;
     private final Set<Callback> mCallbacks = new HashSet<>();
 
@@ -412,6 +414,13 @@ public class UdfpsController implements DozeReceiver, Dumpable {
                             + "mKeyguardUpdateMonitor.isFingerprintDetectionRunning()=true");
                 }
 
+                if (mScreenOffPress) {
+                    for (Callback cb : mCallbacks) {
+                        cb.onFingerUp();
+                    }
+                }
+                mUltrasonicDown = false;
+                mScreenOffPress = false;
                 UdfpsController.this.hideUdfpsOverlay();
             });
         }
@@ -424,14 +433,32 @@ public class UdfpsController implements DozeReceiver, Dumpable {
             if (isUltrasonic()) {
                 if (acquiredInfo == FINGERPRINT_ACQUIRED_START) {
                     mFgExecutor.execute(() -> {
+                        mUltrasonicDown = true;
                         for (Callback cb : mCallbacks) {
                             cb.onFingerDown();
                         }
-                        // The screen-off and AOD presses only reach SystemUI this way.
                         showUdfpsAnimation();
+                    });
+                } else if (acquiredInfo == FINGERPRINT_ACQUIRED_GOOD) {
+                    // Screen-off presses only report the good image, too late to animate.
+                    mFgExecutor.execute(() -> {
+                        if (!mUltrasonicDown && mStatusBarStateController.isDozing()) {
+                            mUltrasonicDown = true;
+                            mScreenOffPress = true;
+                            for (Callback cb : mCallbacks) {
+                                cb.onFingerDown();
+                            }
+                        } else if (!mScreenOffPress) {
+                            mUltrasonicDown = false;
+                            for (Callback cb : mCallbacks) {
+                                cb.onFingerUp();
+                            }
+                        }
                     });
                 } else {
                     mFgExecutor.execute(() -> {
+                        mUltrasonicDown = false;
+                        mScreenOffPress = false;
                         for (Callback cb : mCallbacks) {
                             cb.onFingerUp();
                         }
@@ -1362,6 +1389,11 @@ public class UdfpsController implements DozeReceiver, Dumpable {
 
     public boolean isAnimationEnabled() {
         return mUdfpsAnimation != null && mUdfpsAnimation.isAnimationEnabled();
+    }
+
+    /** Whether the current press came with the screen off or on AOD. */
+    public boolean isScreenOffPress() {
+        return mScreenOffPress;
     }
 
     private void showUdfpsAnimation() {
