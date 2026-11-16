@@ -6,6 +6,7 @@
 package com.android.systemui.statusbar.chips.ui.viewmodel
 
 import com.android.systemui.statusbar.chips.screenrecord.ui.viewmodel.ScreenRecordChipViewModel
+import com.android.systemui.statusbar.chips.sharetoapp.ui.viewmodel.ShareToAppChipViewModel
 import com.android.systemui.statusbar.chips.ui.model.MultipleOngoingActivityChipsModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,9 +34,11 @@ class IslandChipsRefiner @Inject constructor() : OngoingActivityChipsRefiner {
     ): MultipleOngoingActivityChipsModel {
         val claims = IslandChipClaims.claims.value
         if (claims.notificationKeys.isEmpty() && !claims.screenRecord) return input
+        // A screen recording also raises the share-to-app chip.
         val claimed = { key: String ->
             key in claims.notificationKeys ||
-                (claims.screenRecord && key == ScreenRecordChipViewModel.KEY)
+                (claims.screenRecord &&
+                    (key == ScreenRecordChipViewModel.KEY || key == ShareToAppChipViewModel.KEY))
         }
         if ((input.active + input.overflow).none { claimed(it.key) }) return input
         val kept = (input.active + input.overflow).filterNot { claimed(it.key) }
