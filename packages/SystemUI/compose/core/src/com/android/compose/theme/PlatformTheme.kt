@@ -19,6 +19,7 @@
 package com.android.compose.theme
 
 import android.content.Context
+import android.content.res.Configuration
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -43,6 +44,20 @@ import com.android.compose.windowsizeclass.LocalWindowSizeClass
 import com.android.compose.windowsizeclass.calculateWindowSizeClass
 import com.android.internal.R
 
+/** [context] with its resources resolved in the night mode of [dark]. */
+private fun Context.withNightMode(dark: Boolean): Context {
+    val config = resources.configuration
+    val night = (config.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    if (night == dark) return this
+    val themed =
+        Configuration(config).apply {
+            uiMode =
+                (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                    if (dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
+        }
+    return createConfigurationContext(themed)
+}
+
 /** The Material 3 theme that should wrap all Platform Composables. */
 @Composable
 fun PlatformTheme(isDarkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
@@ -58,7 +73,9 @@ fun PlatformTheme(isDarkTheme: Boolean = isSystemInDarkTheme(), content: @Compos
         }
     val androidColorScheme =
         remember(context, isDarkTheme, currentAssetsSeq) {
-            TraceUtils.trace("PlatformTheme.androidColorScheme") { AndroidColorScheme(context) }
+            TraceUtils.trace("PlatformTheme.androidColorScheme") {
+                AndroidColorScheme(context.withNightMode(isDarkTheme))
+            }
         }
 
     // Font overlays change the assets sequence without replacing the context. Re-read the
