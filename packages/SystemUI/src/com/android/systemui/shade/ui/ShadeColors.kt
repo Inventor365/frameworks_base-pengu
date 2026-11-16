@@ -22,14 +22,18 @@ import android.os.UserHandle
 import android.provider.Settings
 import com.android.internal.graphics.ColorUtils
 import com.android.systemui.common.shared.colors.SurfaceEffectColors
+import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.CosFeatures
 import com.android.systemui.qs.shared.style.LiquidGlass
 import com.android.systemui.qs.shared.style.LiquidGlassTune
 import com.android.systemui.res.R
+import kotlin.math.roundToInt
 
 object ShadeColors {
     private val LIQUID_GLASS_DIM get() = LiquidGlassTune.color("dim", 0x52000000)
     private val LIQUID_GLASS_SCRIM get() = LiquidGlassTune.color("scrim", 0x8C000000.toInt())
     private val LIQUID_GLASS_PANEL get() = LiquidGlassTune.color("panel", 0x14000000)
+    private val LIQUID_GLASS_DUAL_TONE get() = LiquidGlassTune.f("dual_tone", 0.12f)
 
     /**
      * Calculate notification shade panel color.
@@ -122,8 +126,20 @@ object ShadeColors {
                 }
             return ColorUtils.compositeColors(tone, panel)
         }
+        if (blurSupported && LiquidGlass.enabled(context).value && glassDualTone(context)) {
+            // Dual tone on glass: a faint tint behind notifications.
+            val alpha = (LIQUID_GLASS_DUAL_TONE.coerceIn(0f, 1f) * 255).roundToInt()
+            val tone =
+                ColorUtils.setAlphaComponent(context.getColor(R.color.notification_scrim_base), alpha)
+            return ColorUtils.compositeColors(tone, panel)
+        }
         return panel
     }
+
+    /** Dual tone for Liquid Glass; the COS shade has its own card glass. */
+    @JvmStatic
+    private fun glassDualTone(context: Context): Boolean =
+        LiquidGlass.dualTone(context).value && !CosFeatures.isOn(context, CosFeature.Shade)
 
     @JvmStatic
     private fun shadePanelStandard(context: Context): Int {
