@@ -427,6 +427,8 @@ public class UdfpsController implements DozeReceiver, Dumpable {
                         for (Callback cb : mCallbacks) {
                             cb.onFingerDown();
                         }
+                        // The screen-off and AOD presses only reach SystemUI this way.
+                        showUdfpsAnimation();
                     });
                 } else {
                     mFgExecutor.execute(() -> {
