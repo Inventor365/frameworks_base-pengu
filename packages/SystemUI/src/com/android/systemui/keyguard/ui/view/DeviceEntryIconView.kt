@@ -20,8 +20,6 @@ import android.companion.virtualdevice.flags.Flags
 import android.content.Context
 import android.graphics.drawable.AnimatedStateListDrawable
 import android.graphics.drawable.AnimatedVectorDrawable
-import android.os.UserHandle
-import android.provider.Settings
 import android.util.AttributeSet
 import android.util.StateSet
 import android.view.Gravity
@@ -37,11 +35,11 @@ import com.airbnb.lottie.LottieDrawable
 import com.android.systemui.Dependency
 import com.android.systemui.biometrics.UdfpsFpIconDrawable
 import com.android.systemui.biometrics.UdfpsIconDrawable
+import com.android.systemui.biometrics.UdfpsIconPack
 import com.android.systemui.common.ui.view.TouchHandlingView
 import com.android.systemui.log.TouchHandlingViewLogger
 import com.android.systemui.res.R
 import com.android.systemui.tuner.TunerService
-import com.android.internal.util.custom.CustomUtils
 
 class DeviceEntryIconView
 @JvmOverloads
@@ -50,7 +48,7 @@ constructor(
     attrs: AttributeSet?,
     defStyleAttrs: Int = 0,
     logger: TouchHandlingViewLogger? = null,
-    tunerService: TunerService,
+    private val tunerService: TunerService,
 ) : FrameLayout(context, attrs, defStyleAttrs), TunerService.Tunable {
 
     val touchHandlingView: TouchHandlingView =
@@ -72,15 +70,13 @@ constructor(
 
     private var animatedIconDrawable: AnimatedStateListDrawable = AnimatedStateListDrawable()
 
-    private final val UDFPS_ICON: String =
-            "system:" + Settings.System.UDFPS_ICON
-
     private val fingerprintDrawable: UdfpsIconDrawable = UdfpsFpIconDrawable(context)
-    private val aodFingerprintDrawable: UdfpsIconDrawable = UdfpsFpIconDrawable(context)
+    // Dimmer on the dozing screen, where the icon can stay lit for hours.
+    private val aodFingerprintDrawable: UdfpsIconDrawable =
+        UdfpsFpIconDrawable(context).apply { setAlphaScale(AOD_ICON_ALPHA) }
 
-    private val packageInstalled = CustomUtils.isPackageInstalled(
-        context, "com.crdroid.udfps.icons"
-    )
+    private val packageInstalled = UdfpsIconPack.isInstalled(context)
+    private var customUdfpsIcon = false
 
     init {
         setupIconStates()
@@ -92,21 +88,33 @@ constructor(
         addBgImageView()
         addIconImageView()
         addTouchHandlingView()
+    }
 
-        tunerService.addTunable(this, UDFPS_ICON)
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // Calls onTuningChanged straight away with the current value.
+        tunerService.addTunable(this, UdfpsIconPack.TUNER_KEY)
+        fingerprintDrawable.setListening(true)
+        aodFingerprintDrawable.setListening(true)
+    }
+
+    override fun onDetachedFromWindow() {
+        tunerService.removeTunable(this)
+        fingerprintDrawable.setListening(false)
+        aodFingerprintDrawable.setListening(false)
+        super.onDetachedFromWindow()
     }
 
     override fun onTuningChanged(key: String?, value: String?) {
-        when (key) {
-            UDFPS_ICON -> {
-                iconView.setImageDrawable(null)
-                animatedIconDrawable = AnimatedStateListDrawable()
-                setupIconStates()
-                setupIconTransitions()
-                iconView.setImageDrawable(animatedIconDrawable) 
-            }
-            else -> return
-        }
+        if (key != UdfpsIconPack.TUNER_KEY) return
+        val custom = packageInstalled && TunerService.parseIntegerSwitch(value, false)
+        if (custom == customUdfpsIcon) return
+        customUdfpsIcon = custom
+        iconView.setImageDrawable(null)
+        animatedIconDrawable = AnimatedStateListDrawable()
+        setupIconStates()
+        setupIconTransitions()
+        iconView.setImageDrawable(animatedIconDrawable)
     }
 
     private fun setupAccessibilityDelegate() {
@@ -144,10 +152,6 @@ constructor(
      * - Drawable properties can be updated using ImageView properties like imageTintList.
      */
     private fun setupIconStates() {
-        val customUdfpsIcon = packageInstalled && (Settings.System.getIntForUser(
-            mContext.contentResolver, Settings.System.UDFPS_ICON, 0, UserHandle.USER_CURRENT
-        ) != 0)
-
         // Lockscreen States
         // LOCK
         animatedIconDrawable.addState(
@@ -324,10 +328,7 @@ constructor(
 
     /** True when [icon] will be drawn with the custom UDFPS pack icon (not the stock drawable). */
     fun usesCustomUdfpsIcon(icon: IconType): Boolean =
-        icon == IconType.FINGERPRINT && packageInstalled &&
-            Settings.System.getIntForUser(
-                mContext.contentResolver, Settings.System.UDFPS_ICON, 0, UserHandle.USER_CURRENT
-            ) != 0
+        icon == IconType.FINGERPRINT && customUdfpsIcon
 
     fun getIconState(icon: IconType, aod: Boolean): IntArray {
         val lockIconState = IntArray(2)
@@ -350,6 +351,10 @@ constructor(
         UNLOCK(R.string.accessibility_unlock_button),
         FINGERPRINT(R.string.accessibility_fingerprint_label),
         NONE(-1),
+    }
+
+    companion object {
+        private const val AOD_ICON_ALPHA = 0.6f
     }
 
     enum class AccessibilityHintType {

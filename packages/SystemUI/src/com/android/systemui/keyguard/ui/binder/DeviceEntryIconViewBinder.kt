@@ -31,9 +31,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.android.app.tracing.coroutines.launchTraced as launch
 import com.android.internal.graphics.drawable.BackgroundBlurDrawable
-import com.android.systemui.Dependency
 import com.android.systemui.Flags
 import com.android.systemui.Flags.enableLockscreenBlur
+import com.android.systemui.biometrics.UdfpsIconPack
 import com.android.systemui.common.ui.view.BackgroundBlurAlphaSync
 import com.android.systemui.common.ui.view.TouchHandlingView
 import com.android.systemui.keyguard.ui.view.DeviceEntryIconView
@@ -46,7 +46,6 @@ import com.android.systemui.penguin.CosFeatures
 import com.android.systemui.plugins.FalsingManager
 import com.android.systemui.res.R
 import com.android.systemui.statusbar.VibratorHelper
-import com.android.systemui.tuner.TunerService
 import com.android.systemui.util.kotlin.DisposableHandles
 import com.android.systemui.window.domain.interactor.WindowRootViewBlurInteractor
 import com.google.android.msdl.data.model.MSDLToken
@@ -56,20 +55,9 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.SharingStarted
-import android.content.pm.PackageManager
-import android.provider.Settings
-import android.os.UserHandle
 
 object DeviceEntryIconViewBinder {
     private const val TAG = "DeviceEntryIconViewBinder"
-
-    private final val UDFPS_ICON: String =
-            "system:" + Settings.System.UDFPS_ICON
 
     /**
      * Updates UI for:
@@ -93,30 +81,8 @@ object DeviceEntryIconViewBinder {
         msdlPlayer: MSDLPlayer,
         overrideColor: Color? = null,
     ): DisposableHandle {
-        val packageInstalled = try {
-            view.context.packageManager.getPackageInfo(
-                "com.crdroid.udfps.icons", PackageManager.PackageInfoFlags.of(0))
-            true
-        } catch (e: PackageManager.NameNotFoundException) {
-            false
-        }
-
-        val shouldUseCustomUdfpsIcon: StateFlow<Boolean> = callbackFlow {
-            val callback = object : TunerService.Tunable {
-                override fun onTuningChanged(key: String, newValue: String?) {
-                    if (key == UDFPS_ICON) {
-                        trySend(TunerService.parseIntegerSwitch(newValue, false)).isSuccess
-                    }
-                }
-            }
-            Dependency.get(TunerService::class.java).addTunable(callback, UDFPS_ICON)
-
-            awaitClose { Dependency.get(TunerService::class.java).removeTunable(callback) }
-        }.stateIn(
-            scope = applicationScope,
-            started = SharingStarted.Eagerly,
-            initialValue = false
-        )
+        val packageInstalled = UdfpsIconPack.isInstalled(view.context)
+        val shouldUseCustomUdfpsIcon = UdfpsIconPack.customIconSelected(applicationScope)
 
         val disposables = DisposableHandles()
         val touchHandlingView = view.touchHandlingView
