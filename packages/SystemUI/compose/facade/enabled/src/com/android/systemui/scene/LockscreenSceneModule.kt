@@ -34,6 +34,7 @@ import com.android.systemui.keyguard.ui.viewmodel.LockscreenBehindScrimViewModel
 import com.android.systemui.keyguard.ui.viewmodel.LockscreenContentViewModel
 import com.android.systemui.keyguard.ui.viewmodel.LockscreenFrontScrimViewModel
 import com.android.systemui.scene.ui.composable.Scene
+import com.android.systemui.statusbar.phone.DozeParameters
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -64,6 +65,7 @@ interface LockscreenSceneModule {
             player: Optional<LockscreenPlayer>,
             clockFace: Optional<LockscreenClockFace>,
             expandedStack: LockscreenExpandedStack,
+            dozeParameters: DozeParameters,
         ): LockscreenContent {
             return LockscreenContent(
                 viewModelFactory,
@@ -75,6 +77,7 @@ interface LockscreenSceneModule {
                 player.orElse(null),
                 clockFace.orElse(null),
                 expandedStack,
+                dozeParameters,
             )
         }
     }

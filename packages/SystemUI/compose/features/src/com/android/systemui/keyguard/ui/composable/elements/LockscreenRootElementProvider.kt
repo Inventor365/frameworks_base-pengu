@@ -68,6 +68,7 @@ import com.android.systemui.plugins.keyguard.ui.composable.elements.LockscreenSc
 import com.android.systemui.penguin.rememberLockIconOnTop
 import com.android.systemui.res.R
 import com.android.systemui.shade.ShadeDisplayAware
+import com.android.systemui.statusbar.phone.DozeParameters
 import dagger.Lazy
 import javax.inject.Inject
 import kotlin.math.max
@@ -83,6 +84,7 @@ constructor(
     private val aodBurnInViewModel: AodBurnInViewModel,
     private val keyguardClockViewModel: KeyguardClockViewModel,
     private val deviceEntryIconViewModel: Lazy<DeviceEntryIconViewModel>,
+    private val dozeParameters: DozeParameters,
 ) : LockscreenElementProvider {
     override val elements: List<LockscreenElement> by lazy { listOf(RootElement()) }
 
@@ -95,6 +97,7 @@ constructor(
         override fun LockscreenScope<ElementContentScope>.LockscreenElement() {
             val viewModel =
                 rememberViewModel("LockscreenRoot-viewModel") { viewModelFactory.create() }
+            val udfpsIconOnly by dozeParameters.udfpsIconOnly.collectAsStateWithLifecycle()
             val burnInTracker =
                 trackBurnInParameters(
                     aodBurnInViewModel,
@@ -130,6 +133,7 @@ constructor(
                         viewModel.isUdfpsSupported,
                         lockOnTop = rememberLockIconOnTop(),
                         topPadlock = { TopPadlock(deviceEntryIconViewModel.get()) },
+                        udfpsIconOnly = { udfpsIconOnly },
                     )
                 }
             }
@@ -217,20 +221,23 @@ private fun LockscreenScope<ContentScope>.LockscreenSceneLayout(
     isUdfpsSupported: Boolean,
     lockOnTop: Boolean,
     topPadlock: @Composable () -> Unit,
+    udfpsIconOnly: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     // Without UDFPS the lock icon itself moves to the top; with it, the sensor keeps the
     // fingerprint hint and a padlock is drawn at the top instead.
     val padlock = lockOnTop && isUdfpsSupported
+    // Only the fingerprint icon stays on the dozing screen when AOD itself is off.
+    val aodContent = Modifier.graphicsLayer { alpha = if (udfpsIconOnly()) 0f else 1f }
     Layout(
         content = {
-            LockscreenElement(StatusBar)
-            LockscreenElement(Region.Upper)
+            LockscreenElement(StatusBar, aodContent)
+            LockscreenElement(Region.Upper, aodContent)
             LockscreenElement(LockIcon)
-            LockscreenElement(AmbientIndicationArea)
-            LockscreenElement(Region.Lower)
-            LockscreenElement(SettingsMenu)
-            if (padlock) topPadlock() else Box {}
+            LockscreenElement(AmbientIndicationArea, aodContent)
+            LockscreenElement(Region.Lower, aodContent)
+            LockscreenElement(SettingsMenu, aodContent)
+            Box(aodContent) { if (padlock) topPadlock() }
         },
         // Hide the lock screen elements when an overlay is shown above.
         modifier =

@@ -11832,6 +11832,17 @@ public final class Settings {
         public static final String DOZE_PEEK_DURATION = "doze_peek_duration";
 
         /**
+         * Indicates whether the under-display fingerprint icon should stay on the dark screen
+         * while always-on display is off.
+         * <p>
+         * Type: int (0 for false, 1 for true)
+         *
+         * @hide
+         */
+        @Readable
+        public static final String DOZE_UDFPS_ICON = "doze_udfps_icon";
+
+        /**
          * Indicates whether doze should show on shake gesture.
          * <p>
          * Type: int (0 for false, 1 for true)

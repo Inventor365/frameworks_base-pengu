@@ -68,6 +68,7 @@ public class AmbientDisplayConfiguration {
             Settings.Secure.DOZE_ALWAYS_ON,
             Settings.Secure.DOZE_PEEK,
             Settings.Secure.DOZE_PEEK_DURATION,
+            Settings.Secure.DOZE_UDFPS_ICON,
             Settings.Secure.DOZE_PICK_UP_GESTURE,
             Settings.Secure.DOZE_PULSE_ON_LONG_PRESS,
             Settings.Secure.DOZE_DOUBLE_TAP_GESTURE,
@@ -325,7 +326,21 @@ public class AmbientDisplayConfiguration {
      * @hide
      */
     public boolean screenOffAodEnabled(int user) {
-        return alwaysOnEnabled(user) || screenOffPeekEnabled(user);
+        return alwaysOnEnabled(user) || screenOffPeekEnabled(user)
+                || screenOffUdfpsIconEnabled(user);
+    }
+
+    /**
+     * Returns if the under-display fingerprint icon should stay on the otherwise dark screen
+     * while full AOD is off.
+     *
+     * @hide
+     */
+    public boolean screenOffUdfpsIconEnabled(int user) {
+        return boolSettingDefaultOff(Settings.Secure.DOZE_UDFPS_ICON, user)
+                && ambientDisplayAvailable()
+                && !alwaysOnEnabled(user)
+                && !accessibilityInversionEnabled(user);
     }
 
     /**

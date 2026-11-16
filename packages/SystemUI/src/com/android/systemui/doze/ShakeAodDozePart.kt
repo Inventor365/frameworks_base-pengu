@@ -9,6 +9,7 @@ import android.hardware.display.AmbientDisplayConfiguration
 import com.android.systemui.doze.DozeMachine
 import com.android.systemui.doze.dagger.DozeScope
 import com.android.systemui.settings.UserTracker
+import com.android.systemui.statusbar.phone.DozeParameters
 import java.io.PrintWriter
 import javax.inject.Inject
 
@@ -17,6 +18,7 @@ class ShakeAodDozePart @Inject constructor(
     private val controller: ShakeAodController,
     private val ambientDisplayConfiguration: AmbientDisplayConfiguration,
     private val userTracker: UserTracker,
+    private val dozeParameters: DozeParameters,
 ) : DozeMachine.Part, ShakeAodController.Callback {
 
     private var machine: DozeMachine? = null
@@ -47,7 +49,10 @@ class ShakeAodDozePart @Inject constructor(
         val dozeMachine = machine ?: return
         if (dozeMachine.isExecutingTransition()) return
         val state = dozeMachine.getState() ?: return
-        val baseAlwaysOn = ambientDisplayConfiguration.alwaysOnEnabled(userTracker.userId)
+        // The screen-off fingerprint icon keeps AOD on once the shake window ends.
+        val baseAlwaysOn =
+            ambientDisplayConfiguration.alwaysOnEnabled(userTracker.userId) ||
+                dozeParameters.isUdfpsIconActive
         val allowed = controller.isAodAllowed(baseAlwaysOn)
         when {
             allowed && state == DozeMachine.State.DOZE ->

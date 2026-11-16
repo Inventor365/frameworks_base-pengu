@@ -110,6 +110,11 @@ public class DozeScreenOffPeekController implements DozeMachine.Part {
     }
 
     private void onTimeout() {
+        if (mDozeParameters.isUdfpsIconActive()) {
+            // Stay in AOD and drop down to just the fingerprint icon.
+            mDozeParameters.setScreenOffPeekActive(false);
+            return;
+        }
         mMachine.requestState(DozeMachine.State.DOZE);
     }
 }
