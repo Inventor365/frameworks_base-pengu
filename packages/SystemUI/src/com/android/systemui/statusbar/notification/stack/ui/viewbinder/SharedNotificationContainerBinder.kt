@@ -16,6 +16,7 @@
 
 package com.android.systemui.statusbar.notification.stack.ui.viewbinder
 
+import com.android.systemui.statusbar.phone.DozeParameters
 import android.view.View
 import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.Lifecycle
@@ -52,6 +53,7 @@ class SharedNotificationContainerBinder
 @Inject
 constructor(
     private val controller: NotificationStackScrollLayoutController,
+    private val dozeParameters: DozeParameters,
     private val notificationStackSizeCalculator: NotificationStackSizeCalculator,
     private val notificationScrollViewBinder: NotificationScrollViewBinder,
     private val communalSettingsInteractor: CommunalSettingsInteractor,
@@ -181,9 +183,19 @@ constructor(
                     launch { viewModel.translationX.collect { x -> controller.translationX = x } }
 
                     launch {
-                        viewModel.keyguardAlpha(viewState, this).collect {
-                            controller.setMaxAlphaForKeyguard(it, "SharedNotificationContainerVB")
-                        }
+                        // Only the fingerprint icon shows on the screen-off icon AOD.
+                        combine(
+                                viewModel.keyguardAlpha(viewState, this),
+                                dozeParameters.udfpsIconOnly,
+                            ) { alpha, iconOnly ->
+                                if (iconOnly) 0f else alpha
+                            }
+                            .collect {
+                                controller.setMaxAlphaForKeyguard(
+                                    it,
+                                    "SharedNotificationContainerVB",
+                                )
+                            }
                     }
 
                     if (!SceneContainerFlag.isEnabled) {
