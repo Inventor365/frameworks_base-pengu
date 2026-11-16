@@ -227,7 +227,8 @@ public class AmbientDisplayConfiguration {
 
     /** @hide */
     public boolean screenOffUdfpsEnabled(int user) {
-        if (!mScreenOffUdfpsAvailable) return false;
+        // The screen-off fingerprint icon already covers it.
+        if (!mScreenOffUdfpsAvailable || screenOffUdfpsIconEnabled(user)) return false;
         return boolSetting(SCREEN_OFF_UNLOCK_UDFPS_ENABLED, user,
                 mContext.getResources().getBoolean(R.bool.config_screen_off_udfps_default_on)
                         ? 1 : 0);
