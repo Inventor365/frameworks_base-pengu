@@ -70,7 +70,6 @@ import androidx.compose.ui.unit.toSize
 import com.android.internal.graphics.drawable.BackgroundBlurDrawable
 import com.android.systemui.common.shared.model.Icon
 import com.android.systemui.penguin.CosFeature
-import com.android.systemui.penguin.CosFeatures
 import com.android.systemui.penguin.rememberCosFeature
 import com.android.systemui.res.R
 import kotlin.math.abs
@@ -145,11 +144,10 @@ object LiquidGlass {
 
     /**
      * Whether the shade's header and empty-shade text are white in the light theme too:
-     * iOS and ColorOS both draw them white over their glass, and the COS shade is dark glass.
+     * iOS and ColorOS both draw them white over their glass.
      */
     @JvmStatic
-    fun whiteShadeContent(context: Context): Boolean =
-        isEnabled(context) || CosFeatures.isOn(context, CosFeature.Shade)
+    fun whiteShadeContent(context: Context): Boolean = isEnabled(context)
 
     @JvmStatic
     fun notificationGap(res: Resources, default: Int): Int =

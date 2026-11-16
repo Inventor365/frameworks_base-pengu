@@ -105,8 +105,6 @@ import com.android.systemui.common.ui.compose.windowinsets.LocalScreenCornerRadi
 import com.android.systemui.compose.modifiers.sysuiResTag
 import com.android.systemui.kairos.util.nameTag
 import com.android.systemui.lifecycle.rememberViewModel
-import com.android.systemui.penguin.CosFeature
-import com.android.systemui.penguin.rememberCosFeature
 import com.android.systemui.privacy.AbstractOngoingPrivacyChip
 import com.android.systemui.qs.shared.style.liquidGlassOn
 import com.android.systemui.privacy.OngoingPrivacyChip
@@ -531,13 +529,12 @@ private fun ContentScope.OverlayShadeHeaderContent(
 }
 
 /**
- * Draws [content] with the dark-theme palette in the light theme when the shade is on Liquid Glass
- * or the COS shade, so the clock, date, carrier text and status icons are white over the glass.
+ * Draws [content] with the dark-theme palette in the light theme when the shade is on Liquid Glass.
  */
 @Composable
 private fun GlassShadeColors(content: @Composable () -> Unit) {
     val configuration = LocalConfiguration.current
-    val glass = liquidGlassOn || rememberCosFeature(CosFeature.Shade)
+    val glass = liquidGlassOn
     val night =
         (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
