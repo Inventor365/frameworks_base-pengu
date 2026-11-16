@@ -17,6 +17,7 @@
 
 package com.android.systemui.shade.ui.composable
 
+import android.widget.TextView
 import android.content.res.Configuration
 import android.content.res.Configuration.ORIENTATION_PORTRAIT
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -856,6 +857,7 @@ private fun CarrierTextWithSubscriptionId(
                 textColor.toArgb(),
                 inverseTextColor.toArgb(),
             )
+            view.findViewById<TextView>(R.id.mobile_carrier_text)?.setTextColor(textColor.toArgb())
         },
     )
 }
@@ -1006,6 +1008,7 @@ private fun CarrierTextWithSubscriptionIdKairos(
                 textColor.toArgb(),
                 inverseTextColor.toArgb(),
             )
+            view.findViewById<TextView>(R.id.mobile_carrier_text)?.setTextColor(textColor.toArgb())
         },
     )
 }
