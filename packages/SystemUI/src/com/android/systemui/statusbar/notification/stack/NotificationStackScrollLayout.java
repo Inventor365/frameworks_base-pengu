@@ -5881,10 +5881,29 @@ public class NotificationStackScrollLayout
         }
 
         if (mEmptyShadeView != null) {
-            if (ShowIconInEmptyShade.isEnabled()) {
-                ((EmptyShadeIconView) mEmptyShadeView).setContentColor(onSurface);
+            // Over Liquid Glass or the COS shade the empty shade reads white, as in the dark
+            // theme, rather than dark over the glass.
+            final Configuration config = mContext.getResources().getConfiguration();
+            final boolean night = (config.uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                    == Configuration.UI_MODE_NIGHT_YES;
+            final Context colors;
+            if (!night && LiquidGlass.whiteShadeContent(mContext)) {
+                final Configuration dark = new Configuration(config);
+                dark.uiMode = (dark.uiMode & ~Configuration.UI_MODE_NIGHT_MASK)
+                        | Configuration.UI_MODE_NIGHT_YES;
+                colors = mContext.createConfigurationContext(dark);
             } else {
-                ((EmptyShadeView) mEmptyShadeView).setTextColors(onSurface, onSurfaceVariant);
+                colors = mContext;
+            }
+            final @ColorInt int emptyOnSurface = colors.getColor(
+                    com.android.internal.R.color.materialColorOnSurface);
+            final @ColorInt int emptyOnSurfaceVariant = colors.getColor(
+                    com.android.internal.R.color.materialColorOnSurfaceVariant);
+            if (ShowIconInEmptyShade.isEnabled()) {
+                ((EmptyShadeIconView) mEmptyShadeView).setContentColor(emptyOnSurface);
+            } else {
+                ((EmptyShadeView) mEmptyShadeView).setTextColors(
+                        emptyOnSurface, emptyOnSurfaceVariant);
             }
         }
     }

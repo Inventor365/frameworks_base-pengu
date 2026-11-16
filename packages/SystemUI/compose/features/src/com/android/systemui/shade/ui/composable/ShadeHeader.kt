@@ -91,6 +91,7 @@ import com.android.compose.animation.scene.ValueKey
 import com.android.compose.animation.scene.animateElementFloatAsState
 import com.android.compose.animation.scene.content.state.TransitionState
 import com.android.compose.modifiers.thenIf
+import com.android.compose.theme.PlatformTheme
 import com.android.systemui.Flags.groupedPrivacyChip
 import com.android.systemui.clock.ClockModernization
 import com.android.systemui.clock.ui.composable.Clock as ComposeClock
@@ -103,7 +104,10 @@ import com.android.systemui.common.ui.compose.windowinsets.LocalScreenCornerRadi
 import com.android.systemui.compose.modifiers.sysuiResTag
 import com.android.systemui.kairos.util.nameTag
 import com.android.systemui.lifecycle.rememberViewModel
+import com.android.systemui.penguin.CosFeature
+import com.android.systemui.penguin.rememberCosFeature
 import com.android.systemui.privacy.AbstractOngoingPrivacyChip
+import com.android.systemui.qs.shared.style.liquidGlassOn
 import com.android.systemui.privacy.OngoingPrivacyChip
 import com.android.systemui.privacy.PrivacyItem
 import com.android.systemui.privacy.ui.view.ComposeOngoingPrivacyChip
@@ -190,6 +194,15 @@ fun ContentScope.CollapsedShadeHeader(
     viewModel: ShadeHeaderViewModel,
     isSplitShade: Boolean,
     modifier: Modifier = Modifier,
+) {
+    GlassShadeColors { CollapsedShadeHeaderContent(viewModel, isSplitShade, modifier) }
+}
+
+@Composable
+private fun ContentScope.CollapsedShadeHeaderContent(
+    viewModel: ShadeHeaderViewModel,
+    isSplitShade: Boolean,
+    modifier: Modifier,
 ) {
     val cutoutLocation = LocalDisplayCutout.current().location
     val horizontalPadding =
@@ -295,6 +308,14 @@ fun ContentScope.ExpandedShadeHeader(
     viewModel: ShadeHeaderViewModel,
     modifier: Modifier = Modifier,
 ) {
+    GlassShadeColors { ExpandedShadeHeaderContent(viewModel, modifier) }
+}
+
+@Composable
+private fun ContentScope.ExpandedShadeHeaderContent(
+    viewModel: ShadeHeaderViewModel,
+    modifier: Modifier,
+) {
     val useExpandedFormat by remember { derivedStateOf { shouldUseExpandedFormat(layoutState) } }
 
     val textColor = ShadeHeader.Colors.textColor
@@ -389,6 +410,25 @@ fun ContentScope.OverlayShadeHeader(
     quickSettingsHighlight: ChipHighlightModel,
     showClock: Boolean,
     modifier: Modifier = Modifier,
+) {
+    GlassShadeColors {
+        OverlayShadeHeaderContent(
+            viewModel,
+            notificationsHighlight,
+            quickSettingsHighlight,
+            showClock,
+            modifier,
+        )
+    }
+}
+
+@Composable
+private fun ContentScope.OverlayShadeHeaderContent(
+    viewModel: ShadeHeaderViewModel,
+    notificationsHighlight: ChipHighlightModel,
+    quickSettingsHighlight: ChipHighlightModel,
+    showClock: Boolean,
+    modifier: Modifier,
 ) {
     val horizontalPadding =
         maxOf(
@@ -489,6 +529,34 @@ fun ContentScope.OverlayShadeHeader(
     )
 }
 
+/**
+ * Draws [content] with the dark-theme palette in the light theme when the shade is on Liquid Glass
+ * or the COS shade, so the clock, date, carrier text and status icons are white over the glass.
+ */
+@Composable
+private fun GlassShadeColors(content: @Composable () -> Unit) {
+    val configuration = LocalConfiguration.current
+    val glass = liquidGlassOn || rememberCosFeature(CosFeature.Shade)
+    val night =
+        (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+    if (!glass || night) {
+        content()
+        return
+    }
+    val darkConfiguration =
+        remember(configuration) {
+            Configuration(configuration).apply {
+                uiMode =
+                    (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                        Configuration.UI_MODE_NIGHT_YES
+            }
+        }
+    CompositionLocalProvider(LocalConfiguration provides darkConfiguration) {
+        PlatformTheme(isDarkTheme = true, content = content)
+    }
+}
+
 @Composable
 fun ContentScope.ShadeStatusRow(
     viewModel: ShadeHeaderViewModel,
@@ -548,6 +616,11 @@ private fun ContentScope.ShadeStatusRowContent(
 /** The header that appears at the top of the Quick Settings shade overlay. */
 @Composable
 fun QuickSettingsOverlayHeader(viewModel: ShadeHeaderViewModel, modifier: Modifier = Modifier) {
+    GlassShadeColors { QuickSettingsOverlayHeaderContent(viewModel, modifier) }
+}
+
+@Composable
+private fun QuickSettingsOverlayHeaderContent(viewModel: ShadeHeaderViewModel, modifier: Modifier) {
     Row(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
