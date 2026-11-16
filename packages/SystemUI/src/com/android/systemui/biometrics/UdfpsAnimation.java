@@ -18,65 +18,84 @@ package com.android.systemui.biometrics;
 
 import static android.content.Intent.ACTION_USER_SWITCHED;
 
-import static com.android.systemui.doze.util.BurnInHelperKt.getBurnInOffset;
-import static com.android.systemui.doze.util.BurnInHelperKt.getBurnInProgressOffset;
-
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
+import android.content.res.XmlResourceParser;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
-import android.graphics.drawable.AnimationDrawable;
-import android.graphics.drawable.Drawable;
 import android.hardware.fingerprint.FingerprintSensorPropertiesInternal;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
+import android.os.Process;
+import android.os.SystemClock;
 import android.os.UserHandle;
 import android.provider.Settings;
-import android.util.AttributeSet;
 import android.util.DisplayUtils;
-import android.view.DisplayInfo;
-import android.view.Display;
 import android.util.Log;
-import android.util.MathUtils;
+import android.view.Display;
+import android.view.DisplayInfo;
 import android.view.Gravity;
-import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
-import android.graphics.Rect;
 
 import com.android.systemui.Dependency;
 import com.android.systemui.res.R;
-import com.android.systemui.biometrics.AuthController;
-import com.android.systemui.plugins.statusbar.StatusBarStateController;
 import com.android.systemui.statusbar.policy.KeyguardStateController;
+
+import org.xmlpull.v1.XmlPullParser;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class UdfpsAnimation extends ImageView {
 
     private static final boolean DEBUG = false;
     private static final String LOG_TAG = "UdfpsAnimations";
 
+    private static final String UDFPS_ANIMATIONS_PACKAGE = "com.crdroid.udfps.animations";
+    private static final String ANDROID_NS = "http://schemas.android.com/apk/res/android";
+
+    /** One frame on screen, one being decoded and one the renderer may still be drawing. */
+    private static final int FRAME_BUFFERS = 3;
+
     private boolean mShowing = false;
-    private Context mContext;
-    private int mAnimationSize;
-    private AnimationDrawable recognizingAnim;
+    private final Context mContext;
+    private final int mAnimationSize;
 
     private final WindowManager.LayoutParams mAnimParams = new WindowManager.LayoutParams();
-    private WindowManager mWindowManager;
+    private final WindowManager mWindowManager;
+    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
 
     private boolean mIsKeyguard;
-
-    private final int mMaxBurnInOffsetX;
-    private final int mMaxBurnInOffsetY;
-
-    private static final String UDFPS_ANIMATIONS_PACKAGE = "com.crdroid.udfps.animations";
 
     private final KeyguardStateController mKeyguardStateController;
     private final AuthController mAuthController;
     private final FingerprintSensorPropertiesInternal mProps;
 
     private boolean mAnimationAdded = false;
+
+    private int mStyleIdx = -1;
+    private Style mStyle;
+    private Bitmap mFirstFrame;
+
+    // The packs have up to 60 frames of up to 1080 px each, too much to keep decoded, so frames
+    // are decoded one at a time while the animation plays. Only touched on the decode thread.
+    private HandlerThread mDecodeThread;
+    private Handler mDecodeHandler;
+    private final Bitmap[] mBuffers = new Bitmap[FRAME_BUFFERS];
+    private int mNextBuffer;
+
+    private volatile int mGeneration;
+    private volatile long mStartTime;
 
     private final KeyguardStateController.Callback keyguardStateCallback = new KeyguardStateController.Callback() {
         @Override
@@ -110,13 +129,6 @@ public class UdfpsAnimation extends ImageView {
 
         mKeyguardStateController = Dependency.get(KeyguardStateController.class);
 
-        float scaleFactor = getDisplayFactor();
-
-        mMaxBurnInOffsetX = (int) (context.getResources()
-            .getDimensionPixelSize(R.dimen.udfps_burn_in_offset_x) * scaleFactor);
-        mMaxBurnInOffsetY = (int) (context.getResources()
-            .getDimensionPixelSize(R.dimen.udfps_burn_in_offset_y) * scaleFactor);
-
         mAnimationSize = mContext.getResources().getDimensionPixelSize(R.dimen.udfps_animation_size);
 
         mAnimParams.height = mAnimationSize;
@@ -131,13 +143,18 @@ public class UdfpsAnimation extends ImageView {
 
         updatePosition();
 
-        setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        // The frames fill the window, as they did as its background.
+        setScaleType(ImageView.ScaleType.FIT_CENTER);
     }
 
     private void addAnimation() {
         if (!mAnimationAdded) {
             IntentFilter filter = new IntentFilter(ACTION_USER_SWITCHED);
             mContext.registerReceiverAsUser(mIntentReceiver, UserHandle.ALL, filter, null, null);
+
+            mDecodeThread = new HandlerThread("UdfpsAnimation", Process.THREAD_PRIORITY_DISPLAY);
+            mDecodeThread.start();
+            mDecodeHandler = new Handler(mDecodeThread.getLooper());
 
             updateAnimationStyle();
 
@@ -147,63 +164,62 @@ public class UdfpsAnimation extends ImageView {
     }
 
     private void updateAnimationStyle() {
-        int value = Settings.System.getIntForUser(mContext.getContentResolver(),
-                Settings.System.UDFPS_ANIM_STYLE, 0, UserHandle.USER_CURRENT);
-        mContext.getMainExecutor().execute(() -> {
-            updateAnimationStyle(value);
-        });
+        updateAnimationStyle(Settings.System.getIntForUser(mContext.getContentResolver(),
+                Settings.System.UDFPS_ANIM_STYLE, 0, UserHandle.USER_CURRENT));
     }
-
-    private int mStyleIdx = -1;
 
     private void updateAnimationStyle(int styleIdx) {
         mStyleIdx = styleIdx;
-        setBackground(null);
-        if (recognizingAnim != null) {
-            recognizingAnim.stop();
-            clearAnimation();
-            recognizingAnim = null;
-        }
-        Drawable bgDrawable = getBgDrawable(styleIdx);
-        if (styleIdx != 0 && bgDrawable != null) {
-            setBackground(bgDrawable);
-            recognizingAnim = bgDrawable instanceof AnimationDrawable ? (AnimationDrawable) bgDrawable : null;
+        stopPlayback();
+        mFirstFrame = null;
+        mStyle = styleIdx != 0 ? loadStyle(styleIdx) : null;
+        final Style style = mStyle;
+        if (style != null && mDecodeHandler != null) {
+            // Ready for the finger, so the animation starts the moment it lands.
+            mDecodeHandler.post(() -> {
+                final Bitmap first = style.decode(0, null);
+                mMainHandler.post(() -> {
+                    if (mStyle == style) {
+                        mFirstFrame = first;
+                    }
+                });
+            });
         }
     }
 
-    private Drawable getBgDrawable(int styleIdx) {
-        Resources mApkResources = null;
+    private Style loadStyle(int styleIdx) {
+        final Resources res;
         try {
-            mApkResources = mContext.getPackageManager().getResourcesForApplication(UDFPS_ANIMATIONS_PACKAGE);
+            res = mContext.getPackageManager().getResourcesForApplication(UDFPS_ANIMATIONS_PACKAGE);
         } catch (PackageManager.NameNotFoundException e) {
             Log.e(LOG_TAG, "Failed to load package resources", e);
             return null;
         }
-        String[] mStyleNames = null;
-        if (mApkResources != null) {
-            int res = mApkResources.getIdentifier("udfps_animation_styles",
-                    "array", UDFPS_ANIMATIONS_PACKAGE);
-            if (res == 0) return null;
-            mStyleNames = mApkResources.getStringArray(res);
-        }
-        if (mStyleNames == null || styleIdx >= mStyleNames.length) {
+        final int namesId = res.getIdentifier("udfps_animation_styles", "array",
+                UDFPS_ANIMATIONS_PACKAGE);
+        if (namesId == 0) {
             return null;
         }
-        String drawableName = mStyleNames[styleIdx];
+        final String[] styleNames = res.getStringArray(namesId);
+        if (styleIdx < 0 || styleIdx >= styleNames.length) {
+            return null;
+        }
+        final String drawableName = styleNames[styleIdx];
         if (DEBUG) Log.i(LOG_TAG, "Updating animation style to:" + drawableName);
+        final int resId = res.getIdentifier(drawableName, "drawable", UDFPS_ANIMATIONS_PACKAGE);
+        if (resId == 0) {
+            return null;
+        }
         try {
-            int resId = mApkResources.getIdentifier(drawableName, "drawable", UDFPS_ANIMATIONS_PACKAGE);
-            if (DEBUG) Log.i(LOG_TAG, "Got resource id: "+ resId +" from package");
-            if (resId == 0) return null;
-            return mApkResources.getDrawable(resId);
-        } catch (Resources.NotFoundException e) {
-            Log.w(LOG_TAG, "Drawable resource not found: " + drawableName, e);
+            return Style.load(res, resId, mAnimationSize);
+        } catch (IOException | RuntimeException | org.xmlpull.v1.XmlPullParserException e) {
+            Log.w(LOG_TAG, "Could not load animation " + drawableName, e);
             return null;
         }
     }
 
     public boolean isAnimationEnabled() {
-        return recognizingAnim != null;
+        return mStyle != null;
     }
 
     private float getDisplayFactor() {
@@ -222,7 +238,7 @@ public class UdfpsAnimation extends ImageView {
     public void updatePosition() {
         Point displaySize = new Point();
         mWindowManager.getDefaultDisplay().getRealSize(displaySize);
-        boolean isFullResolution = displaySize.y > 3000; 
+        boolean isFullResolution = displaySize.y > 3000;
         Point udfpsLocation = mAuthController.getUdfpsLocation();
         float scaleFactor = getDisplayFactor();
         float udfpsRadius = isFullResolution ? mAuthController.getUdfpsRadius() : mProps.getLocation().sensorRadius;
@@ -231,13 +247,13 @@ public class UdfpsAnimation extends ImageView {
         mAnimParams.y = (int) (udfpsLocationY * scaleFactor) - (int) (udfpsRadius * scaleFactor)
                         - (mAnimationSize / 2) + animationOffset;
         if (DEBUG) {
-            Log.d(LOG_TAG, "updatePosition: displaySize=" + displaySize + 
-                           ", isFullResolution=" + isFullResolution + 
-                           ", udfpsLocation=" + udfpsLocation + 
-                           ", udfpsRadius=" + udfpsRadius + 
-                           ", scaleFactor=" + scaleFactor + 
-                           ", udfpsLocationY=" + udfpsLocationY + 
-                           ", animationOffset=" + animationOffset + 
+            Log.d(LOG_TAG, "updatePosition: displaySize=" + displaySize +
+                           ", isFullResolution=" + isFullResolution +
+                           ", udfpsLocation=" + udfpsLocation +
+                           ", udfpsRadius=" + udfpsRadius +
+                           ", scaleFactor=" + scaleFactor +
+                           ", udfpsLocationY=" + udfpsLocationY +
+                           ", animationOffset=" + animationOffset +
                            ", mAnimParams.y=" + mAnimParams.y);
         }
     }
@@ -249,7 +265,7 @@ public class UdfpsAnimation extends ImageView {
         if (styleIdx != mStyleIdx) {
             updateAnimationStyle(styleIdx);
         }
-        if (!mIsKeyguard || recognizingAnim == null) {
+        if (!mIsKeyguard || mStyle == null) {
             return;
         }
 
@@ -262,6 +278,7 @@ public class UdfpsAnimation extends ImageView {
         }
 
         try {
+            startPlayback();
             if (!isAttachedToWindow()) {
                 mWindowManager.addView(this, mAnimParams);
             } else {
@@ -269,23 +286,16 @@ public class UdfpsAnimation extends ImageView {
             }
 
             mShowing = true;
-            recognizingAnim.stop();
-            recognizingAnim.selectDrawable(0);
-            recognizingAnim.start();
         } catch (RuntimeException e) {
             mShowing = false;
+            stopPlayback();
             Log.e(LOG_TAG, "Error adding animation window", e);
         }
     }
 
     public void hide() {
+        stopPlayback();
         try {
-            if (recognizingAnim != null) {
-                recognizingAnim.stop();
-                recognizingAnim.selectDrawable(0);
-                clearAnimation();
-            }
-
             if (isAttachedToWindow()) {
                 mWindowManager.removeViewImmediate(this);
             }
@@ -296,13 +306,67 @@ public class UdfpsAnimation extends ImageView {
         mShowing = false;
     }
 
+    private void startPlayback() {
+        final Style style = mStyle;
+        if (style == null || mDecodeHandler == null) {
+            return;
+        }
+        final int generation = ++mGeneration;
+        mStartTime = SystemClock.uptimeMillis();
+        setImageBitmap(mFirstFrame);
+        final int shownFrame = mFirstFrame != null ? 0 : -1;
+        mDecodeHandler.post(() -> step(style, generation, shownFrame));
+    }
+
+    /** Stops the frames and lets the decode buffers go; only the first frame stays decoded. */
+    private void stopPlayback() {
+        mGeneration++;
+        setImageDrawable(null);
+        if (mDecodeHandler != null) {
+            mDecodeHandler.post(() -> Arrays.fill(mBuffers, null));
+        }
+    }
+
+    /** Decodes the frame due now and schedules the next one. Runs on the decode thread. */
+    private void step(Style style, int generation, int shownFrame) {
+        if (generation != mGeneration) {
+            return;
+        }
+        final long elapsed = SystemClock.uptimeMillis() - mStartTime;
+        final int frame = style.frameAt(elapsed);
+        if (frame != shownFrame) {
+            final Bitmap bitmap = style.decode(frame, mBuffers[mNextBuffer]);
+            if (bitmap == null) {
+                return;
+            }
+            mBuffers[mNextBuffer] = bitmap;
+            mNextBuffer = (mNextBuffer + 1) % FRAME_BUFFERS;
+            mMainHandler.post(() -> {
+                if (generation == mGeneration) {
+                    setImageBitmap(bitmap);
+                }
+            });
+        }
+        final long next = style.nextFrameTime(elapsed);
+        if (next >= 0) {
+            mDecodeHandler.postAtTime(() -> step(style, generation, frame), mStartTime + next);
+        }
+    }
+
     public void removeAnimation() {
         hide();
         if (mAnimationAdded) {
             mContext.unregisterReceiver(mIntentReceiver);
             mKeyguardStateController.removeCallback(keyguardStateCallback);
+            mDecodeThread.quitSafely();
+            mDecodeThread = null;
+            mDecodeHandler = null;
             mAnimationAdded = false;
         }
+        mIsKeyguard = false;
+        mStyle = null;
+        mStyleIdx = -1;
+        mFirstFrame = null;
     }
 
     public void setIsKeyguard(boolean isKeyguard) {
@@ -311,6 +375,131 @@ public class UdfpsAnimation extends ImageView {
             addAnimation();
         } else {
             removeAnimation();
+        }
+    }
+
+    public boolean isKeyguard() {
+        return mIsKeyguard;
+    }
+
+    /** The frames and timing of an animation-list, decoded at no more than the window size. */
+    private static final class Style {
+        private final Resources mRes;
+        private final int[] mFrameIds;
+        private final int[] mFrameStarts;
+        private final int mDuration;
+        private final boolean mOneShot;
+        private final int mSourceSize;
+        private final int mTargetSize;
+
+        private Style(Resources res, int[] frameIds, int[] frameStarts, int duration,
+                boolean oneShot, int sourceSize, int targetSize) {
+            mRes = res;
+            mFrameIds = frameIds;
+            mFrameStarts = frameStarts;
+            mDuration = duration;
+            mOneShot = oneShot;
+            mSourceSize = sourceSize;
+            mTargetSize = targetSize;
+        }
+
+        static Style load(Resources res, int resId, int maxSize)
+                throws IOException, org.xmlpull.v1.XmlPullParserException {
+            final ArrayList<Integer> ids = new ArrayList<>();
+            final ArrayList<Integer> durations = new ArrayList<>();
+            boolean oneShot = false;
+            try (XmlResourceParser parser = res.getXml(resId)) {
+                int type;
+                while ((type = parser.next()) != XmlPullParser.END_DOCUMENT) {
+                    if (type != XmlPullParser.START_TAG) {
+                        continue;
+                    }
+                    if ("animation-list".equals(parser.getName())) {
+                        oneShot = parser.getAttributeBooleanValue(ANDROID_NS, "oneshot", false);
+                    } else if ("item".equals(parser.getName())) {
+                        final int id = parser.getAttributeResourceValue(ANDROID_NS, "drawable", 0);
+                        if (id != 0) {
+                            ids.add(id);
+                            durations.add(Math.max(1,
+                                    parser.getAttributeIntValue(ANDROID_NS, "duration", 0)));
+                        }
+                    }
+                }
+            }
+            if (ids.isEmpty()) {
+                return null;
+            }
+            final int[] frameIds = new int[ids.size()];
+            final int[] frameStarts = new int[ids.size()];
+            int time = 0;
+            for (int i = 0; i < frameIds.length; i++) {
+                frameIds[i] = ids.get(i);
+                frameStarts[i] = time;
+                time += durations.get(i);
+            }
+
+            final BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            try (InputStream in = res.openRawResource(frameIds[0])) {
+                BitmapFactory.decodeStream(in, null, bounds);
+            }
+            final int sourceSize = Math.max(bounds.outWidth, bounds.outHeight);
+            if (sourceSize <= 0) {
+                return null;
+            }
+            return new Style(res, frameIds, frameStarts, time, oneShot, sourceSize,
+                    Math.min(sourceSize, maxSize));
+        }
+
+        /** The frame to show {@code elapsed} ms into the animation. */
+        int frameAt(long elapsed) {
+            if (mOneShot && elapsed >= mDuration) {
+                return mFrameIds.length - 1;
+            }
+            final int time = (int) (elapsed % mDuration);
+            final int index = Arrays.binarySearch(mFrameStarts, time);
+            return index >= 0 ? index : -index - 2;
+        }
+
+        /** When the frame after the one at {@code elapsed} is due, or -1 at the end. */
+        long nextFrameTime(long elapsed) {
+            if (mOneShot && elapsed >= mDuration) {
+                return -1;
+            }
+            final int frame = frameAt(elapsed);
+            final long loopStart = elapsed - elapsed % mDuration;
+            return loopStart + (frame + 1 < mFrameStarts.length
+                    ? mFrameStarts[frame + 1] : mDuration);
+        }
+
+        /** Decodes a frame, scaled to the window, reusing {@code reuse} when it can. */
+        Bitmap decode(int frame, Bitmap reuse) {
+            final BitmapFactory.Options options = new BitmapFactory.Options();
+            // Raw streams skip the density scaling the mdpi pack would get as a resource.
+            options.inScaled = mTargetSize != mSourceSize;
+            options.inDensity = mSourceSize;
+            options.inTargetDensity = mTargetSize;
+            options.inMutable = true;
+            options.inBitmap = reuse;
+            try {
+                return decodeFrame(frame, options);
+            } catch (IllegalArgumentException e) {
+                options.inBitmap = null;
+                return decodeFrame(frame, options);
+            }
+        }
+
+        private Bitmap decodeFrame(int frame, BitmapFactory.Options options) {
+            try (InputStream in = mRes.openRawResource(mFrameIds[frame])) {
+                final Bitmap bitmap = BitmapFactory.decodeStream(in, null, options);
+                if (bitmap != null) {
+                    bitmap.setDensity(Bitmap.DENSITY_NONE);
+                }
+                return bitmap;
+            } catch (IOException | Resources.NotFoundException e) {
+                Log.w(LOG_TAG, "Could not decode animation frame " + frame, e);
+                return null;
+            }
         }
     }
 }

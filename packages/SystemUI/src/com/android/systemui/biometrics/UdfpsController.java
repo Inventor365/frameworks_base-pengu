@@ -35,6 +35,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.graphics.Rect;
 import android.hardware.biometrics.BiometricFingerprintConstants;
@@ -313,21 +314,17 @@ public class UdfpsController implements DozeReceiver, Dumpable {
                 public void onViewDetachedFromWindow(@NonNull View v) {}
             };
 
-    private ConfigurationController.ConfigurationListener mConfigurationListener =
+    private final Configuration mLastConfig = new Configuration();
+    private final ConfigurationController.ConfigurationListener mConfigurationListener =
             new ConfigurationController.ConfigurationListener() {
                 @Override
-                public void onThemeChanged() {
-                    updateUdfpsAnimation();
-                }
-
-                @Override
-                public void onUiModeChanged() {
-                    updateUdfpsAnimation();
-                }
-
-                @Override
                 public void onConfigChanged(Configuration newConfig) {
-                    updateUdfpsAnimation();
+                    // Only the window size and position depend on the configuration.
+                    final int changes = mLastConfig.updateFrom(newConfig);
+                    if ((changes & (ActivityInfo.CONFIG_DENSITY | ActivityInfo.CONFIG_ORIENTATION
+                            | ActivityInfo.CONFIG_SCREEN_SIZE)) != 0) {
+                        updateUdfpsAnimation();
+                    }
                 }
             };
 
@@ -903,18 +900,23 @@ public class UdfpsController implements DozeReceiver, Dumpable {
 
         if (CustomUtils.isPackageInstalled(mContext,
                 "com.crdroid.udfps.animations")) {
+            mLastConfig.setTo(mContext.getResources().getConfiguration());
             updateUdfpsAnimation();
             mConfigurationController.addCallback(mConfigurationListener);
         }
     }
 
     private void updateUdfpsAnimation() {
+        boolean isKeyguard = false;
         if (mUdfpsAnimation != null) {
+            isKeyguard = mUdfpsAnimation.isKeyguard();
             mUdfpsAnimation.removeAnimation();
             mUdfpsAnimation = null;
         }
         mUdfpsAnimation = new UdfpsAnimation(mContext, mWindowManager, mSensorProps, mAuthController);
-        mUdfpsAnimation.updatePosition();
+        if (isKeyguard) {
+            mUdfpsAnimation.setIsKeyguard(true);
+        }
     }
 
     private void isSmartPixelsEnabled() {
