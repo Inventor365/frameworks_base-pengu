@@ -412,12 +412,15 @@ private fun TopPadlock(viewModel: DeviceEntryIconViewModel) {
         Icon(
             painter =
                 painterResource(
-                    if (iconType == DeviceEntryIconView.IconType.UNLOCK) R.drawable.ic_unlocked
-                    else R.drawable.ic_lock
+                    if (iconType == DeviceEntryIconView.IconType.UNLOCK) {
+                        R.drawable.ic_lockscreen_padlock_open
+                    } else {
+                        R.drawable.ic_lockscreen_padlock
+                    }
                 ),
             contentDescription = null,
             tint = Color.White,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(width = 18.dp, height = 23.dp),
         )
     }
 }
