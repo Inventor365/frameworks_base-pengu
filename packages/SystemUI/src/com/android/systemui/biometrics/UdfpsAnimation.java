@@ -140,6 +140,11 @@ public class UdfpsAnimation extends ImageView {
                 | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                 | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
         mAnimParams.gravity = Gravity.TOP | Gravity.CENTER;
+        // The position below is in display coordinates; without this the window is laid out
+        // under the status bar and the animation lands that far below the sensor.
+        mAnimParams.setFitInsetsTypes(0);
+        mAnimParams.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
 
         updatePosition();
 
@@ -244,8 +249,9 @@ public class UdfpsAnimation extends ImageView {
         float udfpsRadius = isFullResolution ? mAuthController.getUdfpsRadius() : mProps.getLocation().sensorRadius;
         float udfpsLocationY = isFullResolution && udfpsLocation != null ? udfpsLocation.y : mProps.getLocation().sensorLocationY;
         int animationOffset = (int) (mContext.getResources().getDimensionPixelSize(R.dimen.udfps_animation_offset) * scaleFactor);
-        mAnimParams.y = (int) (udfpsLocationY * scaleFactor) - (int) (udfpsRadius * scaleFactor)
-                        - (mAnimationSize / 2) + animationOffset;
+        // Centre the animation on the sensor.
+        mAnimParams.y = (int) (udfpsLocationY * scaleFactor) - (mAnimationSize / 2)
+                + animationOffset;
         if (DEBUG) {
             Log.d(LOG_TAG, "updatePosition: displaySize=" + displaySize +
                            ", isFullResolution=" + isFullResolution +
