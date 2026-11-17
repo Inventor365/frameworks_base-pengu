@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -44,6 +45,7 @@ import com.android.systemui.qs.panels.shared.model.splitInRowsSequence
 import com.android.systemui.qs.panels.ui.compose.infinitegrid.Tile
 import com.android.systemui.qs.panels.ui.viewmodel.BounceableTileViewModel
 import com.android.systemui.qs.panels.ui.viewmodel.QuickQuickSettingsViewModel
+import com.android.systemui.qs.shared.style.LocalGlassBlurAlpha
 import com.android.systemui.qs.shared.ui.QuickSettings.Elements.toElementKey
 import com.android.systemui.res.R
 
@@ -121,7 +123,14 @@ fun ContentScope.QuickQuickSettings(
                     }
                 }
 
-            Element(it.tile.spec.toElementKey(), Modifier) { tileContent() }
+            // Tile glass is a window blur region and ignores the element's fade, so a QQS tile
+            // faded out over the expanded QS grid would still blur through it.
+            val key = it.tile.spec.toElementKey()
+            val outerGlass = LocalGlassBlurAlpha.current
+            val glass = remember(outerGlass, key) { { outerGlass() * (key.currentAlpha() ?: 1f) } }
+            Element(key, Modifier) {
+                CompositionLocalProvider(LocalGlassBlurAlpha provides glass) { tileContent() }
+            }
         }
     }
 
