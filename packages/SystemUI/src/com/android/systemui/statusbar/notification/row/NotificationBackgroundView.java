@@ -484,13 +484,18 @@ public class NotificationBackgroundView extends View implements Dumpable,
             mCosMaterial = mHeadsUpGlass ? (dark ? 9 : 10) : (dark ? 7 : 8);
         }
         mBackgroundBlurDrawable.setMaterial(mCosMaterial);
+        final float density = getResources().getDisplayMetrics().density;
         mBackgroundBlurDrawable.setBlurRadius(mCosMaterial >= 9
-                ? Math.round(COS_HEADS_UP_BLUR_DP * getResources().getDisplayMetrics().density)
-                : getResources().getDimensionPixelSize(
-                        R.dimen.notification_background_blur_radius));
+                ? Math.round(COS_HEADS_UP_BLUR_DP * density)
+                : mCosMaterial != 0 && LiquidGlass.isEnabled(getContext())
+                        ? Math.round(COS_CARD_BLUR_DP * density)
+                        : getResources().getDimensionPixelSize(
+                                R.dimen.notification_background_blur_radius));
     }
 
     private static final float COS_HEADS_UP_BLUR_DP = 14f;
+    /** With Liquid Glass, a heavier frost than the stock card, as iOS blurs notifications. */
+    private static final float COS_CARD_BLUR_DP = 36f;
     private static final int COS_LIGHT_CARD_MATERIAL = 8;
     private static final int COS_LIGHT_CARD_FROST = 0xA6F2F2F2;
 

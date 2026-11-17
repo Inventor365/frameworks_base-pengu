@@ -24,6 +24,7 @@ import static com.android.systemui.statusbar.notification.TransformState.TRANSFO
 import android.app.Notification;
 import android.content.Context;
 import android.content.res.Configuration;
+import android.graphics.Typeface;
 import android.util.ArraySet;
 import android.view.NotificationHeaderView;
 import android.view.NotificationTopLineView;
@@ -44,6 +45,7 @@ import com.android.internal.widget.NotificationCloseButton;
 import com.android.internal.widget.NotificationExpandButton;
 import com.android.systemui.penguin.CosFeature;
 import com.android.systemui.penguin.CosFeatures;
+import com.android.systemui.qs.shared.style.LiquidGlass;
 import com.android.systemui.res.R;
 import com.android.systemui.statusbar.TransformableView;
 import com.android.systemui.statusbar.ViewTransformationHelper;
@@ -154,6 +156,26 @@ public class NotificationHeaderViewWrapper extends NotificationViewWrapper imple
         mRoundnessChangedListener = listener;
     }
 
+    /**
+     * With Liquid Glass, sets the app name and title in semibold over a regular body, as iOS
+     * does, so they stand out on the glass; a custom font can lose the template's emphasized
+     * weight. Without Liquid Glass the template text is left as it is.
+     */
+    protected void emphasizeForGlass(@Nullable TextView text) {
+        if (text == null || !LiquidGlass.isEnabled(mView.getContext())) return;
+        Typeface typeface = text.getTypeface();
+        if (typeface == null || typeface.getWeight() < GLASS_EMPHASIS_WEIGHT) {
+            text.setTypeface(Typeface.create(typeface, GLASS_EMPHASIS_WEIGHT,
+                    typeface != null && typeface.isItalic()));
+        }
+        // A variable font, such as Urbanist, sets the weight on its axis, between semibold and
+        // bold, which matches how much heavier than the body iOS draws the title.
+        text.setFontVariationSettings(GLASS_EMPHASIS_AXIS);
+    }
+
+    private static final int GLASS_EMPHASIS_WEIGHT = 600;
+    private static final String GLASS_EMPHASIS_AXIS = "'wght' 650";
+
     protected void resolveHeaderViews() {
         mIcon = mView.findViewById(com.android.internal.R.id.icon);
         mHeaderText = mView.findViewById(com.android.internal.R.id.header_text);
@@ -212,6 +234,7 @@ public class NotificationHeaderViewWrapper extends NotificationViewWrapper imple
 
         // Reinspect the notification.
         resolveHeaderViews();
+        emphasizeForGlass(mAppNameText);
         updateTransformedTypes();
         addRemainingTransformTypes();
         updateCropToPaddingForImageViews();
