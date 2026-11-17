@@ -643,6 +643,21 @@ public class SettingsProvider extends ContentProvider {
     }
 
     private String getSpoofedValue(String name) {
+        if (name == null || UserHandle.getAppId(Binder.getCallingUid())
+                < android.os.Process.FIRST_APPLICATION_UID) return null;
+        switch (name) {
+            case "adb_enabled":
+            case "development_settings_enabled":
+            case "adb_wifi_enabled":
+            case "package_verifier_user_consent":
+            case "verify_apps_over_usb":
+            case "accessibility_enabled":
+            case "enabled_accessibility_services":
+            case "accessibility_display_inversion_enabled":
+                break;
+            default:
+                return null;
+        }
         String callingPackage = getCallingPackage();
         if (callingPackage == null) return null;
         if (callingPackage.startsWith("com.android.")
