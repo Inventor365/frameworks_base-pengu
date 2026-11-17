@@ -64,6 +64,7 @@ public class AppControlController {
     private final Map<String, Set<String>> mAppScopeLists = new HashMap<>();
 
     private ContentObserver mConfigObserver;
+    private final Set<String> mVisibilityChanges = new HashSet<>();
 
     public AppControlController(Context context, Set<String> blacklistedPackages) {
         mContext = context;
@@ -78,6 +79,11 @@ public class AppControlController {
         loadConfigFromSettings();
     }
 
+    public void destroy() {
+        mContentResolver.unregisterContentObserver(mConfigObserver);
+        mHandler.removeCallbacksAndMessages(null);
+    }
+
     private void registerSettingsObserver() {
         mConfigObserver = new ContentObserver(mHandler) {
             @Override
@@ -89,7 +95,7 @@ public class AppControlController {
 
         mContentResolver.registerContentObserver(
                 Settings.Secure.getUriFor(SETTING_OBSCURA_CONFIG),
-                false, mConfigObserver, UserHandle.USER_ALL);
+                false, mConfigObserver, mContext.getUserId());
     }
 
     private volatile boolean mHasActiveHidingRules = false;
@@ -99,9 +105,21 @@ public class AppControlController {
     }
 
     private void loadConfigFromSettings() {
-        String jsonStr = Settings.Secure.getString(mContentResolver, SETTING_OBSCURA_CONFIG);
-
         synchronized (this) {
+            String jsonStr = Settings.Secure.getStringForUser(mContentResolver,
+                    SETTING_OBSCURA_CONFIG, mContext.getUserId());
+            final JSONObject parsed;
+            try {
+                if (jsonStr != null && jsonStr.length() > 1024 * 1024) {
+                    throw new JSONException("Obscura configuration is too large");
+                }
+                parsed = TextUtils.isEmpty(jsonStr) ? new JSONObject() : new JSONObject(jsonStr);
+            } catch (JSONException e) {
+                Slog.w(TAG, "Keeping the previous Obscura configuration", e);
+                return;
+            }
+            Set<String> previousHidden = new HashSet<>(mHiddenPackages);
+            previousHidden.addAll(mLauncherHiddenPackages);
             mHiddenPackages.clear();
             mLauncherHiddenPackages.clear();
             mDetachedPackages.clear();
@@ -113,20 +131,24 @@ public class AppControlController {
             mAppScopeLists.clear();
 
             if (!TextUtils.isEmpty(jsonStr)) {
-                try {
-                    JSONObject config = new JSONObject(jsonStr);
-                    loadPackageSet(config, KEY_HIDDEN_PKGS, mHiddenPackages);
-                    loadPackageSet(config, KEY_LAUNCHER_HIDDEN_PKGS, mLauncherHiddenPackages);
-                    loadPackageSet(config, KEY_DETACHED_PKGS, mDetachedPackages);
-                    loadPackageSet(config, KEY_ISOLATED_PKGS, mIsolatedPackages);
-                    loadSpoofSettingsMap(config);
-                    loadPackageSet(config, KEY_DATA_ISOLATION, mDataIsolationPackages);
-                    loadGidRestrictions(config);
-                    loadAppScopeModes(config);
-                    loadAppScopeLists(config);
-                } catch (JSONException e) {
-                    Slog.e(TAG, "Failed to parse config JSON", e);
-                }
+                JSONObject config = parsed;
+                loadPackageSet(config, KEY_HIDDEN_PKGS, mHiddenPackages);
+                loadPackageSet(config, KEY_LAUNCHER_HIDDEN_PKGS, mLauncherHiddenPackages);
+                loadPackageSet(config, KEY_DETACHED_PKGS, mDetachedPackages);
+                loadPackageSet(config, KEY_ISOLATED_PKGS, mIsolatedPackages);
+                loadSpoofSettingsMap(config);
+                loadPackageSet(config, KEY_DATA_ISOLATION, mDataIsolationPackages);
+                loadGidRestrictions(config);
+                loadAppScopeModes(config);
+                loadAppScopeLists(config);
+            }
+            Set<String> nextHidden = new HashSet<>(mHiddenPackages);
+            nextHidden.addAll(mLauncherHiddenPackages);
+            for (String pkg : previousHidden) {
+                if (!nextHidden.contains(pkg)) mVisibilityChanges.add(pkg);
+            }
+            for (String pkg : nextHidden) {
+                if (!previousHidden.contains(pkg)) mVisibilityChanges.add(pkg);
             }
             updateActiveHidingRules();
         }
@@ -159,7 +181,7 @@ public class AppControlController {
                 saveAppScopeLists(config);
                 updateActiveHidingRules();
             }
-            Settings.Secure.putString(mContentResolver, SETTING_OBSCURA_CONFIG, config.toString());
+            Settings.Secure.putStringForUser(mContentResolver, SETTING_OBSCURA_CONFIG, config.toString(), mContext.getUserId());
         } catch (JSONException e) {
             Slog.e(TAG, "Failed to save config JSON", e);
         }
@@ -168,7 +190,8 @@ public class AppControlController {
     private void broadcastPackageChanges() {
         Set<String> allPackages = new HashSet<>();
         synchronized (this) {
-            allPackages.addAll(mHiddenPackages);
+            allPackages.addAll(mVisibilityChanges);
+            mVisibilityChanges.clear();
         }
         for (String packageName : allPackages) {
             int uid = getPackageUid(packageName);
@@ -221,7 +244,7 @@ public class AppControlController {
     }
 
     public void setPackageHidden(String packageName, boolean hidden) {
-        if (TextUtils.isEmpty(packageName)) return;
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) return;
         if (hidden && !isPackageLockable(packageName)) {
             Slog.w(TAG, "Cannot hide package - not lockable: " + packageName);
             return;
@@ -238,7 +261,7 @@ public class AppControlController {
     }
 
     public void setPackageLauncherHidden(String packageName, boolean hidden) {
-        if (TextUtils.isEmpty(packageName)) return;
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) return;
         if (hidden && !isPackageLockable(packageName)) {
             Slog.w(TAG, "Cannot hide from launcher - not lockable: " + packageName);
             return;
@@ -255,7 +278,7 @@ public class AppControlController {
     }
 
     public void setPackageDetached(String packageName, boolean detached) {
-        if (TextUtils.isEmpty(packageName)) return;
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) return;
         synchronized (this) {
             boolean changed = detached ? mDetachedPackages.add(packageName)
                                        : mDetachedPackages.remove(packageName);
@@ -264,7 +287,7 @@ public class AppControlController {
     }
 
     public void setPackageIsolated(String packageName, boolean isolated) {
-        if (TextUtils.isEmpty(packageName)) return;
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) return;
         synchronized (this) {
             boolean changed = isolated ? mIsolatedPackages.add(packageName)
                                         : mIsolatedPackages.remove(packageName);
@@ -302,7 +325,7 @@ public class AppControlController {
         if (mLauncherApps == null) return false;
         try {
             List<LauncherActivityInfo> activities = mLauncherApps.getActivityList(
-                    packageName, UserHandle.of(UserHandle.USER_SYSTEM));
+                    packageName, UserHandle.of(mContext.getUserId()));
             return activities != null && !activities.isEmpty();
         } catch (Exception e) {
             return false;
@@ -314,7 +337,7 @@ public class AppControlController {
         if (mLauncherApps != null) {
             try {
                 List<LauncherActivityInfo> activities = mLauncherApps.getActivityList(
-                        null, UserHandle.of(UserHandle.USER_SYSTEM));
+                        null, UserHandle.of(mContext.getUserId()));
                 Set<String> seen = new HashSet<>();
                 for (LauncherActivityInfo info : activities) {
                     String pkgName = info.getApplicationInfo().packageName;
@@ -365,6 +388,7 @@ public class AppControlController {
         java.util.Iterator<String> keys = gidObj.keys();
         while (keys.hasNext()) {
             String pkg = keys.next();
+            if (mBlacklistedPackages.contains(pkg)) continue;
             JSONArray arr = gidObj.optJSONArray(pkg);
             if (arr != null && arr.length() > 0) {
                 int[] gids = new int[arr.length()];
@@ -389,12 +413,12 @@ public class AppControlController {
     }
 
     public void setRestrictedGids(String packageName, int[] gids) {
-        if (TextUtils.isEmpty(packageName)) return;
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) return;
         synchronized (this) {
             if (gids == null || gids.length == 0) {
                 mGidRestrictions.remove(packageName);
             } else {
-                mGidRestrictions.put(packageName, gids);
+                mGidRestrictions.put(packageName, gids.clone());
             }
             saveConfigToSettings();
         }
@@ -403,7 +427,8 @@ public class AppControlController {
     public int[] getRestrictedGids(String packageName) {
         if (TextUtils.isEmpty(packageName)) return null;
         synchronized (this) {
-            return mGidRestrictions.get(packageName);
+            int[] gids = mGidRestrictions.get(packageName);
+            return gids == null ? null : gids.clone();
         }
     }
 
@@ -411,12 +436,17 @@ public class AppControlController {
         if (TextUtils.isEmpty(packageName) || TextUtils.isEmpty(settingKey)) return false;
         synchronized (this) {
             Set<String> settings = mSpoofSettingsMap.get(packageName);
-            return settings != null && settings.contains(settingKey);
+            return settings != null && (settings.contains(settingKey)
+                    || ("enabled_accessibility_services".equals(settingKey)
+                            && settings.contains("accessibility_enabled")));
         }
     }
 
     public void setSpoofSettingEnabled(String packageName, String settingKey, boolean enabled) {
         if (TextUtils.isEmpty(packageName) || TextUtils.isEmpty(settingKey)) return;
+        if (!SettingsSpoofController.isSupported(settingKey)) {
+            throw new IllegalArgumentException("Unsupported setting");
+        }
         synchronized (this) {
             Set<String> settings = mSpoofSettingsMap.get(packageName);
             boolean changed;
@@ -452,12 +482,13 @@ public class AppControlController {
         java.util.Iterator<String> keys = mapObj.keys();
         while (keys.hasNext()) {
             String pkg = keys.next();
+            if (mBlacklistedPackages.contains(pkg)) continue;
             JSONArray arr = mapObj.optJSONArray(pkg);
             if (arr != null && arr.length() > 0) {
                 Set<String> settings = new HashSet<>();
                 for (int i = 0; i < arr.length(); i++) {
                     String s = arr.optString(i);
-                    if (!TextUtils.isEmpty(s)) settings.add(s);
+                    if (SettingsSpoofController.isSupported(s)) settings.add(s);
                 }
                 if (!settings.isEmpty()) {
                     mSpoofSettingsMap.put(pkg, settings);
@@ -482,7 +513,7 @@ public class AppControlController {
     }
 
     public void setDataIsolationEnabled(String packageName, boolean enabled) {
-        if (TextUtils.isEmpty(packageName)) return;
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) return;
         synchronized (this) {
             boolean changed = enabled ? mDataIsolationPackages.add(packageName)
                                       : mDataIsolationPackages.remove(packageName);
@@ -491,7 +522,7 @@ public class AppControlController {
     }
 
     public void launchHiddenApp(String packageName) {
-        if (TextUtils.isEmpty(packageName)) return;
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) return;
         boolean wasHidden = isPackageHidden(packageName);
         boolean wasLauncherHidden = isPackageLauncherHidden(packageName);
 
@@ -510,7 +541,7 @@ public class AppControlController {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                         | Intent.FLAG_ACTIVITY_CLEAR_TOP
                         | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-                mContext.startActivityAsUser(intent, UserHandle.CURRENT);
+                mContext.startActivityAsUser(intent, UserHandle.of(mContext.getUserId()));
             }
         } catch (Exception e) {
             Slog.e(TAG, "Failed to launch hidden app: " + packageName, e);
@@ -531,8 +562,10 @@ public class AppControlController {
         java.util.Iterator<String> keys = obj.keys();
         while (keys.hasNext()) {
             String pkg = keys.next();
+            if (mBlacklistedPackages.contains(pkg)) continue;
             int mode = obj.optInt(pkg, android.app.ObscuraManager.SCOPE_MODE_DISABLED);
-            if (mode != android.app.ObscuraManager.SCOPE_MODE_DISABLED) {
+            if (mode == android.app.ObscuraManager.SCOPE_MODE_BLACKLIST
+                    || mode == android.app.ObscuraManager.SCOPE_MODE_WHITELIST) {
                 mAppScopeModes.put(pkg, mode);
             }
         }
@@ -554,6 +587,7 @@ public class AppControlController {
         java.util.Iterator<String> keys = obj.keys();
         while (keys.hasNext()) {
             String pkg = keys.next();
+            if (mBlacklistedPackages.contains(pkg)) continue;
             JSONArray arr = obj.optJSONArray(pkg);
             if (arr != null && arr.length() > 0) {
                 Set<String> set = new HashSet<>();
@@ -586,7 +620,11 @@ public class AppControlController {
     }
 
     public void setAppScopeMode(String packageName, int mode) {
-        if (TextUtils.isEmpty(packageName)) return;
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) return;
+        if (mode < android.app.ObscuraManager.SCOPE_MODE_DISABLED
+                || mode > android.app.ObscuraManager.SCOPE_MODE_WHITELIST) {
+            throw new IllegalArgumentException("Unknown app scope mode");
+        }
         synchronized (this) {
             boolean changed;
             if (mode == android.app.ObscuraManager.SCOPE_MODE_DISABLED) {
@@ -609,7 +647,7 @@ public class AppControlController {
     }
 
     public void setAppScopeList(String packageName, List<String> packages) {
-        if (TextUtils.isEmpty(packageName)) return;
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) return;
         synchronized (this) {
             if (packages == null || packages.isEmpty()) {
                 mAppScopeLists.remove(packageName);
@@ -657,7 +695,7 @@ public class AppControlController {
     }
 
     public void cleanupPackage(String packageName) {
-        if (TextUtils.isEmpty(packageName)) return;
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) return;
         synchronized (this) {
             boolean changed = mHiddenPackages.remove(packageName)
                     | mLauncherHiddenPackages.remove(packageName)

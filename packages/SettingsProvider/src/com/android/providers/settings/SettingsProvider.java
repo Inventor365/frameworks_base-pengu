@@ -654,7 +654,8 @@ public class SettingsProvider extends ContentProvider {
             ObscuraManager obscuraManager =
                     getContext().getSystemService(ObscuraManager.class);
             if (obscuraManager != null) {
-                settings = obscuraManager.getSpoofedSetting(callingPackage, name);
+                settings = obscuraManager.getSpoofedSettingForUser(
+                        callingPackage, name, UserHandle.getCallingUserId());
             }
         } catch (Exception e) {}
         return settings;

@@ -2052,7 +2052,7 @@ public final class ProcessList extends ProcessListInternal
                     && (app.getHostingRecord() == null || !app.getHostingRecord().usesAppZygote())) {
                 try {
                     int[] restrictedGids = com.android.server.obscura.ObscuraService.get()
-                            .getRestrictedGids(app.info.packageName);
+                            .getRestrictedGids(app.info.packageName, app.userId);
                     if (restrictedGids != null && restrictedGids.length > 0) {
                         java.util.ArrayList<Integer> filtered = new java.util.ArrayList<>();
                         for (int gid : gids) {
@@ -2671,7 +2671,7 @@ public final class ProcessList extends ProcessListInternal
                 && (app.getHostingRecord() == null || !app.getHostingRecord().usesAppZygote())) {
             try {
                 obscuraIsolation = com.android.server.obscura.ObscuraService.get()
-                        .isDataIsolationEnabled(app.info.packageName);
+                        .isDataIsolationEnabled(app.info.packageName, app.userId);
             } catch (Exception e) {
                 // ignore
             }
@@ -2712,7 +2712,7 @@ public final class ProcessList extends ProcessListInternal
                     && (app.getHostingRecord() == null || !app.getHostingRecord().usesAppZygote())) {
                 try {
                     obscuraDataIsolation = com.android.server.obscura.ObscuraService.get()
-                            .isDataIsolationEnabled(app.info.packageName);
+                            .isDataIsolationEnabled(app.info.packageName, app.userId);
                 } catch (Exception e) {
                     // ignore
                 }

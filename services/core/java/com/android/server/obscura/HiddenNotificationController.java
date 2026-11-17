@@ -24,12 +24,20 @@ public class HiddenNotificationController {
     private final RemoteCallbackList<IHiddenNotificationListener> mListeners = new RemoteCallbackList<>();
     private final Map<String, HiddenNotificationInfo> mHiddenNotifications = new HashMap<>();
     private Function<String, Boolean> mIsPackageHidden;
+    private final Object mBroadcastLock = new Object();
 
     public HiddenNotificationController() {
     }
 
     public void setPackageHiddenChecker(Function<String, Boolean> checker) {
         mIsPackageHidden = checker;
+    }
+
+    public void destroy() {
+        mListeners.kill();
+        synchronized (mHiddenNotifications) {
+            mHiddenNotifications.clear();
+        }
     }
 
     public void registerListener(IHiddenNotificationListener listener) {
@@ -53,15 +61,20 @@ public class HiddenNotificationController {
         synchronized (mHiddenNotifications) {
             mHiddenNotifications.put(info.key, info);
         }
-        int count = mListeners.beginBroadcast();
-        for (int i = 0; i < count; i++) {
+        synchronized (mBroadcastLock) {
+            int count = mListeners.beginBroadcast();
             try {
-                mListeners.getBroadcastItem(i).onHiddenNotificationPosted(info);
-            } catch (RemoteException e) {
-                Slog.w(TAG, "Failed to notify listener", e);
+                for (int i = 0; i < count; i++) {
+                    try {
+                        mListeners.getBroadcastItem(i).onHiddenNotificationPosted(info);
+                    } catch (RemoteException e) {
+                        Slog.w(TAG, "Failed to notify listener", e);
+                    }
+                }
+            } finally {
+                mListeners.finishBroadcast();
             }
         }
-        mListeners.finishBroadcast();
     }
 
     public void onHiddenNotificationRemoved(String key) {
@@ -69,15 +82,20 @@ public class HiddenNotificationController {
         synchronized (mHiddenNotifications) {
             mHiddenNotifications.remove(key);
         }
-        int count = mListeners.beginBroadcast();
-        for (int i = 0; i < count; i++) {
+        synchronized (mBroadcastLock) {
+            int count = mListeners.beginBroadcast();
             try {
-                mListeners.getBroadcastItem(i).onHiddenNotificationRemoved(key);
-            } catch (RemoteException e) {
-                Slog.w(TAG, "Failed to notify listener", e);
+                for (int i = 0; i < count; i++) {
+                    try {
+                        mListeners.getBroadcastItem(i).onHiddenNotificationRemoved(key);
+                    } catch (RemoteException e) {
+                        Slog.w(TAG, "Failed to notify listener", e);
+                    }
+                }
+            } finally {
+                mListeners.finishBroadcast();
             }
         }
-        mListeners.finishBroadcast();
     }
 
     public void clearNotificationsForPackage(String packageName) {

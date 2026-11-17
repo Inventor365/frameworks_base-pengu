@@ -9276,10 +9276,10 @@ public class NotificationManagerService extends SystemService {
                     SmallHash.hash(Objects.hashCode(tag) ^ id));
         }
 
-        if (ObscuraService.get().isPackageHidden(pkg)) {
+        if (ObscuraService.get().isPackageHidden(pkg, userId)) {
             try {
-                String key = pkg + "|" + (tag != null ? tag : "") + "|" + id;
-                ObscuraService.get().onHiddenNotificationRemoved(key);
+                String key = userId + "|" + pkg + "|" + (tag != null ? tag : "") + "|" + id;
+                ObscuraService.get().onHiddenNotificationRemoved(key, userId);
                 return;
             } catch (Exception e) {
                 Slog.w(TAG, "Failed to remove hidden app notification: " + pkg, e);
@@ -9374,10 +9374,10 @@ public class NotificationManagerService extends SystemService {
                 callingUid, incomingUserId, true, false, "enqueueNotification", pkg);
         final UserHandle user = UserHandle.of(userId);
 
-        final boolean isHiddenApp = ObscuraService.get().isPackageHidden(pkg);
+        final boolean isHiddenApp = ObscuraService.get().isPackageHidden(pkg, userId);
         if (isHiddenApp) {
             try {
-                String key = pkg + "|" + (tag != null ? tag : "") + "|" + id;
+                String key = userId + "|" + pkg + "|" + (tag != null ? tag : "") + "|" + id;
                 Icon appIcon = notification.getSmallIcon();
                 CharSequence title = notification.extras.getCharSequence(Notification.EXTRA_TITLE);
                 CharSequence text = notification.extras.getCharSequence(Notification.EXTRA_TEXT);

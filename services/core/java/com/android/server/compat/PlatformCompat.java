@@ -186,7 +186,7 @@ public class PlatformCompat extends IPlatformCompat.Stub {
         CompatChange c = mCompatConfig.getCompatChange(changeId);
 
         if (changeId == 143937733L && appInfo != null) {
-            if (ObscuraService.get().isPackageIsolated(appInfo.packageName)) {
+            if (ObscuraService.get().isPackageIsolated(appInfo.packageName, UserHandle.getUserId(appInfo.uid))) {
                 return true;
             }
         }

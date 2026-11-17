@@ -929,7 +929,8 @@ class ActivityStarter {
                         if (targetPkg != null
                                 && callerPkg != null
                                 && !targetPkg.equals(callerPkg)
-                                && ObscuraService.get().shouldHidePackageFromCaller(callerPkg, targetPkg)) {
+                                && ObscuraService.get().shouldHidePackageFromCaller(callerPkg, targetPkg,
+                                        UserHandle.getUserId(mRequest.callingUid))) {
                             int callerUid = mRequest.callingUid;
                             if (callerUid != android.os.Process.SYSTEM_UID
                                     && callerUid != android.os.Process.ROOT_UID) {

@@ -934,6 +934,10 @@
          @hide
          @SystemApi
     -->
+    <!-- @hide -->
+    <permission android:name="android.permission.MANAGE_OBSCURA"
+        android:protectionLevel="signature" />
+
     <permission-group android:name="android.permission-group.UNDEFINED"
         android:priority="100" />
 

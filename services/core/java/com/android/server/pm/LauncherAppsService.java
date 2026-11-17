@@ -1053,8 +1053,8 @@ public class LauncherAppsService extends SystemService {
                     // should not happen
                     continue;
                 }
-                if (ObscuraService.get().isPackageHidden(packageName) 
-                        || ObscuraService.get().isPackageLauncherHidden(packageName)) {
+                if (ObscuraService.get().isPackageHidden(packageName, user.getIdentifier())
+                        || ObscuraService.get().isPackageLauncherHidden(packageName, user.getIdentifier())) {
                     continue;
                 }
                 final IncrementalStatesInfo incrementalStatesInfo =

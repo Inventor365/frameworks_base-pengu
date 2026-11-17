@@ -16,6 +16,8 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import com.android.internal.os.BackgroundThread;
 import android.os.Binder;
+import android.os.Parcel;
+import android.util.SparseArray;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.os.ServiceManager;
@@ -63,8 +65,53 @@ public class ObscuraService extends IObscuraManager.Stub implements IObscuraServ
     );
 
     private Context mContext;
-    private AppControlController mAppControlController;
-    private HiddenNotificationController mHiddenNotificationController;
+    private final SparseArray<AppControlController> mControllers = new SparseArray<>();
+    private final SparseArray<HiddenNotificationController> mNotifications = new SparseArray<>();
+
+    @Override
+    public boolean onTransact(int code, Parcel data, Parcel reply, int flags)
+            throws RemoteException {
+        if (code >= FIRST_CALL_TRANSACTION && code <= LAST_CALL_TRANSACTION) {
+            mContext.enforceCallingOrSelfPermission("android.permission.MANAGE_OBSCURA",
+                    "Obscura requires MANAGE_OBSCURA");
+        }
+        return super.onTransact(code, data, reply, flags);
+    }
+
+    private AppControlController controller() {
+        return controllerForUser(UserHandle.getCallingUserId());
+    }
+
+    private AppControlController controllerForUser(int userId) {
+        if (mContext == null || userId < 0) return null;
+        synchronized (mControllers) {
+            AppControlController controller = mControllers.get(userId);
+            if (controller == null) {
+                final long token = Binder.clearCallingIdentity();
+                try {
+                    Context userContext = mContext.createContextAsUser(UserHandle.of(userId), 0);
+                    controller = new AppControlController(userContext, BLACKLISTED_PACKAGES);
+                    mControllers.put(userId, controller);
+                    controller.init();
+                } finally {
+                    Binder.restoreCallingIdentity(token);
+                }
+            }
+            return controller;
+        }
+    }
+
+    private HiddenNotificationController notificationsForUser(int userId) {
+        synchronized (mNotifications) {
+            HiddenNotificationController notifications = mNotifications.get(userId);
+            if (notifications == null) {
+                notifications = new HiddenNotificationController();
+                notifications.setPackageHiddenChecker(pkg -> isPackageHidden(pkg, userId));
+                mNotifications.put(userId, notifications);
+            }
+            return notifications;
+        }
+    }
 
     private static final class Holder {
         private static final ObscuraService INSTANCE = new ObscuraService();
@@ -86,17 +133,15 @@ public class ObscuraService extends IObscuraManager.Stub implements IObscuraServ
             if (intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return;
 
             Slog.i(TAG, "Package removed: " + packageName + ", cleaning up");
-            cleanupPackage(packageName);
+            cleanupPackage(packageName, intent.getIntExtra(Intent.EXTRA_USER_HANDLE, UserHandle.USER_NULL));
         }
     };
 
-    private void cleanupPackage(String packageName) {
-        if (mAppControlController != null) {
-            mAppControlController.cleanupPackage(packageName);
-        }
-        if (mHiddenNotificationController != null) {
-            mHiddenNotificationController.clearNotificationsForPackage(packageName);
-        }
+    private void cleanupPackage(String packageName, int userId) {
+        if (userId < 0) return;
+        AppControlController controller = controllerForUser(userId);
+        if (controller != null) controller.cleanupPackage(packageName);
+        notificationsForUser(userId).clearNotificationsForPackage(packageName);
     }
 
     @Override
@@ -104,15 +149,30 @@ public class ObscuraService extends IObscuraManager.Stub implements IObscuraServ
         Slog.d(TAG, "systemReady");
         mContext = NtServiceInjector.get().getContext();
 
-        mAppControlController = new AppControlController(mContext, BLACKLISTED_PACKAGES);
-        mAppControlController.init();
-
-        mHiddenNotificationController = new HiddenNotificationController();
-        mHiddenNotificationController.setPackageHiddenChecker(this::isPackageHidden);
+        controllerForUser(UserHandle.USER_SYSTEM);
 
         IntentFilter filter = new IntentFilter(Intent.ACTION_PACKAGE_FULLY_REMOVED);
         filter.addDataScheme("package");
-        mContext.registerReceiverAsUser(mPackageRemovedReceiver, UserHandle.ALL, filter, null, BackgroundThread.getHandler());
+        mContext.registerReceiverAsUser(mPackageRemovedReceiver, UserHandle.ALL, filter,
+                null, BackgroundThread.getHandler());
+        mContext.registerReceiverAsUser(new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                int userId = intent.getIntExtra(Intent.EXTRA_USER_HANDLE, UserHandle.USER_NULL);
+                if (userId < 0) return;
+                synchronized (mControllers) {
+                    AppControlController controller = mControllers.get(userId);
+                    if (controller != null) controller.destroy();
+                    mControllers.remove(userId);
+                }
+                synchronized (mNotifications) {
+                    HiddenNotificationController notifications = mNotifications.get(userId);
+                    if (notifications != null) notifications.destroy();
+                    mNotifications.remove(userId);
+                }
+            }
+        }, UserHandle.ALL, new IntentFilter(Intent.ACTION_USER_REMOVED), null,
+                BackgroundThread.getHandler());
     }
 
     public static void systemReady() {
@@ -124,153 +184,153 @@ public class ObscuraService extends IObscuraManager.Stub implements IObscuraServ
 
     @Override
     public boolean isPackageHidden(String packageName) {
-        if (mAppControlController == null) return false;
-        return mAppControlController.isPackageHidden(packageName);
+        if (controller() == null) return false;
+        return controller().isPackageHidden(packageName);
     }
 
     @Override
     public void setPackageHidden(String packageName, boolean hidden) {
-        mAppControlController.setPackageHidden(packageName, hidden);
+        controller().setPackageHidden(packageName, hidden);
     }
 
     @Override
     public boolean isPackageLauncherHidden(String packageName) {
-        if (mAppControlController == null) return false;
-        return mAppControlController.isPackageLauncherHidden(packageName);
+        if (controller() == null) return false;
+        return controller().isPackageLauncherHidden(packageName);
     }
 
     @Override
     public void setPackageLauncherHidden(String packageName, boolean hidden) {
-        mAppControlController.setPackageLauncherHidden(packageName, hidden);
+        controller().setPackageLauncherHidden(packageName, hidden);
     }
 
     @Override
     public List<String> getHiddenPackages() {
-        if (mAppControlController == null) return java.util.Collections.emptyList();
-        return mAppControlController.getHiddenPackages();
+        if (controller() == null) return java.util.Collections.emptyList();
+        return controller().getHiddenPackages();
     }
 
     @Override
     public List<String> getLauncherHiddenPackages() {
-        if (mAppControlController == null) return java.util.Collections.emptyList();
-        return mAppControlController.getLauncherHiddenPackages();
+        if (controller() == null) return java.util.Collections.emptyList();
+        return controller().getLauncherHiddenPackages();
     }
 
     @Override
     public boolean isPackageDetached(String packageName) {
-        if (mAppControlController == null) return false;
-        return mAppControlController.isPackageDetached(packageName);
+        if (controller() == null) return false;
+        return controller().isPackageDetached(packageName);
     }
 
     @Override
     public void setPackageDetached(String packageName, boolean detached) {
-        if (mAppControlController != null) {
-            mAppControlController.setPackageDetached(packageName, detached);
+        if (controller() != null) {
+            controller().setPackageDetached(packageName, detached);
         }
     }
 
     @Override
     public List<String> getDetachedPackages() {
-        if (mAppControlController == null) return java.util.Collections.emptyList();
-        return mAppControlController.getDetachedPackages();
+        if (controller() == null) return java.util.Collections.emptyList();
+        return controller().getDetachedPackages();
     }
 
     @Override
     public List<String> getLockablePackages() {
-        if (mAppControlController == null) return java.util.Collections.emptyList();
-        return mAppControlController.getLockablePackages();
+        if (controller() == null) return java.util.Collections.emptyList();
+        return controller().getLockablePackages();
     }
 
     @Override
     public void registerHiddenNotificationListener(IHiddenNotificationListener listener) {
-        mHiddenNotificationController.registerListener(listener);
+        notificationsForUser(UserHandle.getCallingUserId()).registerListener(listener);
     }
 
     @Override
     public void unregisterHiddenNotificationListener(IHiddenNotificationListener listener) {
-        mHiddenNotificationController.unregisterListener(listener);
+        notificationsForUser(UserHandle.getCallingUserId()).unregisterListener(listener);
     }
 
     @Override
     public List<HiddenNotificationInfo> getHiddenNotifications() {
-        return mHiddenNotificationController.getHiddenNotifications();
+        return notificationsForUser(UserHandle.getCallingUserId()).getHiddenNotifications();
     }
 
     @Override
     public void onHiddenNotificationPosted(HiddenNotificationInfo info) {
-        mHiddenNotificationController.onHiddenNotificationPosted(info);
+        if (info != null) notificationsForUser(info.userId).onHiddenNotificationPosted(info);
     }
 
     @Override
     public void onHiddenNotificationRemoved(String key) {
-        mHiddenNotificationController.onHiddenNotificationRemoved(key);
+        notificationsForUser(UserHandle.getCallingUserId()).onHiddenNotificationRemoved(key);
     }
 
     @Override
     public boolean isPackageIsolated(String packageName) {
-        if (mAppControlController == null) return false;
-        return mAppControlController.isPackageIsolated(packageName);
+        if (controller() == null) return false;
+        return controller().isPackageIsolated(packageName);
     }
 
     @Override
     public void isolatePackage(String packageName) {
-        mAppControlController.setPackageIsolated(packageName, true);
+        controller().setPackageIsolated(packageName, true);
     }
 
     @Override
     public void unisolatePackage(String packageName) {
-        mAppControlController.setPackageIsolated(packageName, false);
+        controller().setPackageIsolated(packageName, false);
     }
 
     @Override
     public List<String> getIsolatedPackages() {
-        if (mAppControlController == null) return java.util.Collections.emptyList();
-        return mAppControlController.getIsolatedPackages();
+        if (controller() == null) return java.util.Collections.emptyList();
+        return controller().getIsolatedPackages();
     }
 
     @Override
     public void setRestrictedGids(String packageName, int[] gids) {
-        mAppControlController.setRestrictedGids(packageName, gids);
+        controller().setRestrictedGids(packageName, gids);
     }
 
     @Override
     public int[] getRestrictedGids(String packageName) {
-        if (mAppControlController == null) return null;
-        return mAppControlController.getRestrictedGids(packageName);
+        if (controller() == null) return null;
+        return controller().getRestrictedGids(packageName);
     }
 
     @Override
     public boolean isDataIsolationEnabled(String packageName) {
-        if (mAppControlController == null) return false;
-        return mAppControlController.isDataIsolationEnabled(packageName);
+        if (controller() == null) return false;
+        return controller().isDataIsolationEnabled(packageName);
     }
 
     @Override
     public void setDataIsolationEnabled(String packageName, boolean enabled) {
-        mAppControlController.setDataIsolationEnabled(packageName, enabled);
+        controller().setDataIsolationEnabled(packageName, enabled);
     }
 
     @Override
     public boolean isSpoofSettingEnabled(String packageName, String settingKey) {
-        if (mAppControlController == null) return false;
-        return mAppControlController.isSpoofSettingEnabled(packageName, settingKey);
+        if (controller() == null) return false;
+        return controller().isSpoofSettingEnabled(packageName, settingKey);
     }
 
     @Override
     public void setSpoofSettingEnabled(String packageName, String settingKey, boolean enabled) {
-        mAppControlController.setSpoofSettingEnabled(packageName, settingKey, enabled);
+        controller().setSpoofSettingEnabled(packageName, settingKey, enabled);
     }
 
     @Override
     public List<String> getEnabledSpoofSettings(String packageName) {
-        if (mAppControlController == null) return java.util.Collections.emptyList();
-        return mAppControlController.getEnabledSpoofSettings(packageName);
+        if (controller() == null) return java.util.Collections.emptyList();
+        return controller().getEnabledSpoofSettings(packageName);
     }
 
     @Override
     public String getSpoofedSetting(String callingPackage, String settingName) {
-        if (mAppControlController == null) return null;
-        if (!mAppControlController.isSpoofSettingEnabled(callingPackage, settingName)) {
+        if (controller() == null) return null;
+        if (!controller().isSpoofSettingEnabled(callingPackage, settingName)) {
             return null;
         }
         return SettingsSpoofController.getSpoofedValue(settingName);
@@ -278,40 +338,96 @@ public class ObscuraService extends IObscuraManager.Stub implements IObscuraServ
 
     @Override
     public void launchHiddenApp(String packageName) {
-        if (mAppControlController != null) {
-            mAppControlController.launchHiddenApp(packageName);
+        if (controller() != null) {
+            controller().launchHiddenApp(packageName);
         }
     }
 
     @Override
     public int getAppScopeMode(String packageName) {
-        if (mAppControlController == null) return android.app.ObscuraManager.SCOPE_MODE_DISABLED;
-        return mAppControlController.getAppScopeMode(packageName);
+        if (controller() == null) return android.app.ObscuraManager.SCOPE_MODE_DISABLED;
+        return controller().getAppScopeMode(packageName);
     }
 
     @Override
     public void setAppScopeMode(String packageName, int mode) {
-        if (mAppControlController != null) {
-            mAppControlController.setAppScopeMode(packageName, mode);
+        if (controller() != null) {
+            controller().setAppScopeMode(packageName, mode);
         }
     }
 
     @Override
     public List<String> getAppScopeList(String packageName) {
-        if (mAppControlController == null) return java.util.Collections.emptyList();
-        return mAppControlController.getAppScopeList(packageName);
+        if (controller() == null) return java.util.Collections.emptyList();
+        return controller().getAppScopeList(packageName);
     }
 
     @Override
     public void setAppScopeList(String packageName, List<String> packages) {
-        if (mAppControlController != null) {
-            mAppControlController.setAppScopeList(packageName, packages);
+        if (controller() != null) {
+            controller().setAppScopeList(packageName, packages);
         }
     }
 
     @Override
     public boolean shouldHidePackageFromCaller(String callerPackage, String targetPackage) {
-        if (mAppControlController == null) return false;
-        return mAppControlController.shouldHidePackageFromCaller(callerPackage, targetPackage);
+        if (controller() == null) return false;
+        return controller().shouldHidePackageFromCaller(callerPackage, targetPackage);
+    }
+
+    public boolean isPackageHidden(String packageName, int userId) {
+        AppControlController controller = controllerForUser(userId);
+        return controller == null ? false : controller.isPackageHidden(packageName);
+    }
+
+    public boolean isPackageLauncherHidden(String packageName, int userId) {
+        AppControlController controller = controllerForUser(userId);
+        return controller == null ? false : controller.isPackageLauncherHidden(packageName);
+    }
+
+    public boolean isPackageIsolated(String packageName, int userId) {
+        AppControlController controller = controllerForUser(userId);
+        return controller == null ? false : controller.isPackageIsolated(packageName);
+    }
+
+    public boolean isDataIsolationEnabled(String packageName, int userId) {
+        AppControlController controller = controllerForUser(userId);
+        return controller == null ? false : controller.isDataIsolationEnabled(packageName);
+    }
+
+    public int[] getRestrictedGids(String packageName, int userId) {
+        AppControlController controller = controllerForUser(userId);
+        return controller == null ? null : controller.getRestrictedGids(packageName);
+    }
+
+    public boolean shouldHidePackageFromCaller(String callerPackage, String targetPackage, int userId) {
+        AppControlController controller = controllerForUser(userId);
+        return controller == null ? false : controller.shouldHidePackageFromCaller(callerPackage, targetPackage);
+    }
+
+    public boolean isSpoofSettingEnabled(String packageName, String settingKey, int userId) {
+        AppControlController controller = controllerForUser(userId);
+        return controller == null ? false : controller.isSpoofSettingEnabled(packageName, settingKey);
+    }
+    public void onHiddenNotificationRemoved(String key, int userId) {
+        notificationsForUser(userId).onHiddenNotificationRemoved(key);
+    }
+
+    @Override
+    public String getSpoofedSettingForUser(String packageName, String settingName, int userId) {
+        if (userId != UserHandle.getCallingUserId()
+                && Binder.getCallingUid() != android.os.Process.SYSTEM_UID) {
+            mContext.enforceCallingOrSelfPermission(
+                    android.Manifest.permission.INTERACT_ACROSS_USERS_FULL, "Obscura user");
+        }
+        AppControlController controller = controllerForUser(userId);
+        if (controller == null || !controller.isSpoofSettingEnabled(packageName, settingName)) {
+            return null;
+        }
+        return SettingsSpoofController.getSpoofedValue(settingName);
+    }
+    public boolean isPackageDetached(String packageName, int userId) {
+        AppControlController controller = controllerForUser(userId);
+        return controller != null && controller.isPackageDetached(packageName);
     }
 }

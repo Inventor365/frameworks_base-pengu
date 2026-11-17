@@ -23,6 +23,10 @@ public class SettingsSpoofController {
         SPOOFED_SETTINGS.put("accessibility_display_inversion_enabled", "0");
     }
 
+    public static boolean isSupported(String settingName) {
+        return SPOOFED_SETTINGS.containsKey(settingName);
+    }
+
     public static String getSpoofedValue(String settingName) {
         if (settingName == null) return null;
         return SPOOFED_SETTINGS.get(settingName);

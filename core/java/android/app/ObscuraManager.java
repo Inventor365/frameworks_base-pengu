@@ -326,4 +326,11 @@ public class ObscuraManager {
             throw e.rethrowFromSystemServer();
         }
     }
+    public String getSpoofedSettingForUser(String packageName, String settingName, int userId) {
+        try {
+            return mService.getSpoofedSettingForUser(packageName, settingName, userId);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
 }
