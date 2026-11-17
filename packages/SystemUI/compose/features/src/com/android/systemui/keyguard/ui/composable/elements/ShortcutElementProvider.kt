@@ -31,6 +31,7 @@ import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -175,10 +176,17 @@ constructor(
 
         val (pressed, setPressed) = remember { mutableStateOf(false) }
 
+        val cos = rememberCosFeature(CosFeature.LockscreenGlass)
+        // ColorOS keeps the shortcuts white on the wallpaper whatever the system theme is.
+        val lightGlass = cos && !isSystemInDarkTheme()
+        LiquidGlassTune.generation.value
+
         // Tint of the foreground drawable
         val foregroundTint =
             if (quickAffordanceViewModel.isActivated) {
                 MaterialTheme.colorScheme.onPrimaryFixed
+            } else if (cos) {
+                Color.White
             } else {
                 lerp(
                     MaterialTheme.colorScheme.onSurface,
@@ -206,7 +214,6 @@ constructor(
             )
 
         val alpha by alphaFlow.collectAsStateWithLifecycle(initialValue = 1f)
-        val cos = rememberCosFeature(CosFeature.LockscreenGlass)
 
         val painter =
             painterResource(
@@ -245,7 +252,7 @@ constructor(
                             alpha = if (quickAffordanceViewModel.isDimmed) DIM_ALPHA else alpha,
                             translationX = xAnimation.value.x,
                         )
-                        .drawBlurBehind(quickAffordanceViewModel, alpha, cos)
+                        .drawBlurBehind(quickAffordanceViewModel, alpha, cos, lightGlass)
                         .shortcutBackground(quickAffordanceViewModel, alpha, cos)
                         .clickableShortcut(
                             expandable,
@@ -304,6 +311,7 @@ constructor(
         viewModel: KeyguardQuickAffordanceViewModel,
         alpha: Float,
         cos: Boolean,
+        lightGlass: Boolean,
     ): Modifier {
         if (enableLockscreenBlur()) {
             val viewRootImpl = LocalView.current.viewRootImpl
@@ -317,8 +325,17 @@ constructor(
 
             if (isBlurSupported && !(cos && GlassBackdrop.drawing.value)) {
                 return drawBehind {
+                    LiquidGlassTune.generation.value
                     drawable.apply {
-                        setMaterial(if (cos) 1 else 0)
+                        // The light theme gets ColorOS's light frosted glass, not the dark one.
+                        setMaterial(
+                            when {
+                                lightGlass ->
+                                    LiquidGlassTune.f("ls_shortcut_material", 3f).toInt()
+                                cos -> LiquidGlassTune.f("ls_shortcut_material_dark", 3f).toInt()
+                                else -> 0
+                            }
+                        )
                         setBlurRadius(
                             if (cos) LiquidGlassTune.f("cos_blur", 62.0f).toInt()
                             else blurRadius.roundToPx()
@@ -352,9 +369,19 @@ constructor(
         cos: Boolean,
     ): Modifier {
         if (cos) {
-            return if (viewModel.isActivated) background(CosActiveShortcutColor, CircleShape)
-            else
-                glassBackdropRegion(
+            if (viewModel.isActivated) return background(CosActiveShortcutColor, CircleShape)
+            // ColorOS frosts the shortcuts light in the light theme and dark in the dark theme.
+            LiquidGlassTune.generation.value
+            val dark = isSystemInDarkTheme()
+            val veil =
+                if (dark) LiquidGlassTune.f("ls_shortcut_veil_dark", 0.65f)
+                else LiquidGlassTune.f("ls_shortcut_veil", 0.3f)
+            val veilColor =
+                if (dark) Color(LiquidGlassTune.color("ls_shortcut_veil_dark_color", 0xFF5E6066.toInt()))
+                else Color.White
+            val frosted =
+                if (veil > 0f) background(veilColor.copy(alpha = veil), CircleShape) else this
+            return frosted.glassBackdropRegion(
                     dimensionResource(R.dimen.keyguard_affordance_fixed_height) / 2,
                     if (viewModel.isDimmed) DIM_ALPHA else alpha,
                 )
@@ -550,3 +577,4 @@ constructor(
 private val ExpandedMediaShortcutColor = Color(0xFF2C2C2E).copy(alpha = 0.6f)
 
 private val CosActiveShortcutColor = Color(0xE6FFFFFF)
+
