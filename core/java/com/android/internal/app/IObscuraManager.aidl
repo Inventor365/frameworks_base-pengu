@@ -53,4 +53,10 @@ interface IObscuraManager {
     List<String> getAppScopeList(String packageName);
     void setAppScopeList(String packageName, in List<String> packages);
     boolean shouldHidePackageFromCaller(String callerPackage, String targetPackage);
+
+    void setAppConfig(String packageName, boolean hidden, boolean launcherHidden,
+            boolean detached, boolean isolated, in int[] restrictedGids, boolean dataIsolation,
+            int scopeMode, in List<String> scopePackages, in List<String> spoofSettings);
+    void importConfig(String config);
+    String getConfig();
 }

@@ -110,48 +110,48 @@ public class AppControlController {
                     SETTING_OBSCURA_CONFIG, mContext.getUserId());
             final JSONObject parsed;
             try {
-                if (jsonStr != null && jsonStr.length() > 1024 * 1024) {
-                    throw new JSONException("Obscura configuration is too large");
-                }
-                parsed = TextUtils.isEmpty(jsonStr) ? new JSONObject() : new JSONObject(jsonStr);
+                parsed = parseConfig(jsonStr);
             } catch (JSONException e) {
                 Slog.w(TAG, "Keeping the previous Obscura configuration", e);
                 return;
             }
-            Set<String> previousHidden = new HashSet<>(mHiddenPackages);
-            previousHidden.addAll(mLauncherHiddenPackages);
-            mHiddenPackages.clear();
-            mLauncherHiddenPackages.clear();
-            mDetachedPackages.clear();
-            mIsolatedPackages.clear();
-            mGidRestrictions.clear();
-            mSpoofSettingsMap.clear();
-            mDataIsolationPackages.clear();
-            mAppScopeModes.clear();
-            mAppScopeLists.clear();
-
-            if (!TextUtils.isEmpty(jsonStr)) {
-                JSONObject config = parsed;
-                loadPackageSet(config, KEY_HIDDEN_PKGS, mHiddenPackages);
-                loadPackageSet(config, KEY_LAUNCHER_HIDDEN_PKGS, mLauncherHiddenPackages);
-                loadPackageSet(config, KEY_DETACHED_PKGS, mDetachedPackages);
-                loadPackageSet(config, KEY_ISOLATED_PKGS, mIsolatedPackages);
-                loadSpoofSettingsMap(config);
-                loadPackageSet(config, KEY_DATA_ISOLATION, mDataIsolationPackages);
-                loadGidRestrictions(config);
-                loadAppScopeModes(config);
-                loadAppScopeLists(config);
-            }
-            Set<String> nextHidden = new HashSet<>(mHiddenPackages);
-            nextHidden.addAll(mLauncherHiddenPackages);
-            for (String pkg : previousHidden) {
-                if (!nextHidden.contains(pkg)) mVisibilityChanges.add(pkg);
-            }
-            for (String pkg : nextHidden) {
-                if (!previousHidden.contains(pkg)) mVisibilityChanges.add(pkg);
-            }
-            updateActiveHidingRules();
+            applyConfigLocked(parsed);
         }
+    }
+
+    private void applyConfigLocked(JSONObject config) {
+        Set<String> previousHidden = new HashSet<>(mHiddenPackages);
+        Set<String> previousLauncherHidden = new HashSet<>(mLauncherHiddenPackages);
+        mHiddenPackages.clear();
+        mLauncherHiddenPackages.clear();
+        mDetachedPackages.clear();
+        mIsolatedPackages.clear();
+        mGidRestrictions.clear();
+        mSpoofSettingsMap.clear();
+        mDataIsolationPackages.clear();
+        mAppScopeModes.clear();
+        mAppScopeLists.clear();
+
+        loadPackageSet(config, KEY_HIDDEN_PKGS, mHiddenPackages);
+        loadPackageSet(config, KEY_LAUNCHER_HIDDEN_PKGS, mLauncherHiddenPackages);
+        loadPackageSet(config, KEY_DETACHED_PKGS, mDetachedPackages);
+        loadPackageSet(config, KEY_ISOLATED_PKGS, mIsolatedPackages);
+        loadSpoofSettingsMap(config);
+        loadPackageSet(config, KEY_DATA_ISOLATION, mDataIsolationPackages);
+        loadGidRestrictions(config);
+        loadAppScopeModes(config);
+        loadAppScopeLists(config);
+        Set<String> visibilityPackages = new HashSet<>(previousHidden);
+        visibilityPackages.addAll(previousLauncherHidden);
+        visibilityPackages.addAll(mHiddenPackages);
+        visibilityPackages.addAll(mLauncherHiddenPackages);
+        for (String pkg : visibilityPackages) {
+            if (previousHidden.contains(pkg) != mHiddenPackages.contains(pkg)
+                    || previousLauncherHidden.contains(pkg) != mLauncherHiddenPackages.contains(pkg)) {
+                mVisibilityChanges.add(pkg);
+            }
+        }
+        updateActiveHidingRules();
     }
 
     private void loadPackageSet(JSONObject config, String key, Set<String> target) {
@@ -166,25 +166,200 @@ public class AppControlController {
         }
     }
 
+    private JSONObject configToJsonLocked() throws JSONException {
+        JSONObject config = new JSONObject();
+        config.put(KEY_HIDDEN_PKGS, new JSONArray(mHiddenPackages));
+        config.put(KEY_LAUNCHER_HIDDEN_PKGS, new JSONArray(mLauncherHiddenPackages));
+        config.put(KEY_DETACHED_PKGS, new JSONArray(mDetachedPackages));
+        config.put(KEY_ISOLATED_PKGS, new JSONArray(mIsolatedPackages));
+        saveSpoofSettingsMap(config);
+        config.put(KEY_DATA_ISOLATION, new JSONArray(mDataIsolationPackages));
+        saveGidRestrictions(config);
+        saveAppScopeModes(config);
+        saveAppScopeLists(config);
+        return config;
+    }
+
     private void saveConfigToSettings() {
         try {
-            JSONObject config = new JSONObject();
             synchronized (this) {
-                config.put(KEY_HIDDEN_PKGS, new JSONArray(mHiddenPackages));
-                config.put(KEY_LAUNCHER_HIDDEN_PKGS, new JSONArray(mLauncherHiddenPackages));
-                config.put(KEY_DETACHED_PKGS, new JSONArray(mDetachedPackages));
-                config.put(KEY_ISOLATED_PKGS, new JSONArray(mIsolatedPackages));
-                saveSpoofSettingsMap(config);
-                config.put(KEY_DATA_ISOLATION, new JSONArray(mDataIsolationPackages));
-                saveGidRestrictions(config);
-                saveAppScopeModes(config);
-                saveAppScopeLists(config);
+                JSONObject config = configToJsonLocked();
                 updateActiveHidingRules();
+                Settings.Secure.putStringForUser(mContentResolver, SETTING_OBSCURA_CONFIG,
+                        config.toString(), mContext.getUserId());
             }
-            Settings.Secure.putStringForUser(mContentResolver, SETTING_OBSCURA_CONFIG, config.toString(), mContext.getUserId());
         } catch (JSONException e) {
             Slog.e(TAG, "Failed to save config JSON", e);
         }
+    }
+
+    private static JSONObject parseConfig(String json) throws JSONException {
+        if (json != null && json.length() > 1024 * 1024) {
+            throw new JSONException("Obscura configuration is too large");
+        }
+        JSONObject config = TextUtils.isEmpty(json) ? new JSONObject() : new JSONObject(json);
+        java.util.Iterator<String> keys = config.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            switch (key) {
+                case KEY_HIDDEN_PKGS:
+                case KEY_LAUNCHER_HIDDEN_PKGS:
+                case KEY_DETACHED_PKGS:
+                case KEY_ISOLATED_PKGS:
+                case KEY_DATA_ISOLATION:
+                    validateStringArray(config.getJSONArray(key));
+                    break;
+                case KEY_GID_RESTRICTIONS:
+                case KEY_SPOOF_SETTINGS_MAP:
+                case KEY_APP_SCOPE_MODES:
+                case KEY_APP_SCOPE_LISTS:
+                    JSONObject map = config.getJSONObject(key);
+                    java.util.Iterator<String> packages = map.keys();
+                    while (packages.hasNext()) {
+                        String pkg = packages.next();
+                        if (TextUtils.isEmpty(pkg)) throw new JSONException("Empty package name");
+                        if (KEY_APP_SCOPE_MODES.equals(key)) {
+                            Object mode = map.get(pkg);
+                            if (!(mode instanceof Integer) || (int) mode < 0 || (int) mode > 2) {
+                                throw new JSONException("Invalid scope mode");
+                            }
+                        } else if (KEY_GID_RESTRICTIONS.equals(key)) {
+                            JSONArray gids = map.getJSONArray(pkg);
+                            for (int i = 0; i < gids.length(); i++) {
+                                Object gid = gids.get(i);
+                                if (!(gid instanceof Integer) || (int) gid < 0) {
+                                    throw new JSONException("Invalid group ID");
+                                }
+                            }
+                        } else {
+                            validateStringArray(map.getJSONArray(pkg));
+                        }
+                    }
+                    break;
+                default:
+                    throw new JSONException("Unknown Obscura field: " + key);
+            }
+        }
+        return config;
+    }
+
+    private static void validateStringArray(JSONArray array) throws JSONException {
+        for (int i = 0; i < array.length(); i++) {
+            Object value = array.get(i);
+            if (!(value instanceof String) || TextUtils.isEmpty((String) value)) {
+                throw new JSONException("Expected nonempty strings");
+            }
+        }
+    }
+
+    private void persistConfigLocked(JSONObject config) throws JSONException {
+        String json = config.toString();
+        parseConfig(json);
+        if (!Settings.Secure.putStringForUser(mContentResolver, SETTING_OBSCURA_CONFIG,
+                json, mContext.getUserId())) {
+            throw new IllegalStateException("Unable to save Obscura configuration");
+        }
+        applyConfigLocked(config);
+    }
+
+    public String getConfig() {
+        synchronized (this) {
+            try {
+                return configToJsonLocked().toString();
+            } catch (JSONException e) {
+                throw new IllegalStateException("Unable to read Obscura configuration", e);
+            }
+        }
+    }
+
+    public void importConfig(String json) {
+        if (TextUtils.isEmpty(json)) throw new IllegalArgumentException("Empty backup");
+        try {
+            JSONObject config = parseConfig(json);
+            synchronized (this) {
+                persistConfigLocked(config);
+            }
+        } catch (JSONException e) {
+            throw new IllegalArgumentException("Invalid Obscura backup", e);
+        }
+        broadcastPackageChanges();
+    }
+
+    private static void updatePackageSet(JSONObject config, String key, String pkg,
+            boolean enabled) throws JSONException {
+        JSONArray previous = config.getJSONArray(key);
+        JSONArray next = new JSONArray();
+        for (int i = 0; i < previous.length(); i++) {
+            String value = previous.getString(i);
+            if (!pkg.equals(value)) next.put(value);
+        }
+        if (enabled) next.put(pkg);
+        config.put(key, next);
+    }
+
+    private static void updatePackageMap(JSONObject config, String key, String pkg,
+            Object value) throws JSONException {
+        JSONObject map = config.getJSONObject(key);
+        if (value == null) map.remove(pkg);
+        else map.put(pkg, value);
+    }
+
+    public void setAppConfig(String packageName, boolean hidden, boolean launcherHidden,
+            boolean detached, boolean isolated, int[] restrictedGids, boolean dataIsolation,
+            int scopeMode, List<String> scopePackages, List<String> spoofSettings) {
+        if (TextUtils.isEmpty(packageName) || mBlacklistedPackages.contains(packageName)) {
+            throw new IllegalArgumentException("Protected or empty package name");
+        }
+        if ((hidden || launcherHidden) && !isPackageLockable(packageName)) {
+            throw new IllegalArgumentException("App has no launcher activity");
+        }
+        if (scopeMode < 0 || scopeMode > 2) {
+            throw new IllegalArgumentException("Unknown app scope mode");
+        }
+        Set<String> scope = new HashSet<>();
+        if (scopePackages != null) {
+            for (String pkg : scopePackages) {
+                if (!TextUtils.isEmpty(pkg) && !mBlacklistedPackages.contains(pkg)) scope.add(pkg);
+            }
+        }
+        Set<String> spoofs = new HashSet<>();
+        if (spoofSettings != null) {
+            for (String setting : spoofSettings) {
+                if (!SettingsSpoofController.isSupported(setting)) {
+                    throw new IllegalArgumentException("Unsupported setting");
+                }
+                spoofs.add(setting);
+            }
+        }
+        JSONArray gids = new JSONArray();
+        if (restrictedGids != null) {
+            for (int gid : restrictedGids) {
+                if (gid < 0) throw new IllegalArgumentException("Invalid group ID");
+                if (isolated) gids.put(gid);
+            }
+        }
+        try {
+            synchronized (this) {
+                JSONObject config = configToJsonLocked();
+                updatePackageSet(config, KEY_HIDDEN_PKGS, packageName, hidden);
+                updatePackageSet(config, KEY_LAUNCHER_HIDDEN_PKGS, packageName, launcherHidden);
+                updatePackageSet(config, KEY_DETACHED_PKGS, packageName, detached);
+                updatePackageSet(config, KEY_ISOLATED_PKGS, packageName, isolated);
+                updatePackageSet(config, KEY_DATA_ISOLATION, packageName, isolated && dataIsolation);
+                updatePackageMap(config, KEY_GID_RESTRICTIONS, packageName,
+                        gids.length() == 0 ? null : gids);
+                updatePackageMap(config, KEY_APP_SCOPE_MODES, packageName,
+                        scopeMode == 0 ? null : scopeMode);
+                updatePackageMap(config, KEY_APP_SCOPE_LISTS, packageName,
+                        scope.isEmpty() ? null : new JSONArray(scope));
+                updatePackageMap(config, KEY_SPOOF_SETTINGS_MAP, packageName,
+                        spoofs.isEmpty() ? null : new JSONArray(spoofs));
+                persistConfigLocked(config);
+            }
+        } catch (JSONException e) {
+            throw new IllegalArgumentException("Invalid app configuration", e);
+        }
+        broadcastPackageChanges();
     }
 
     private void broadcastPackageChanges() {

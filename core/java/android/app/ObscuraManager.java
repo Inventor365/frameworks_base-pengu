@@ -326,6 +326,38 @@ public class ObscuraManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+    /** Saves all controls for one app in a single configuration write. */
+    public void setAppConfig(@NonNull String packageName, boolean hidden, boolean launcherHidden,
+            boolean detached, boolean isolated, @Nullable int[] restrictedGids, boolean dataIsolation,
+            int scopeMode, @NonNull List<String> scopePackages, @NonNull List<String> spoofSettings) {
+        try {
+            mService.setAppConfig(packageName, hidden, launcherHidden, detached, isolated,
+                    restrictedGids, dataIsolation, scopeMode, scopePackages, spoofSettings);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /** Returns a consistent snapshot of this user's active configuration. */
+    @NonNull
+    public String getConfig() {
+        try {
+            return mService.getConfig();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /** Validates and replaces this user's configuration before returning. */
+    public void importConfig(@NonNull String config) {
+        try {
+            mService.importConfig(config);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
     public String getSpoofedSettingForUser(String packageName, String settingName, int userId) {
         try {
             return mService.getSpoofedSettingForUser(packageName, settingName, userId);

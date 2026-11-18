@@ -375,6 +375,30 @@ public class ObscuraService extends IObscuraManager.Stub implements IObscuraServ
         return controller().shouldHidePackageFromCaller(callerPackage, targetPackage);
     }
 
+    @Override
+    public void setAppConfig(String packageName, boolean hidden, boolean launcherHidden,
+            boolean detached, boolean isolated, int[] restrictedGids, boolean dataIsolation,
+            int scopeMode, List<String> scopePackages, List<String> spoofSettings) {
+        AppControlController controller = controller();
+        if (controller == null) throw new IllegalStateException("Obscura is not ready");
+        controller.setAppConfig(packageName, hidden, launcherHidden, detached, isolated,
+                restrictedGids, dataIsolation, scopeMode, scopePackages, spoofSettings);
+    }
+
+    @Override
+    public String getConfig() {
+        AppControlController controller = controller();
+        if (controller == null) throw new IllegalStateException("Obscura is not ready");
+        return controller.getConfig();
+    }
+
+    @Override
+    public void importConfig(String config) {
+        AppControlController controller = controller();
+        if (controller == null) throw new IllegalStateException("Obscura is not ready");
+        controller.importConfig(config);
+    }
+
     public boolean isPackageHidden(String packageName, int userId) {
         AppControlController controller = controllerForUser(userId);
         return controller == null ? false : controller.isPackageHidden(packageName);
