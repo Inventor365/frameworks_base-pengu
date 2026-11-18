@@ -462,6 +462,8 @@ public class UdfpsController implements DozeReceiver, Dumpable {
                         for (Callback cb : mCallbacks) {
                             cb.onFingerUp();
                         }
+                        // A tap too short to match ends here with no auth result.
+                        hideUdfpsAnimation();
                     });
                 }
             }
