@@ -80,16 +80,29 @@ constructor(
                 Settings.Secure.DOZE_DOUBLE_TAP_GESTURE ->
                     doubleTapEnabled =
                         ambientDisplayConfiguration.doubleTapGestureEnabled(userTracker.userId)
-                Settings.Secure.DOZE_TAP_SCREEN_GESTURE ->
+                Settings.Secure.DOZE_TAP_SCREEN_GESTURE,
+                com.android.systemui.doze.PenguinDozeTap.ACTION -> {
+                    // Penguin: with "show fingerprint icon" a tap must not wake the screen.
+                    val action =
+                        Settings.Secure.getIntForUser(
+                            context.contentResolver,
+                            com.android.systemui.doze.PenguinDozeTap.ACTION,
+                            com.android.systemui.doze.PenguinDozeTap.AMBIENT,
+                            userTracker.userId,
+                        )
                     singleTapEnabled =
-                        ambientDisplayConfiguration.tapGestureEnabled(userTracker.userId)
+                        ambientDisplayConfiguration.tapGestureEnabled(userTracker.userId) &&
+                            (action == com.android.systemui.doze.PenguinDozeTap.AMBIENT ||
+                                action == com.android.systemui.doze.PenguinDozeTap.WAKE)
+                }
             }
         }
         tunerService.addTunable(
             tunable,
             Settings.Secure.DOUBLE_TAP_TO_WAKE,
             Settings.Secure.DOZE_DOUBLE_TAP_GESTURE,
-            Settings.Secure.DOZE_TAP_SCREEN_GESTURE
+            Settings.Secure.DOZE_TAP_SCREEN_GESTURE,
+            com.android.systemui.doze.PenguinDozeTap.ACTION
         )
 
         dumpManager.registerDumpable(this)

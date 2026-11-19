@@ -117,6 +117,7 @@ public class DozeParameters implements
     private boolean mScreenOffPeekActive;
     private boolean mUdfpsIconActive;
     private boolean mUdfpsIconPulsing;
+    private java.util.function.BooleanSupplier mUdfpsIconTapHandler;
     private final MutableStateFlow<Boolean> mUdfpsIconOnly = StateFlowKt.MutableStateFlow(false);
 
     private boolean mKeyguardVisible;
@@ -363,6 +364,17 @@ public class DozeParameters implements
         mUdfpsIconActive = active;
         updateControlScreenOff();
         dispatchAlwaysOnEvent();
+    }
+
+    /** Penguin: lets the doze icon controller show the fingerprint icon after a screen tap. */
+    public void setUdfpsIconTapHandler(java.util.function.BooleanSupplier handler) {
+        mUdfpsIconTapHandler = handler;
+    }
+
+    /** Shows the screen-off fingerprint icon for a moment; false if it can't be shown. */
+    public boolean showUdfpsIconForTap() {
+        final java.util.function.BooleanSupplier handler = mUdfpsIconTapHandler;
+        return handler != null && handler.getAsBoolean();
     }
 
     public boolean isUdfpsIconActive() {

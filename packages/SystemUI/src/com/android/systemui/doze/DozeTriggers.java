@@ -112,6 +112,7 @@ public class DozeTriggers implements DozeMachine.Part {
     private final AuthController mAuthController;
     private final KeyguardStateController mKeyguardStateController;
     private final UserTracker mUserTracker;
+    private final SecureSettings mSecureSettings;
     private final SelectedUserInteractor mSelectedUserInteractor;
     private final UiEventLogger mUiEventLogger;
     private final VibratorHelper mVibratorHelper;
@@ -222,6 +223,7 @@ public class DozeTriggers implements DozeMachine.Part {
             SelectedUserInteractor selectedUserInteractor,
             VibratorHelper vibratorHelper) {
         mContext = context;
+        mSecureSettings = secureSettings;
         mDozeHost = dozeHost;
         mConfig = config;
         mDozeParameters = dozeParameters;
@@ -349,7 +351,9 @@ public class DozeTriggers implements DozeMachine.Part {
                     mDozeLog.traceSensorEventDropped(pulseReason, "prox reporting near");
                     return;
                 }
-                if (isDoubleTap || isTap) {
+                if (isTap) {
+                    onSingleTap(screenX, screenY);
+                } else if (isDoubleTap) {
                     mDozeHost.onSlpiTap(screenX, screenY);
                     gentleWakeUp(pulseReason);
                 } else if (isPickup) {
@@ -560,7 +564,11 @@ public class DozeTriggers implements DozeMachine.Part {
             case DOZE_PULSING_AUTH_UI:
             case DOZE_PULSING_BRIGHT:
                 mWantProxSensor = true;
-                mWantTouchScreenSensors = false;
+                // Penguin: in ambient tap mode the tap that opens the screen may come from the
+                // tap sensor again if the panel keeps its gesture mode while pulsing.
+                mWantTouchScreenSensors = mConfig.tapGestureEnabled(mUserTracker.getUserId())
+                        && PenguinDozeTap.action(mSecureSettings, mUserTracker.getUserId())
+                                == PenguinDozeTap.AMBIENT;
                 break;
             case DOZE_AOD_DOCKED:
                 mWantProxSensor = false;
@@ -619,6 +627,40 @@ public class DozeTriggers implements DozeMachine.Part {
             mAodInterruptRunnable.run();
             mAodInterruptRunnable = null;
         }
+    }
+
+    private boolean isPulsing() {
+        final DozeMachine.State state = mMachine.getState();
+        return state == State.DOZE_REQUEST_PULSE || state == State.DOZE_PULSING
+                || state == State.DOZE_PULSING_BRIGHT || state == State.DOZE_PULSING_WITHOUT_UI
+                || state == State.DOZE_PULSING_AUTH_UI;
+    }
+
+    /** Penguin: a single tap on the dark screen does what the Laboratory chose. */
+    private void onSingleTap(float screenX, float screenY) {
+        final int action = PenguinDozeTap.action(mSecureSettings, mUserTracker.getUserId());
+        switch (action) {
+            case PenguinDozeTap.NONE:
+                mDozeLog.traceSensorEventDropped(DozeLog.REASON_SENSOR_TAP, "tap action none");
+                return;
+            case PenguinDozeTap.SHOW_ICON:
+                if (!mDozeParameters.showUdfpsIconForTap()) {
+                    mDozeLog.traceSensorEventDropped(DozeLog.REASON_SENSOR_TAP, "no icon to show");
+                }
+                return;
+            case PenguinDozeTap.AMBIENT:
+                if (!isPulsing()) {
+                    // First tap shows the ambient display; a tap on it wakes the screen.
+                    requestPulse(DozeLog.REASON_SENSOR_TAP, true /* alreadyPerformedProxCheck */,
+                            null /* onPulseSuppressedListener */);
+                    return;
+                }
+                break;
+            default:
+                break;
+        }
+        mDozeHost.onSlpiTap(screenX, screenY);
+        gentleWakeUp(DozeLog.REASON_SENSOR_TAP);
     }
 
     private void requestPulse(final int reason, boolean performedProxCheck,

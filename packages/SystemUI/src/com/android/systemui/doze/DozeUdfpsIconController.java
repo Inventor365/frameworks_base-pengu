@@ -7,9 +7,11 @@ package com.android.systemui.doze;
 
 import static android.hardware.biometrics.BiometricSourceType.FINGERPRINT;
 
+import android.app.AlarmManager;
 import android.hardware.biometrics.BiometricSourceType;
 import android.hardware.display.AmbientDisplayConfiguration;
 import android.os.Handler;
+import android.os.SystemClock;
 
 import com.android.keyguard.KeyguardUpdateMonitor;
 import com.android.keyguard.KeyguardUpdateMonitorCallback;
@@ -17,6 +19,7 @@ import com.android.systemui.dagger.qualifiers.Main;
 import com.android.systemui.doze.dagger.DozeScope;
 import com.android.systemui.settings.UserTracker;
 import com.android.systemui.statusbar.phone.DozeParameters;
+import com.android.systemui.util.settings.SecureSettings;
 
 import java.io.PrintWriter;
 
@@ -30,6 +33,9 @@ import javax.inject.Inject;
 public class DozeUdfpsIconController implements DozeMachine.Part {
     /** Fingerprint listening restarts briefly around screen off; don't blink the screen for it. */
     private static final long STOPPED_DEBOUNCE_MS = 1000;
+    /** How long a screen tap shows the icon (Penguin, single tap action "show icon"). */
+    private static final long TAP_SHOW_MS = 8000;
+    private static final String SCHEDULE_ALARM_TAG = "DozeUdfpsIconSchedule";
 
     private final AmbientDisplayConfiguration mConfig;
     private final UserTracker mUserTracker;
@@ -38,6 +44,12 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
     private final KeyguardUpdateMonitor mKeyguardUpdateMonitor;
     private final Handler mHandler;
     private final Runnable mUpdate = this::update;
+    private final SecureSettings mSecureSettings;
+    private final AlarmManager mAlarmManager;
+    private final AlarmManager.OnAlarmListener mScheduleAlarm = this::onScheduleBoundary;
+    private boolean mScheduleAlarmSet;
+    /** Uptime until which a screen tap keeps the icon on. */
+    private long mTapShownUntil;
 
     private DozeMachine mMachine;
     private boolean mRegistered;
@@ -60,13 +72,17 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
             DozeParameters dozeParameters,
             DozeHost dozeHost,
             KeyguardUpdateMonitor keyguardUpdateMonitor,
-            @Main Handler handler) {
+            @Main Handler handler,
+            SecureSettings secureSettings,
+            AlarmManager alarmManager) {
         mConfig = config;
         mUserTracker = userTracker;
         mDozeParameters = dozeParameters;
         mDozeHost = dozeHost;
         mKeyguardUpdateMonitor = keyguardUpdateMonitor;
         mHandler = handler;
+        mSecureSettings = secureSettings;
+        mAlarmManager = alarmManager;
     }
 
     @Override
@@ -80,8 +96,10 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
             case INITIALIZED:
                 if (!mRegistered) {
                     mKeyguardUpdateMonitor.registerCallback(mCallback);
+                    mDozeParameters.setUdfpsIconTapHandler(this::showForTap);
                     mRegistered = true;
                 }
+                updateScheduleAlarm();
                 return;
             case FINISH:
                 stop();
@@ -105,8 +123,11 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
 
     private void stop() {
         mHandler.removeCallbacks(mUpdate);
+        cancelScheduleAlarm();
+        mTapShownUntil = 0;
         if (mRegistered) {
             mKeyguardUpdateMonitor.removeCallback(mCallback);
+            mDozeParameters.setUdfpsIconTapHandler(null);
             mRegistered = false;
         }
         mPulsing = false;
@@ -123,7 +144,67 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
     }
 
     private boolean isIconWanted() {
-        return isIconEnabled() && mKeyguardUpdateMonitor.isUdfpsEnrolled();
+        if (!mKeyguardUpdateMonitor.isUdfpsEnrolled()) return false;
+        return (isIconEnabled() && isInSchedule()) || isTapShown();
+    }
+
+    private int user() {
+        return mUserTracker.getUserId();
+    }
+
+    /** Penguin: outside the chosen hours the icon stays off (unless a tap shows it). */
+    private boolean isInSchedule() {
+        if (!PenguinDozeTap.scheduleEnabled(mSecureSettings, user())) return true;
+        return PenguinDozeTap.inWindow(PenguinDozeTap.minutesNow(System.currentTimeMillis()),
+                PenguinDozeTap.start(mSecureSettings, user()),
+                PenguinDozeTap.end(mSecureSettings, user()));
+    }
+
+    private boolean isTapShown() {
+        return SystemClock.uptimeMillis() < mTapShownUntil;
+    }
+
+    /** Shows the icon for TAP_SHOW_MS after a screen tap. False when there is no icon to show. */
+    private boolean showForTap() {
+        if (mMachine == null || mMachine.isUninitializedOrFinished()
+                || !mKeyguardUpdateMonitor.isUdfpsEnrolled()
+                || mConfig.alwaysOnEnabled(user())) {
+            return false;
+        }
+        mTapShownUntil = SystemClock.uptimeMillis() + TAP_SHOW_MS;
+        mHandler.post(mUpdate);
+        mHandler.postDelayed(mUpdate, TAP_SHOW_MS + 50);
+        return true;
+    }
+
+    /** While dozing, re-check the icon when the schedule window opens or closes. */
+    private void updateScheduleAlarm() {
+        if (!PenguinDozeTap.scheduleEnabled(mSecureSettings, user()) || !isIconEnabled()) {
+            cancelScheduleAlarm();
+            return;
+        }
+        final long next = PenguinDozeTap.nextBoundary(System.currentTimeMillis(),
+                PenguinDozeTap.start(mSecureSettings, user()),
+                PenguinDozeTap.end(mSecureSettings, user()));
+        // Two alarms a day at most; RTC_WAKEUP so the icon switches even while suspended.
+        mAlarmManager.setExact(AlarmManager.RTC_WAKEUP, next, SCHEDULE_ALARM_TAG, mScheduleAlarm,
+                mHandler);
+        mScheduleAlarmSet = true;
+    }
+
+    private void cancelScheduleAlarm() {
+        if (mScheduleAlarmSet) {
+            mAlarmManager.cancel(mScheduleAlarm);
+            mScheduleAlarmSet = false;
+        }
+    }
+
+    private void onScheduleBoundary() {
+        mScheduleAlarmSet = false;
+        update();
+        if (mMachine != null && !mMachine.isUninitializedOrFinished()) {
+            updateScheduleAlarm();
+        }
     }
 
     private void update() {
@@ -137,6 +218,7 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
     public void dump(PrintWriter pw) {
         pw.println("DozeUdfpsIconController:");
         pw.println(" enabled=" + isIconEnabled());
+        pw.println(" inSchedule=" + isInSchedule() + " tapShown=" + isTapShown());
         pw.println(" active=" + mDozeParameters.isUdfpsIconActive());
         pw.println(" pulsing=" + mPulsing);
     }

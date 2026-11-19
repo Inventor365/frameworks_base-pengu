@@ -218,7 +218,10 @@ public class DozeSensors {
                 new TriggerSensor(
                         findSensors(config.tapSensorTypeMapping()),
                         Settings.Secure.DOZE_TAP_SCREEN_GESTURE,
-                        true /* settingDef */,
+                        // Penguin: follow the overlay; a device that gains a tap sensor should
+                        // not start waking on every tap.
+                        resources.getBoolean(
+                                com.android.internal.R.bool.config_dozeTapGestureEnabled),
                         true /* configured */,
                         DozeLog.REASON_SENSOR_TAP,
                         true /* reports touch coordinates */,
