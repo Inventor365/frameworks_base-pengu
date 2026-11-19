@@ -68,4 +68,10 @@
     <string name="charging_speed_slow">Slow</string>
     <string name="charging_speed_fast">Fast</string>
     <string name="charging_speed_super_fast">Super fast</string>
+
+    <!-- Flight recorder: notification after a restart without a shutdown -->
+    <string name="penguin_flightlog_unclean_title">Your phone restarted unexpectedly</string>
+    <string name="penguin_flightlog_unclean_text">Tap to capture a bug report with the logs from before the restart</string>
+    <string name="penguin_flightlog_report_title">Unexpected restart</string>
+    <string name="penguin_flightlog_report_description">Captured after the phone restarted without shutting down. Includes the flight recorder logs from before the restart.</string>
 </resources>

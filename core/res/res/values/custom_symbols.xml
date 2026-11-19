@@ -135,4 +135,10 @@
 
     <!-- Smart Pixels -->
     <java-symbol type="bool" name="config_supportSmartPixels" />
+
+    <!-- Flight recorder -->
+    <java-symbol type="string" name="penguin_flightlog_unclean_title" />
+    <java-symbol type="string" name="penguin_flightlog_unclean_text" />
+    <java-symbol type="string" name="penguin_flightlog_report_title" />
+    <java-symbol type="string" name="penguin_flightlog_report_description" />
 </resources>

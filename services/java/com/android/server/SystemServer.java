@@ -1945,6 +1945,11 @@ public final class SystemServer implements Dumpable {
                 t.traceEnd();
             }
 
+            t.traceBegin("StartFlightRecorderService");
+            mSystemServiceManager.startService(
+                    com.android.server.penguin.FlightRecorderService.class);
+            t.traceEnd();
+
             if (AppFunctionManagerConfiguration.isSupported(context)) {
                 t.traceBegin("StartAppFunctionManager");
                 mSystemServiceManager.startService(AppFunctionManagerService.class);
