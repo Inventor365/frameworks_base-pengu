@@ -2093,6 +2093,9 @@ public class AppProfiler {
     }
 
     void updateCpuStats() {
+        if (!MONITOR_CPU_USAGE) {
+            return;
+        }
         final long now = SystemClock.uptimeMillis();
         if (mLastCpuTime.get() >= now - MONITOR_CPU_MIN_TIME) {
             return;
@@ -2253,7 +2256,11 @@ public class AppProfiler {
                     try {
                         synchronized (this) {
                             final long now = SystemClock.uptimeMillis();
-                            long nextCpuDelay = (mLastCpuTime.get() + MONITOR_CPU_MAX_TIME) - now;
+                            // With CPU monitoring off mLastCpuTime stays 0, so this deadline
+                            // expires at 74.5h of uptime and the thread would spin forever.
+                            long nextCpuDelay = MONITOR_CPU_USAGE
+                                    ? (mLastCpuTime.get() + MONITOR_CPU_MAX_TIME) - now
+                                    : Long.MAX_VALUE;
                             long nextWriteDelay = (mLastWriteTime + BATTERY_STATS_TIME) - now;
                             //Slog.i(TAG, "Cpu delay=" + nextCpuDelay
                             //        + ", write delay=" + nextWriteDelay);
