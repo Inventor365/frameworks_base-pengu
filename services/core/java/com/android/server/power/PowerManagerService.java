@@ -785,6 +785,10 @@ public final class PowerManagerService extends SystemService
 
     // True if double tap to wake is enabled
     private boolean mDoubleTapEnabled;
+    // Penguin: the screen-off single tap (doze tap sensor) is on; double tap to wake is held off
+    // then, as the panel can't tell the two apart.
+    private boolean mScreenOffTapEnabled;
+    private boolean mSupportsScreenOffTapConfig;
     private boolean mSingleTapEnabled;
     private boolean mDrawVEnabled;
     private boolean mDrawInverseVEnabled;
@@ -1712,6 +1716,9 @@ public final class PowerManagerService extends SystemService
         resolver.registerContentObserver(Settings.System.getUriFor(
                 Settings.System.GESTURE_DOUBLE_TAP),
                 false, mSettingsObserver, UserHandle.USER_ALL);
+        resolver.registerContentObserver(Settings.Secure.getUriFor(
+                Settings.Secure.DOZE_TAP_SCREEN_GESTURE),
+                false, mSettingsObserver, UserHandle.USER_ALL);
         resolver.registerContentObserver(Settings.System.getUriFor(
                 Settings.System.GESTURE_SINGLE_TAP),
                 false, mSettingsObserver, UserHandle.USER_ALL);
@@ -1844,6 +1851,8 @@ public final class PowerManagerService extends SystemService
                 com.android.internal.R.bool.config_brightWhenDozing);
         mSupportsDoubleTapConfig = resources.getInteger(
                 com.android.internal.R.integer.config_doubleTapKeyCode) > 0;
+        mSupportsScreenOffTapConfig = !android.text.TextUtils.isEmpty(resources.getString(
+                com.android.internal.R.string.config_dozeTapSensorType));
         mSupportsSingleTapConfig = resources.getInteger(
                 com.android.internal.R.integer.config_singleTapKeyCode) > 0;
         mSupportsDrawVConfig = resources.getInteger(
@@ -1930,10 +1939,19 @@ public final class PowerManagerService extends SystemService
                     Settings.System.GESTURE_DOUBLE_TAP, mContext.getResources()
                     .getInteger(com.android.internal.R.integer.config_doubleTapDefault),
                     UserHandle.USER_CURRENT) > 0;
-            if (doubleTapEnabled != mDoubleTapEnabled) {
+            final boolean screenOffTapEnabled = mSupportsScreenOffTapConfig
+                    && Settings.Secure.getIntForUser(resolver,
+                            Settings.Secure.DOZE_TAP_SCREEN_GESTURE,
+                            mContext.getResources().getBoolean(
+                                    com.android.internal.R.bool.config_dozeTapGestureEnabled)
+                                    ? 1 : 0,
+                            UserHandle.USER_CURRENT) != 0;
+            if (doubleTapEnabled != mDoubleTapEnabled
+                    || screenOffTapEnabled != mScreenOffTapEnabled) {
                 mDoubleTapEnabled = doubleTapEnabled;
+                mScreenOffTapEnabled = screenOffTapEnabled;
                 mNativeWrapper.nativeSetParanoidFeature(POWER_FEATURE_DOUBLE_TAP,
-                        mDoubleTapEnabled && mGesturesEnabled ? 1 : 0);
+                        mDoubleTapEnabled && mGesturesEnabled && !mScreenOffTapEnabled ? 1 : 0);
             }
         }
 
@@ -5825,6 +5843,7 @@ public final class PowerManagerService extends SystemService
             pw.println("  mScreenBrightnessDefault=" + mScreenBrightnessDefault);
             pw.println("  mGesturesEnabled=" + mGesturesEnabled);
             pw.println("  mDoubleTapEnabled=" + mDoubleTapEnabled);
+            pw.println("  mScreenOffTapEnabled=" + mScreenOffTapEnabled);
             pw.println("  mSingleTapEnabled=" + mSingleTapEnabled);
             pw.println("  mDrawVEnabled=" + mDrawVEnabled);
             pw.println("  mDrawInverseVEnabled=" + mDrawInverseVEnabled);
