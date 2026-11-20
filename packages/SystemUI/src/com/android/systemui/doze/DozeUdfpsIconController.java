@@ -36,6 +36,7 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
     /** How long a screen tap shows the icon (Penguin, single tap action "show icon"). */
     private static final long TAP_SHOW_MS = 8000;
     private static final String SCHEDULE_ALARM_TAG = "DozeUdfpsIconSchedule";
+    private static final String TAP_ALARM_TAG = "DozeUdfpsIconTap";
 
     private final AmbientDisplayConfiguration mConfig;
     private final UserTracker mUserTracker;
@@ -48,8 +49,13 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
     private final AlarmManager mAlarmManager;
     private final AlarmManager.OnAlarmListener mScheduleAlarm = this::onScheduleBoundary;
     private boolean mScheduleAlarmSet;
-    /** Uptime until which a screen tap keeps the icon on. */
+    // The phone suspends between frames in AOD, which stops uptime and Handler delays, so the
+    // tap's timeout runs on elapsed realtime with a wake-up alarm.
+    private final AlarmManager.OnAlarmListener mTapAlarm = this::update;
+    /** Elapsed realtime until which a screen tap keeps the icon on. */
     private long mTapShownUntil;
+    /** Whether a tap moved the doze machine to AOD for the icon. */
+    private boolean mTapAod;
 
     private DozeMachine mMachine;
     private boolean mRegistered;
@@ -125,6 +131,8 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
         mHandler.removeCallbacks(mUpdate);
         cancelScheduleAlarm();
         mTapShownUntil = 0;
+        mAlarmManager.cancel(mTapAlarm);
+        mTapAod = false;
         if (mRegistered) {
             mKeyguardUpdateMonitor.removeCallback(mCallback);
             mDozeParameters.setUdfpsIconTapHandler(null);
@@ -161,19 +169,22 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
     }
 
     private boolean isTapShown() {
-        return SystemClock.uptimeMillis() < mTapShownUntil;
+        return SystemClock.elapsedRealtime() < mTapShownUntil;
     }
 
     /** Shows the icon for TAP_SHOW_MS after a screen tap. False when there is no icon to show. */
     private boolean showForTap() {
         if (mMachine == null || mMachine.isUninitializedOrFinished()
                 || !mKeyguardUpdateMonitor.isUdfpsEnrolled()
-                || mConfig.alwaysOnEnabled(user())) {
+                // Not alwaysOnEnabled: that also counts the icon, which a tap shows outside
+                // its hours.
+                || mConfig.alwaysOnContentEnabled(user())) {
             return false;
         }
-        mTapShownUntil = SystemClock.uptimeMillis() + TAP_SHOW_MS;
+        mTapShownUntil = SystemClock.elapsedRealtime() + TAP_SHOW_MS;
         mHandler.post(mUpdate);
-        mHandler.postDelayed(mUpdate, TAP_SHOW_MS + 50);
+        mAlarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, mTapShownUntil + 50,
+                TAP_ALARM_TAG, mTapAlarm, mHandler);
         return true;
     }
 
@@ -212,13 +223,30 @@ public class DozeUdfpsIconController implements DozeMachine.Part {
             return;
         }
         mDozeParameters.setUdfpsIconState(isIconWanted(), mPulsing);
+
+        // Penguin: with the icon off (or outside its hours) the screen sits in DOZE, so a tap
+        // that shows the icon has to bring up AOD itself, and drop it again when it times out.
+        final DozeMachine.State state = mMachine.getState();
+        if (isTapShown()) {
+            if (state == DozeMachine.State.DOZE && mDozeParameters.getAlwaysOn()
+                    && !mDozeHost.isAlwaysOnSuppressed()) {
+                mTapAod = true;
+                mMachine.requestState(DozeMachine.State.DOZE_AOD);
+            }
+        } else if (mTapAod) {
+            mTapAod = false;
+            if (state == DozeMachine.State.DOZE_AOD && !mDozeParameters.getAlwaysOn()) {
+                mMachine.requestState(DozeMachine.State.DOZE);
+            }
+        }
     }
 
     @Override
     public void dump(PrintWriter pw) {
         pw.println("DozeUdfpsIconController:");
         pw.println(" enabled=" + isIconEnabled());
-        pw.println(" inSchedule=" + isInSchedule() + " tapShown=" + isTapShown());
+        pw.println(" inSchedule=" + isInSchedule() + " tapShown=" + isTapShown()
+                + " tapAod=" + mTapAod);
         pw.println(" active=" + mDozeParameters.isUdfpsIconActive());
         pw.println(" pulsing=" + mPulsing);
     }

@@ -540,7 +540,9 @@ public class DozeTriggers implements DozeMachine.Part {
                 break;
             case DOZE:
                 mAodInterruptRunnable = null;
-                mWantProxSensor = false;
+                // Penguin: the screen-off tap sensor stays off while the phone is in a pocket
+                // (see DozeSensors), so keep proximity running for it.
+                mWantProxSensor = isScreenOffTapOn();
                 mWantSensors = true;
                 mWantTouchScreenSensors = true;
                 mInAod = false;
@@ -627,6 +629,13 @@ public class DozeTriggers implements DozeMachine.Part {
             mAodInterruptRunnable.run();
             mAodInterruptRunnable = null;
         }
+    }
+
+    /** Penguin: whether a single tap on the dark screen does anything. */
+    private boolean isScreenOffTapOn() {
+        final int user = mUserTracker.getUserId();
+        return mConfig.tapGestureEnabled(user)
+                && PenguinDozeTap.action(mSecureSettings, user) != PenguinDozeTap.NONE;
     }
 
     private boolean isPulsing() {

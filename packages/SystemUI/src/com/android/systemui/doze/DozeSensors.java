@@ -119,6 +119,12 @@ public class DozeSensors {
     private boolean mListening;
     private boolean mListeningTouchScreenSensors;
     private boolean mListeningProxSensors;
+    /**
+     * Penguin: proximity reports near (in a pocket or face down). The screen-off tap sensor is
+     * unregistered then, which also disarms the panel's tap gesture, so touches through fabric
+     * don't keep waking the phone.
+     */
+    private boolean mPocketNear;
     private boolean mListeningAodOnlySensors;
     private boolean mUdfpsEnrolled;
     private boolean mOpticalUdfpsEnrolled;
@@ -228,7 +234,9 @@ public class DozeSensors {
                         true /* touchscreen */,
                         false /* ignoresSetting */,
                         dozeParameters.singleTapUsesProx(mDevicePosture) /* requiresProx */,
-                        false /* immediatelyReRegister */,
+                        // Penguin: the tap sensor stays wanted through pulses and the
+                        // fingerprint icon, so nothing else re-registers it after it fires.
+                        true /* immediatelyReRegister */,
                         mDevicePosture,
                         false
                 ),
@@ -298,6 +306,7 @@ public class DozeSensors {
             mProximitySensor.register(
                     proximityEvent -> {
                         if (proximityEvent != null) {
+                            setPocketNear(proximityEvent.getBelow());
                             mProxCallback.accept(!proximityEvent.getBelow());
                         }
                     });
@@ -431,7 +440,8 @@ public class DozeSensors {
             boolean listen = mListening
                     && (!s.mRequiresTouchscreen || mListeningTouchScreenSensors)
                     && (!s.mRequiresProx || mListeningProxSensors)
-                    && (!s.mRequiresAod || mListeningAodOnlySensors);
+                    && (!s.mRequiresAod || mListeningAodOnlySensors)
+                    && !(mPocketNear && s.mPulseReason == DozeLog.REASON_SENSOR_TAP);
 
             //AOD might be turned off in visual because of BetterySaver or isAlwaysOnSuppressed(),
             //but AOD isn't really turned off, in these cases, udfpsLongPressSensor should be
@@ -482,7 +492,16 @@ public class DozeSensors {
                 || state == Display.STATE_OFF);
     }
 
+    private void setPocketNear(boolean near) {
+        if (mPocketNear == near) return;
+        mPocketNear = near;
+        mDozeLog.d("Screen-off tap " + (near ? "paused, proximity near" : "resumed"));
+        updateListening();
+    }
+
     public void setProxListening(boolean listen) {
+        // Penguin: without proximity there is no pocket to keep the tap sensor off for.
+        if (!listen) setPocketNear(false);
         if (mProximitySensor.isRegistered() && listen) {
             mProximitySensor.alertListeners();
         } else {
@@ -523,6 +542,7 @@ public class DozeSensors {
         pw.println("mListeningTouchScreenSensors=" + mListeningTouchScreenSensors);
         pw.println("mSelectivelyRegisterProxSensors=" + mSelectivelyRegisterProxSensors);
         pw.println("mListeningProxSensors=" + mListeningProxSensors);
+        pw.println("mPocketNear=" + mPocketNear);
         pw.println("mScreenOffUdfpsEnabled=" + mScreenOffUdfpsEnabled);
         pw.println("mUdfpsEnrolled=" + mUdfpsEnrolled);
         pw.println("mOpticalUdfpsEnrolled=" + mOpticalUdfpsEnrolled);
