@@ -39,6 +39,7 @@ android_test {
         "androidx.core_core",
         "androidx.fragment_fragment",
         "androidx.test.ext.junit",
+        "flag-junit",
     ],
 
     jni_libs: ["libdexmakerjvmtiagent"],

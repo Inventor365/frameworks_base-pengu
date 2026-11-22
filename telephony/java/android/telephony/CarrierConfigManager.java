@@ -4190,6 +4190,26 @@ public class CarrierConfigManager {
             "nr_timers_reset_on_endc_to_sa_transit_bool";
 
     /**
+     * Controls whether all 5G NR display grace period timers are reset when the device transitions
+     * from 5G SA (Standalone) to 4G LTE via inter-RAT handover.
+     *
+     * <p>When set to {@code true}, active 5G NR grace period timers (both primary grace period
+     * Timer A and secondary grace period Timer B) are immediately reset upon an inter-RAT handover
+     * from a 5G SA cell to a 4G LTE cell, ensuring that the status bar updates to display the
+     * 4G RAT indicator immediately instead of holding the 5G icon during the grace period.
+     *
+     * <p>The default value is {@code false}.
+     *
+     * @see #KEY_5G_ICON_DISPLAY_GRACE_PERIOD_STRING
+     * @see #KEY_5G_ICON_DISPLAY_SECONDARY_GRACE_PERIOD_STRING
+     * @see #KEY_NR_TIMERS_RESET_ON_ENDC_TO_SA_TRANSIT_BOOL
+     *
+     * @hide
+     */
+    public static final String KEY_NR_TIMERS_RESET_ON_SA_TO_LTE_TRANSIT_BOOL =
+            "nr_timers_reset_on_sa_to_lte_transit_bool";
+
+    /**
      * A list of additional NR advanced band would map to
      * {@link TelephonyDisplayInfo#OVERRIDE_NETWORK_TYPE_NR_ADVANCED} when the device is on that
      * band.
@@ -12520,6 +12540,7 @@ public class CarrierConfigManager {
         sDefaults.putBoolean(KEY_NR_TIMERS_RESET_ON_VOICE_QOS_BOOL, false);
         sDefaults.putBoolean(KEY_NR_TIMERS_RESET_ON_PLMN_CHANGE_BOOL, false);
         sDefaults.putBoolean(KEY_NR_TIMERS_RESET_ON_ENDC_TO_SA_TRANSIT_BOOL, false);
+        sDefaults.putBoolean(KEY_NR_TIMERS_RESET_ON_SA_TO_LTE_TRANSIT_BOOL, false);
         /* Default value is 1 hour. */
         sDefaults.putLong(KEY_5G_WATCHDOG_TIME_MS_LONG, 3600000);
         sDefaults.putIntArray(KEY_ADDITIONAL_NR_ADVANCED_BANDS_INT_ARRAY, new int[0]);

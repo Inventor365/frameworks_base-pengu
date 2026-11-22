@@ -29,6 +29,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.argThat;
 
 import android.Manifest;
 import android.app.AppOpsManager;
@@ -52,15 +53,22 @@ import android.os.UserManager;
 import android.provider.Telephony;
 import android.telephony.TelephonyManager;
 
+import android.platform.test.annotations.DisableFlags;
+import android.platform.test.annotations.EnableFlags;
+import android.platform.test.flag.junit.SetFlagsRule;
+
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import com.android.internal.telephony.SmsApplication;
+import com.android.internal.telephony.flags.Flags;
 
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
 
 import java.util.Arrays;
@@ -77,6 +85,7 @@ public class SmsApplicationTest {
     private static final ComponentName TEST_COMPONENT_NAME =
             ComponentName.unflattenFromString("com.android.test/.TestSmsApp");
     public static final String BLUETOOTH_PACKAGE_NAME = "com.android.bluetooth.services";
+    private static final String CBR_PACKAGE_NAME = "com.android.cellbroadcast.receiver";
     private static final String MMS_RECEIVER_NAME = "TestMmsReceiver";
     private static final String RESPOND_VIA_SMS_NAME = "TestRespondViaSmsHandler";
     private static final String SEND_TO_NAME = "TestSendTo";
@@ -88,6 +97,7 @@ public class SmsApplicationTest {
     private static final int FAKE_MMS_UID = 10003;
     private static final int FAKE_BT_UID = 10004;
     private static final int FAKE_TELEPHONY_PROVIDER_UID = 10005;
+    private static final int FAKE_CBR_UID = 10006;
 
     private static final String[] APP_OPS_TO_CHECK = {
             AppOpsManager.OPSTR_READ_SMS,
@@ -112,6 +122,9 @@ public class SmsApplicationTest {
     @Mock private PackageManager mPackageManager;
     @Mock private UserManager mUserManager;
     @Mock private AppOpsManager mAppOpsManager;
+
+    @Rule
+    public final SetFlagsRule mSetFlagsRule = new SetFlagsRule();
 
     @Before
     public void setUp() throws Exception {
@@ -273,6 +286,69 @@ public class SmsApplicationTest {
         when(mPackageManager.getPackageInfo(
                 eq(SmsApplication.TELEPHONY_PROVIDER_PACKAGE_NAME), anyInt()))
                 .thenReturn(telephonyProviderPackageInfo);
+
+        PackageInfo cbrPackageInfo = new PackageInfo();
+        ApplicationInfo cbrApplicationInfo = new ApplicationInfo();
+        cbrApplicationInfo.uid = FAKE_CBR_UID;
+        cbrPackageInfo.applicationInfo = cbrApplicationInfo;
+        when(mPackageManager.getPackageInfo(eq(CBR_PACKAGE_NAME), anyInt()))
+                        .thenReturn(cbrPackageInfo);
+    }
+
+    @Test
+    @EnableFlags(Flags.FLAG_SECURE_ACCESS_TO_RESTRICTED_RCS_MESSAGES)
+    public void testGrantPermissionsToSystemApps_grantsReadRestrictedMessagesToCbr()
+            throws Exception {
+        setupPackageInfosForCoreApps();
+        ResolveInfo cbrResolveInfo = new ResolveInfo();
+        ActivityInfo cbrActivityInfo = new ActivityInfo();
+        cbrActivityInfo.packageName = CBR_PACKAGE_NAME;
+        cbrActivityInfo.applicationInfo = new ApplicationInfo();
+        cbrActivityInfo.applicationInfo.packageName = CBR_PACKAGE_NAME;
+        cbrActivityInfo.applicationInfo.uid = FAKE_CBR_UID;
+        cbrResolveInfo.activityInfo = cbrActivityInfo;
+        when(mPackageManager.resolveActivity(
+                        nullable(Intent.class),
+                        anyInt()))
+                        .thenReturn(cbrResolveInfo);
+        when(mPackageManager.checkPermission(
+                        eq(Manifest.permission.READ_CELL_BROADCASTS),
+                        eq(CBR_PACKAGE_NAME)))
+                        .thenReturn(PackageManager.PERMISSION_GRANTED);
+
+        SmsApplication.grantPermissionsToSystemApps(mContext);
+
+        verify(mAppOpsManager, times(1)).setUidMode(
+                        AppOpsManager.OPSTR_READ_RESTRICTED_MESSAGES, FAKE_CBR_UID,
+                        AppOpsManager.MODE_ALLOWED);
+    }
+
+    @Test
+    @DisableFlags(Flags.FLAG_SECURE_ACCESS_TO_RESTRICTED_RCS_MESSAGES)
+    public void testGrantPermissionsToSystemApps_flagOff_doesNotGrantReadRestrictedMessagesToCbr()
+                    throws Exception {
+        setupPackageInfosForCoreApps();
+        ResolveInfo cbrResolveInfo = new ResolveInfo();
+        ActivityInfo cbrActivityInfo = new ActivityInfo();
+        cbrActivityInfo.packageName = CBR_PACKAGE_NAME;
+        cbrActivityInfo.applicationInfo = new ApplicationInfo();
+        cbrActivityInfo.applicationInfo.packageName = CBR_PACKAGE_NAME;
+        cbrActivityInfo.applicationInfo.uid = FAKE_CBR_UID;
+        cbrResolveInfo.activityInfo = cbrActivityInfo;
+        when(mPackageManager.resolveActivity(
+                        nullable(Intent.class),
+                        anyInt()))
+                        .thenReturn(cbrResolveInfo);
+        when(mPackageManager.checkPermission(
+                        eq(Manifest.permission.READ_CELL_BROADCASTS),
+                        eq(CBR_PACKAGE_NAME)))
+                        .thenReturn(PackageManager.PERMISSION_GRANTED);
+
+        SmsApplication.grantPermissionsToSystemApps(mContext);
+
+        verify(mAppOpsManager, times(0)).setUidMode(
+                        AppOpsManager.OPSTR_READ_RESTRICTED_MESSAGES, FAKE_CBR_UID,
+                        AppOpsManager.MODE_ALLOWED);
     }
 
     private List<ResolveInfo> getResolveInfosForIntent(Intent intent) {

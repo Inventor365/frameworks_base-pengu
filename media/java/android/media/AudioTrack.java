@@ -1677,7 +1677,7 @@ public class AudioTrack extends PlayerBase
         }
 
         synchronized (mPlayStateLock) {
-            native_stop();
+            native_set_offload_end_of_stream();
             mOffloadEosPending = true;
             mPlayState = PLAYSTATE_STOPPING;
         }
@@ -4749,6 +4749,8 @@ public class AudioTrack extends PlayerBase
     private native final void native_pause();
 
     private native final void native_flush();
+
+    private native void native_set_offload_end_of_stream();
 
     private native final int native_write_byte(byte[] audioData,
                                                int offsetInBytes, int sizeInBytes, int format,

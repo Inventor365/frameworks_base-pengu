@@ -351,4 +351,67 @@ class RouteSelectionStackTest {
         // Mode owner still selected but device is disabled
         assertThat(mStack.selectedDevice().isEmpty).isTrue()
     }
+
+    @Test
+    fun testTopClient_unprivilegedModeOwnerWithoutDevice_fallbackToPrivilegedClient() {
+        val privClient = RouteClient(mToken1, mAttributionSource1, mDevice1, true)
+        mStack.addClient(privClient)
+
+        val unprivModeOwner = RouteClient(mToken2, mAttributionSource2, null, false)
+        mStack.addClient(unprivModeOwner)
+        mStack.setModeOwnerToken(mToken2)
+
+        assertThat(mStack.topClient()).isEqualTo(Optional.of(privClient))
+    }
+
+    @Test
+    fun testTopClient_unprivilegedModeOwnerWithDevice_noFallback() {
+        val unprivModeOwner = RouteClient(mToken1, mAttributionSource1, mDevice1, false)
+        mStack.addClient(unprivModeOwner)
+        mStack.setModeOwnerToken(mToken1)
+
+        val privClient = RouteClient(mToken2, mAttributionSource2, mDevice2, true)
+        mStack.addClient(privClient)
+
+        assertThat(mStack.topClient()).isEqualTo(Optional.of(unprivModeOwner))
+    }
+
+    @Test
+    fun testTopClient_privilegedModeOwnerWithoutDevice_noFallback() {
+        val privModeOwner = RouteClient(mToken1, mAttributionSource1, null, true)
+        mStack.addClient(privModeOwner)
+        mStack.setModeOwnerToken(mToken1)
+
+        val privClient = RouteClient(mToken2, mAttributionSource2, mDevice2, true)
+        mStack.addClient(privClient)
+
+        assertThat(mStack.topClient()).isEqualTo(Optional.of(privModeOwner))
+    }
+
+    @Test
+    fun testTopClient_unprivilegedModeOwnerWithoutDevice_noPrivilegedClient_noFallback() {
+        val unprivModeOwner = RouteClient(mToken1, mAttributionSource1, null, false)
+        mStack.addClient(unprivModeOwner)
+
+        val unprivClient = RouteClient(mToken2, mAttributionSource2, mDevice2, false)
+        mStack.addClient(unprivClient)
+        mStack.setModeOwnerToken(mToken1)
+
+        assertThat(mStack.topClient()).isEqualTo(Optional.of(unprivModeOwner))
+    }
+
+    @Test
+    fun testTopClient_modeOwnerNotInStack_fallbackToPrivilegedClient() {
+        val privClient = RouteClient(mToken1, mAttributionSource1, mDevice1, true)
+        mStack.addClient(privClient)
+
+        val unprivClient = RouteClient(mToken2, mAttributionSource2, mDevice2, false)
+        mStack.addClient(unprivClient)
+
+        // Set mode owner to a token that is not in the stack
+        val nonExistentToken = mock<IBinder>()
+        mStack.setModeOwnerToken(nonExistentToken)
+
+        assertThat(mStack.topClient()).isEqualTo(Optional.of(privClient))
+    }
 }

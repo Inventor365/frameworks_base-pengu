@@ -16,6 +16,7 @@
 
 package com.android.server.stats.pull;
 
+import static android.app.ActivityManager.PROCESS_STATE_UNKNOWN;
 import static android.app.AppOpsManager.OP_FLAG_SELF;
 import static android.app.AppOpsManager.OP_FLAG_TRUSTED_PROXIED;
 import static android.app.AppProtoEnums.HOSTING_COMPONENT_TYPE_EMPTY;
@@ -95,6 +96,7 @@ import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.UserIdInt;
+import android.app.ActivityManager;
 import android.app.ActivityManagerInternal;
 import android.app.AppOpsManager;
 import android.app.AppOpsManager.HistoricalOp;
@@ -2730,7 +2732,8 @@ public class StatsPullAtomService extends SystemService {
                             snapshot.rssShmemKilobytes,
                             managedProcess.mHostingComponentTypes,
                             managedProcess.mHistoricalHostingComponentTypes,
-                            dmaBufRssInKilobytes));
+                            dmaBufRssInKilobytes,
+                            ActivityManager.processStateAmToProto(managedProcess.procState)));
         }
         // Complement the data with native system processes. Given these measurements can be taken
         // in response to LMKs happening, we want to first collect the managed app stats (to
@@ -2762,7 +2765,8 @@ public class StatsPullAtomService extends SystemService {
                             // Native processes don't really have a hosting component type.
                             HOSTING_COMPONENT_TYPE_EMPTY,
                             HOSTING_COMPONENT_TYPE_EMPTY,
-                            dmaBufRssInKilobytes));
+                            dmaBufRssInKilobytes,
+                            ActivityManager.processStateAmToProto(PROCESS_STATE_UNKNOWN)));
         }
         return StatsManager.PULL_SUCCESS;
     }

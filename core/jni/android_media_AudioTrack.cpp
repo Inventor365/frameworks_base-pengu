@@ -627,6 +627,18 @@ android_media_AudioTrack_flush(JNIEnv *env, jobject thiz)
 }
 
 // ----------------------------------------------------------------------------
+static void android_media_AudioTrack_set_offload_end_of_stream(JNIEnv* env, jobject thiz) {
+    sp<AudioTrack> lpTrack = getAudioTrack(env, thiz);
+    if (lpTrack == nullptr) {
+        jniThrowException(env, "java/lang/IllegalStateException",
+                          "Unable to retrieve AudioTrack pointer for setOffloadEndOfStream()");
+        return;
+    }
+
+    (void)lpTrack->setOffloadEndOfStream();
+}
+
+// ----------------------------------------------------------------------------
 static void
 android_media_AudioTrack_set_volume(JNIEnv *env, jobject thiz, jfloat leftVol, jfloat rightVol )
 {
@@ -1666,6 +1678,8 @@ static const JNINativeMethod gMethods[] = {
         {"native_getFlushWrittenFramesFromPositionSupport",
          "(IILandroid/media/AudioFormat$ChannelMasks;Landroid/media/AudioAttributes;)I",
          (void *)android_media_AudioTrack_getFlushWrittenFramesFromPositionSupport},
+        {"native_set_offload_end_of_stream", "()V",
+         (void *)android_media_AudioTrack_set_offload_end_of_stream},
 };
 // clang-format on
 

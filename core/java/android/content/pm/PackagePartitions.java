@@ -67,9 +67,6 @@ public class PackagePartitions {
      */
     private static final ArrayList<SystemPartition> SYSTEM_PARTITIONS =
             new ArrayList<>(Arrays.asList(
-                    new SystemPartition(Environment.getRootDirectory(),
-                            PARTITION_SYSTEM, Partition.PARTITION_NAME_SYSTEM,
-                            true /* containsPrivApp */, false /* containsOverlay */),
                     new SystemPartition(Environment.getVendorDirectory(),
                             PARTITION_VENDOR, Partition.PARTITION_NAME_VENDOR,
                             true /* containsPrivApp */, true /* containsOverlay */),
@@ -84,7 +81,10 @@ public class PackagePartitions {
                             true /* containsPrivApp */, true /* containsOverlay */),
                     new SystemPartition(Environment.getSystemExtDirectory(),
                             PARTITION_SYSTEM_EXT, Partition.PARTITION_NAME_SYSTEM_EXT,
-                            true /* containsPrivApp */, true /* containsOverlay */)));
+                            true /* containsPrivApp */, true /* containsOverlay */),
+                    new SystemPartition(Environment.getRootDirectory(),
+                            PARTITION_SYSTEM, Partition.PARTITION_NAME_SYSTEM,
+                            true /* containsPrivApp */, false /* containsOverlay */)));
 
     /**
      * A string to represent the fingerprint of this build and all package partitions. Using it to

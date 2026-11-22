@@ -567,9 +567,12 @@ public final class SmsApplication {
                 MMS_SERVICE_PACKAGE_NAME, true);
         assignExclusiveSmsPermissionsToSystemApp(context, packageManager, appOps,
                 TELEPHONY_PROVIDER_PACKAGE_NAME, true);
+        final String cbrPackageName =
+                CellBroadcastUtils.getDefaultCellBroadcastReceiverPackageName(context);
         // CellbroadcastReceiver is a mainline module thus skip signature match.
         assignExclusiveSmsPermissionsToSystemApp(context, packageManager, appOps,
-                CellBroadcastUtils.getDefaultCellBroadcastReceiverPackageName(context), false);
+                cbrPackageName, false);
+        assignReadRestrictedAppOpToSystemApp(packageManager, appOps, cbrPackageName);
 
         // Give AppOps permission to UID 1001 which contains multiple
         // apps, all of them should be able to write to telephony provider.
@@ -762,6 +765,27 @@ public final class SmsApplication {
                 new Intent(ACTION_DEFAULT_SMS_PACKAGE_CHANGED_INTERNAL);
         context.sendBroadcastAsUser(intent, userHandle,
                 PERMISSION_MONITOR_DEFAULT_SMS_PACKAGE);
+    }
+
+    /**
+     * Assign READ_RESTRICTED_MESSAGES app op to a system package.
+     *
+     * @param context The context
+     * @param packageManager The package manager instance
+     * @param appOps The AppOps manager instance
+     * @param packageName The package name of the system app
+     */
+    private static void assignReadRestrictedAppOpToSystemApp(PackageManager packageManager,
+            AppOpsManager appOps, String packageName) {
+        if (Flags.secureAccessToRestrictedRcsMessages() && packageName != null) {
+            try {
+                PackageInfo info = packageManager.getPackageInfo(packageName, 0);
+                appOps.setUidMode(AppOpsManager.OPSTR_READ_RESTRICTED_MESSAGES,
+                        info.applicationInfo.uid, AppOpsManager.MODE_ALLOWED);
+            } catch (PackageManager.NameNotFoundException e) {
+                Log.e(LOG_TAG, "Package not found: " + packageName);
+            }
+        }
     }
 
     /**

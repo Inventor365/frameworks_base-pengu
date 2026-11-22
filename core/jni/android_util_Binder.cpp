@@ -363,8 +363,11 @@ public:
     void getFunctionName(uint32_t code,
                          const SmallFunction<void(const char*)>& callback) const override {
         JNIEnv* env = javavm_to_jnienv(mVM);
-        jstring functionName =
-                (jstring)env->CallObjectMethod(mObject, gBinderOffsets.mGetTransactionName, code);
+        ScopedLocalRef<jstring>
+                functionName(env,
+                             (jstring)env->CallObjectMethod(mObject,
+                                                            gBinderOffsets.mGetTransactionName,
+                                                            code));
 
         if (functionName == nullptr) {
             std::string unknown = UNKNOWN_CODE + std::to_string(code);
@@ -372,7 +375,7 @@ public:
             return;
         }
 
-        ScopedUtfChars str(env, functionName);
+        ScopedUtfChars str(env, functionName.get());
         callback(str.c_str());
     }
 

@@ -163,23 +163,24 @@ public class AppServiceConnection extends PersistentConnection<IInterface> {
     /**
      * Internal class to track the lifecycle of a single dispatch request.
      */
-    private class AppServiceCallback {
+    private class AppServiceCallback implements Runnable {
         final Consumer<AppServiceConnection> mAction;
 
         AppServiceCallback(Consumer<AppServiceConnection> action,
                 long timeoutMillis) {
             this.mAction = action;
             if (timeoutMillis > 0) {
-                mHandler.postDelayed(this::run, timeoutMillis);
+                mHandler.postDelayed(this, timeoutMillis);
             }
         }
 
         void postAction() {
-            mHandler.post(this::run);
+            mHandler.post(this);
         }
 
-        void run() {
-            mHandler.removeCallbacks(this::run);
+        @Override
+        public void run() {
+            mHandler.removeCallbacks(this);
             mAction.accept(AppServiceConnection.this);
         }
     }

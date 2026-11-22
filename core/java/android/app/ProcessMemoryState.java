@@ -125,6 +125,7 @@ public final class ProcessMemoryState implements Parcelable {
     public final int pid;
     public final String processName;
     public final int oomScore;
+    public final int procState;
     public final boolean hasForegroundServices;
 
     /**
@@ -142,12 +143,13 @@ public final class ProcessMemoryState implements Parcelable {
     public final int mHistoricalHostingComponentTypes;
 
     public ProcessMemoryState(int uid, int pid, String processName, int oomScore,
-            boolean hasForegroundServices, int hostingComponentTypes,
+            int procState, boolean hasForegroundServices, int hostingComponentTypes,
             int historicalHostingComponentTypes) {
         this.uid = uid;
         this.pid = pid;
         this.processName = processName;
         this.oomScore = oomScore;
+        this.procState = procState;
         this.hasForegroundServices = hasForegroundServices;
         this.mHostingComponentTypes = hostingComponentTypes;
         this.mHistoricalHostingComponentTypes = historicalHostingComponentTypes;
@@ -158,6 +160,7 @@ public final class ProcessMemoryState implements Parcelable {
         pid = in.readInt();
         processName = in.readString();
         oomScore = in.readInt();
+        procState = in.readInt();
         hasForegroundServices = in.readInt() == 1;
         mHostingComponentTypes = in.readInt();
         mHistoricalHostingComponentTypes = in.readInt();
@@ -186,6 +189,7 @@ public final class ProcessMemoryState implements Parcelable {
         parcel.writeInt(pid);
         parcel.writeString(processName);
         parcel.writeInt(oomScore);
+        parcel.writeInt(procState);
         parcel.writeInt(hasForegroundServices ? 1 : 0);
         parcel.writeInt(mHostingComponentTypes);
         parcel.writeInt(mHistoricalHostingComponentTypes);

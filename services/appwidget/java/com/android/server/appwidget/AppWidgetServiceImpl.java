@@ -18,6 +18,7 @@ package com.android.server.appwidget;
 
 import static android.appwidget.AppWidgetProviderInfo.WIDGET_FEATURE_CONFIGURATION_OPTIONAL;
 import static android.appwidget.flags.Flags.appLockWidgetRemoval;
+import static android.appwidget.flags.Flags.deleteWidgetSkipNullUpdate;
 import static android.appwidget.flags.Flags.remoteAdapterConversion;
 import static android.appwidget.flags.Flags.remoteViewsProto;
 import static android.appwidget.flags.Flags.securityPolicyInteractAcrossUsers;
@@ -190,6 +191,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
@@ -1337,9 +1339,10 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             return;
         }
         long token = proto.start(AppWidgetServiceDumpProto.WIDGETS);
-        proto.write(WidgetProto.IS_CROSS_PROFILE,
-            widget.host.getUserId() != widget.provider.getUserId());
-        proto.write(WidgetProto.IS_HOST_STOPPED, widget.host.callbacks == null);
+        proto.write(
+                WidgetProto.IS_CROSS_PROFILE,
+                widget.host.getUserId() != widget.provider.getUserId());
+        proto.write(WidgetProto.IS_HOST_STOPPED, widget.host.getCallbacks() == null);
         proto.write(WidgetProto.HOST_PACKAGE, widget.host.id.packageName);
         proto.write(WidgetProto.PROVIDER_PACKAGE, widget.provider.id.componentName.getPackageName());
         proto.write(WidgetProto.PROVIDER_CLASS, widget.provider.id.componentName.getClassName());
@@ -1416,7 +1419,7 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             // sure the caller can only access hosts it owns.
             HostId id = new HostId(Binder.getCallingUid(), hostId, callingPackage);
             Host host = lookupOrAddHostLocked(id);
-            host.callbacks = callbacks;
+            host.setCallbacks(callbacks);
 
             long updateSequenceNo = UPDATE_COUNTER.incrementAndGet();
             int N = appWidgetIds.length;
@@ -1453,6 +1456,11 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
         // Make sure the package runs under the caller uid.
         mSecurityPolicy.enforceCallFromPackage(callingPackage);
 
+        if (!isUserRunningAndUnlocked(userId)) {
+            Slog.w(TAG, "stopListening() should not be called for locked user " + userId);
+            return;
+        }
+
         synchronized (mLock) {
             ensureGroupStateLoadedLocked(userId, /* enforceUserUnlockingOrUnlocked */ false);
 
@@ -1462,7 +1470,7 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             Host host = lookupHostLocked(id);
 
             if (host != null) {
-                host.callbacks = null;
+                host.setCallbacks(null);
                 pruneHostLocked(host);
                 mAppOpsManagerInternal.updateAppWidgetVisibility(host.getWidgetUidsIfBound(),
                         false);
@@ -1534,6 +1542,11 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
         final int userId = UserHandle.getCallingUserId();
 
         mSecurityPolicy.enforceCallFromPackage(callingPackage);
+
+        if (!isUserRunningAndUnlocked(userId)) {
+            Slog.w(TAG, "setAppWidgetHidden() should not be called for locked user " + userId);
+            return;
+        }
 
         synchronized (mLock) {
             ensureGroupStateLoadedLocked(userId, /* enforceUserUnlockingOrUnlocked */false);
@@ -2997,7 +3010,7 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
         mHosts.remove(host);
 
         // it's gone or going away, abruptly drop the callback connection
-        host.callbacks = null;
+        host.setCallbacks(null);
     }
 
     private void deleteAppWidgetLocked(Widget widget) {
@@ -3190,14 +3203,14 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             widget.updateSequenceNos.put(viewId, requestId);
         }
         if (widget == null || widget.host == null || widget.host.zombie
-                || widget.host.callbacks == null || widget.provider == null
+                || widget.host.getCallbacks() == null || widget.provider == null
                 || widget.provider.zombie) {
             return;
         }
 
         SomeArgs args = SomeArgs.obtain();
         args.arg1 = widget.host;
-        args.arg2 = widget.host.callbacks;
+        args.arg2 = widget.host.getCallbacks();
         args.arg3 = requestId;
         args.argi1 = widget.appWidgetId;
         args.argi2 = viewId;
@@ -3224,8 +3237,6 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
         // RemoteViewsFactory.onDataSetChanged() directly
         synchronized (mLock) {
             if (callbacks == null) {
-                host.callbacks = null;
-
                 Set<Pair<Integer, FilterComparison>> keys = mRemoteViewsServicesAppWidgets.keySet();
                 for (Pair<Integer, FilterComparison> key : keys) {
                     if (mRemoteViewsServicesAppWidgets.get(key).contains(appWidgetId)) {
@@ -3277,8 +3288,11 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             }
             widget.updateSequenceNos.put(ID_VIEWS_UPDATE, requestId);
         }
-        if (widget == null || widget.provider == null || widget.provider.zombie
-                || widget.host.callbacks == null || widget.host.zombie) {
+        if (widget == null
+                || widget.provider == null
+                || widget.provider.zombie
+                || widget.host.getCallbacks() == null
+                || widget.host.zombie) {
             return;
         }
         if (updateViews != null) {
@@ -3288,7 +3302,7 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
 
         SomeArgs args = SomeArgs.obtain();
         args.arg1 = widget.host;
-        args.arg2 = widget.host.callbacks;
+        args.arg2 = widget.host.getCallbacks();
         args.arg3 = updateViews;
         args.arg4 = requestId;
         args.argi1 = widget.appWidgetId;
@@ -3312,10 +3326,7 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             callbacks.updateAppWidgetDeferred(appWidgetId);
             host.lastWidgetUpdateSequenceNo = requestId;
         } catch (RemoteException re) {
-            synchronized (mLock) {
-                Slog.e(TAG, "Widget host dead: " + host.id, re);
-                host.callbacks = null;
-            }
+            Slog.w(TAG, "Widget host update failed: " + host.id, re);
         }
     }
 
@@ -3328,10 +3339,7 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             callbacks.updateAppWidget(appWidgetId, views);
             host.lastWidgetUpdateSequenceNo = requestId;
         } catch (RemoteException re) {
-            synchronized (mLock) {
-                Slog.e(TAG, "Widget host dead: " + host.id, re);
-                host.callbacks = null;
-            }
+            Slog.w(TAG, "Widget host update failed: " + host.id, re);
         }
     }
 
@@ -3343,14 +3351,17 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             widget.updateSequenceNos.clear();
             widget.updateSequenceNos.append(ID_PROVIDER_CHANGED, requestId);
         }
-        if (widget == null || widget.provider == null || widget.provider.zombie
-                || widget.host.callbacks == null || widget.host.zombie) {
+        if (widget == null
+                || widget.provider == null
+                || widget.provider.zombie
+                || widget.host.getCallbacks() == null
+                || widget.host.zombie) {
             return;
         }
 
         SomeArgs args = SomeArgs.obtain();
         args.arg1 = widget.host;
-        args.arg2 = widget.host.callbacks;
+        args.arg2 = widget.host.getCallbacks();
         args.arg3 = widget.provider.getInfoLocked(mContext);
         args.arg4 = requestId;
         args.argi1 = widget.appWidgetId;
@@ -3367,10 +3378,7 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             callbacks.providerChanged(appWidgetId, info);
             host.lastWidgetUpdateSequenceNo = requestId;
         } catch (RemoteException re) {
-            synchronized (mLock){
-                Slog.e(TAG, "Widget host dead: " + host.id, re);
-                host.callbacks = null;
-            }
+            Slog.w(TAG, "Widget host update failed: " + host.id, re);
         }
     }
 
@@ -3388,14 +3396,17 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
 
             widget.updateSequenceNos.clear();
         }
-        if (widget == null || widget.provider == null || widget.provider.zombie
-                || widget.host.callbacks == null || widget.host.zombie) {
+        if (widget == null
+                || widget.provider == null
+                || widget.provider.zombie
+                || widget.host.getCallbacks() == null
+                || widget.host.zombie) {
             return;
         }
 
         SomeArgs args = SomeArgs.obtain();
         args.arg1 = widget.host;
-        args.arg2 = widget.host.callbacks;
+        args.arg2 = widget.host.getCallbacks();
         args.arg3 = requestId;
         args.argi1 = widget.appWidgetId;
 
@@ -3411,10 +3422,7 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             callbacks.appWidgetRemoved(appWidgetId);
             host.lastWidgetUpdateSequenceNo = requestId;
         } catch (RemoteException re) {
-            synchronized (mLock) {
-                Slog.e(TAG, "Widget host dead: " + host.id, re);
-                host.callbacks = null;
-            }
+            Slog.w(TAG, "Widget host update failed: " + host.id, re);
         }
     }
 
@@ -3424,32 +3432,21 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
         final int N = mHosts.size();
         for (int i = N - 1; i >= 0; i--) {
             Host host = mHosts.get(i);
-
-            boolean hostInGroup = false;
-            final int M = profileIds.length;
-            for (int j = 0; j < M; j++) {
-                final int profileId = profileIds[j];
+            if (host.zombie || host.getCallbacks() == null) {
+                continue;
+            }
+            for (final int profileId : profileIds) {
                 if (host.getUserId() == profileId) {
-                    hostInGroup = true;
+                    SomeArgs args = SomeArgs.obtain();
+                    args.arg1 = host;
+                    args.arg2 = host.getCallbacks();
+
+                    mCallbackHandler.obtainMessage(
+                            CallbackHandler.MSG_NOTIFY_PROVIDERS_CHANGED,
+                            args).sendToTarget();
                     break;
                 }
             }
-
-            if (!hostInGroup) {
-                continue;
-            }
-
-            if (host == null || host.zombie || host.callbacks == null) {
-                continue;
-            }
-
-            SomeArgs args = SomeArgs.obtain();
-            args.arg1 = host;
-            args.arg2 = host.callbacks;
-
-            mCallbackHandler.obtainMessage(
-                    CallbackHandler.MSG_NOTIFY_PROVIDERS_CHANGED,
-                    args).sendToTarget();
         }
     }
 
@@ -3458,13 +3455,9 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             Slog.d(TAG, "Trying to notify widget providers changed");
             callbacks.providersChanged();
         } catch (RemoteException re) {
-            synchronized (mLock) {
-                Slog.e(TAG, "Widget host dead: " + host.id, re);
-                host.callbacks = null;
-            }
+            Slog.w(TAG, "Widget host update failed: " + host.id, re);
         }
     }
-
     private static boolean isLocalBinder() {
         return Process.myPid() == Binder.getCallingPid();
     }
@@ -3532,7 +3525,7 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
     }
 
     private void pruneHostLocked(Host host) {
-        if (host.widgets.size() == 0 && host.callbacks == null) {
+        if (host.widgets.size() == 0 && host.getCallbacks() == null) {
             if (DEBUG) {
                 Slog.i(TAG, "Pruning host " + host.id);
             }
@@ -3673,8 +3666,13 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             if (userId == UserHandle.USER_ALL
                     || userId == widget.host.getUserId()) {
                 provider.widgets.remove(i);
-                // Call back with empty RemoteViews
-                updateAppWidgetInstanceLocked(widget, null, false);
+                if (deleteWidgetSkipNullUpdate()) {
+                    widget.views = null;
+                    widget.maskedViews = null;
+                } else {
+                    // Call back with empty RemoteViews
+                    updateAppWidgetInstanceLocked(widget, null, false);
+                }
                 // clear out references to this appWidgetId
                 widget.host.widgets.remove(widget);
                 removeWidgetLocked(widget, true);
@@ -3837,9 +3835,12 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
     private static void dumpHost(Host host, int index, PrintWriter pw) {
         pw.print("  ["); pw.print(index); pw.print("] hostId=");
         pw.println(host.id);
-        pw.print("    callbacks="); pw.println(host.callbacks);
-        pw.print("    widgets.size="); pw.print(host.widgets.size());
-        pw.print(" zombie="); pw.println(host.zombie);
+        pw.print("    callbacks=");
+        pw.println(host.getCallbacks());
+        pw.print("    widgets.size=");
+        pw.print(host.widgets.size());
+        pw.print(" zombie=");
+        pw.println(host.zombie);
     }
 
     private static void dumpGrant(Pair<Integer, String> grant, int index, PrintWriter pw) {
@@ -3857,7 +3858,8 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
             pw.print("    provider="); pw.println(widget.provider.id);
         }
         if (widget.host != null) {
-            pw.print("    host.callbacks="); pw.println(widget.host.callbacks);
+            pw.print("    host.callbacks=");
+            pw.println(widget.host.getCallbacks());
         }
         if (widget.views != null) {
             pw.print("    views="); pw.println(widget.views);
@@ -6557,10 +6559,10 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
         }
     }
 
-    static final class Host {
+    static final class Host implements IBinder.DeathRecipient {
         HostId id;
         ArrayList<Widget> widgets = new ArrayList<>();
-        IAppWidgetHost callbacks;
+        private IAppWidgetHost mCallbacks;
         boolean zombie; // if we're in safe mode, don't prune this just because nobody references it
 
         private static final boolean DEBUG = false;
@@ -6652,6 +6654,53 @@ class AppWidgetServiceImpl extends IAppWidgetService.Stub implements WidgetBacku
         @Override
         public String toString() {
             return "Host{" + id + (zombie ? " Z" : "") + '}';
+        }
+
+        public synchronized IAppWidgetHost getCallbacks() {
+            return mCallbacks;
+        }
+
+        public synchronized void setCallbacks(IAppWidgetHost newCallbacks) {
+            if (mCallbacks != null) {
+                IBinder binder = mCallbacks.asBinder();
+                if (binder != null) {
+                    try {
+                        binder.unlinkToDeath(this, /* flags= */ 0);
+                    } catch (NoSuchElementException ignored) {
+                        // Binder is already dead or was unlinked.
+                    }
+                }
+            }
+            if (newCallbacks != null) {
+                IBinder binder = newCallbacks.asBinder();
+                if (binder != null) {
+                    try {
+                        binder.linkToDeath(this, /* flags= */ 0);
+                        mCallbacks = newCallbacks;
+                    } catch (RemoteException e) {
+                        // Binder is already dead, keep callbacks null
+                        mCallbacks = null;
+                    }
+                } else {
+                    mCallbacks = newCallbacks;
+                }
+            } else {
+                mCallbacks = null;
+            }
+        }
+
+        @Override
+        public synchronized void binderDied() {
+            Slog.i(TAG, "Widget host process died (fallback): " + id);
+            mCallbacks = null;
+        }
+
+        @Override
+        public synchronized void binderDied(@NonNull IBinder who) {
+            if (mCallbacks != null && mCallbacks.asBinder() == who) {
+                Slog.i(TAG, "Widget host process died: " + id);
+                mCallbacks = null;
+            }
         }
     }
 

@@ -18,20 +18,16 @@ package com.android.server.audio;
 
 import static com.android.server.audio.AudioService.anonymizeBluetoothAddress;
 import static com.android.server.utils.EventLogger.Event.ALOGI;
-import static com.android.server.utils.EventLogger.Event.ALOGW;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.AttributionSource;
 import android.media.AudioDeviceAttributes;
-import android.media.AudioPlaybackConfiguration;
-import android.media.AudioRecordingConfiguration;
 import android.media.AudioSystem;
 import android.os.IBinder;
 import android.os.RemoteException;
 
 import com.android.internal.annotations.GuardedBy;
-import com.android.internal.util.function.TriFunction;
 import com.android.server.utils.EventLogger;
 
 import java.io.PrintWriter;
@@ -111,12 +107,14 @@ public class RouteSelectionStack implements IBinder.DeathRecipient {
     }
 
     /**
-     * Returns the device corresponding to the communication client with the highest priority:
-     * In all cases, if the client is disabled, it is still the owning client, but this method will
-     * return empty.
-     * - 1) the client which is currently also controlling the audio mode
-     * - 2) the top active client in the stack if there is no audio mode owner
-     * - 3) empty otherwise
+     * Returns the device corresponding to the communication client with the highest priority: In
+     * all cases, if the client is disabled, it is still the owning client, but this method will
+     * return empty. If the mode is set: <br>
+     * 1) the client which owns the audio mode, if it is priv or has a device <br>
+     * 2) the top privileged client with a device <br>
+     * 3) the client which owns the audio mode (unpriv and w/o device) <br>
+     * Else: - top active client
+     *
      * @return the audio device which should drive the APM strategy
      */
     public synchronized Optional<AudioDeviceAttributes> selectedDevice() {
@@ -124,16 +122,34 @@ public class RouteSelectionStack implements IBinder.DeathRecipient {
     }
 
     public synchronized Optional<RouteClient> topClient() {
-        Optional<RouteClient> lastActive = Optional.empty();
+        Optional<RouteClient> modeOwner = Optional.empty();
+        Optional<RouteClient> topPrivilegedWithDevice = Optional.empty();
+        Optional<RouteClient> topClient = Optional.empty();
+
         for (var client : mClients) {
             if (client.getToken().equals(mModeOwnerToken)) {
-                return Optional.of(client).filter(x -> !x.isDisabled());
+                modeOwner = Optional.of(client);
             }
             if (client.isActive()) {
-                lastActive = Optional.of(client);
+                topClient = Optional.of(client);
+            }
+            if (client.isPrivileged() && client.getDevice().isPresent()) {
+                topPrivilegedWithDevice = Optional.of(client);
             }
         }
-        return mModeOwnerToken != null ? Optional.empty() : lastActive.filter(x -> !x.isDisabled());
+
+        if (mModeOwnerToken != null) {
+            boolean isModeOwnerValid =
+                    modeOwner
+                            .filter(o -> o.isPrivileged() || o.getDevice().isPresent())
+                            .isPresent();
+
+            topClient =
+                    (isModeOwnerValid || topPrivilegedWithDevice.isEmpty())
+                            ? modeOwner
+                            : topPrivilegedWithDevice;
+        }
+        return topClient.filter(x -> !x.isDisabled());
     }
 
     /**

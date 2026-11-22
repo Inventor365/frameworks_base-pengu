@@ -115,3 +115,13 @@ flag {
   bug: "454438561"
   is_exported: true
 }
+flag {
+  name: "delete_widget_skip_null_update"
+  namespace: "app_widgets"
+  description: "Skip redundant null RemoteViews update when deleting widgets for a disabled/uninstalled provider"
+  bug: "532187258"
+  metadata {
+    purpose: PURPOSE_BUGFIX
+  }
+}
+

@@ -1725,11 +1725,16 @@ public final class InputMethodManagerService implements IInputMethodManagerImpl.
     void registerImeRequestedChangedListener() {
         mWindowManagerInternal.setOnImeRequestedChangedListener(
                 (windowToken, imeVisible, statsToken) -> {
-                    if (imeVisible) {
-                        showCurrentInputInternal(windowToken, statsToken, false /* forceShow */);
-                    } else {
-                        hideCurrentInputInternal(windowToken, statsToken);
-                    }
+                    mHandler.post(() -> {
+                        if (imeVisible) {
+                            showCurrentInputInternal(
+                                    windowToken,
+                                    statsToken,
+                                    false /* forceShow */);
+                        } else {
+                            hideCurrentInputInternal(windowToken, statsToken);
+                        }
+                    });
                 });
     }
 

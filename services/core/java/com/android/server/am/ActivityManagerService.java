@@ -18366,14 +18366,16 @@ public class ActivityManagerService extends IActivityManager.Stub
         @Override
         public List<ProcessMemoryState> getMemoryStateForProcesses() {
             List<ProcessMemoryState> processMemoryStates = new ArrayList<>();
-            synchronized (mPidsSelfLocked) {
-                for (int i = 0, size = mPidsSelfLocked.size(); i < size; i++) {
-                    final ProcessRecord r = mPidsSelfLocked.valueAt(i);
-                    processMemoryStates.add(new ProcessMemoryState(
-                            r.uid, r.getPid(), r.processName, r.getCurAdj(),
-                            r.mServices.hasForegroundServices(),
-                            r.mProfile.getCurrentHostingComponentTypes(),
-                            r.mProfile.getHistoricalHostingComponentTypes()));
+            synchronized (mProcLock) {
+                synchronized (mPidsSelfLocked) {
+                    for (int i = 0, size = mPidsSelfLocked.size(); i < size; i++) {
+                        final ProcessRecord r = mPidsSelfLocked.valueAt(i);
+                        processMemoryStates.add(new ProcessMemoryState(
+                                r.uid, r.getPid(), r.processName, r.getOomAdj(),
+                                r.getSetProcState(), r.mServices.hasForegroundServices(),
+                                r.mProfile.getCurrentHostingComponentTypes(),
+                                r.mProfile.getHistoricalHostingComponentTypes()));
+                    }
                 }
             }
             return processMemoryStates;
