@@ -143,7 +143,10 @@ public class DozeMachine {
                     return parameters.shouldControlScreenOff() ? Display.STATE_ON
                             : Display.STATE_OFF;
                 case DOZE_REQUEST_PULSE:
-                    return parameters.getDisplayNeedsBlanking() ? Display.STATE_OFF
+                    // Penguin: ambient pulses may stay in the panel's AOD mode, as stock shows
+                    // notifications on the dark screen (config_dozePulseInDozeState).
+                    if (parameters.getDisplayNeedsBlanking()) return Display.STATE_OFF;
+                    return parameters.shouldPulseInDozeState() ? Display.STATE_DOZE
                             : Display.STATE_ON;
                 case DOZE_AOD_PAUSED:
                 case DOZE:
@@ -151,6 +154,10 @@ public class DozeMachine {
                     return Display.STATE_OFF;
                 case DOZE_PULSING:
                 case DOZE_PULSING_WITHOUT_UI:
+                    // Penguin: opted-in panels keep their AOD mode, so a pulse gets the AOD
+                    // high/low brightness the AOD light sensor picks, not a dim backlight level.
+                    return parameters.shouldPulseInDozeState() ? Display.STATE_DOZE
+                            : Display.STATE_ON;
                 case DOZE_PULSING_AUTH_UI:
                 case DOZE_PULSING_BRIGHT:
                 case DOZE_AOD_DOCKED:

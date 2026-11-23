@@ -419,6 +419,11 @@ public class DozeParameters implements
      *
      * @return {@code true} if screen needs to be completely black before a power transition.
      */
+    /** Penguin: whether ambient pulses keep the display in doze, the panel's AOD mode. */
+    public boolean shouldPulseInDozeState() {
+        return mResources.getBoolean(R.bool.config_dozePulseInDozeState);
+    }
+
     public boolean getDisplayNeedsBlanking() {
         return FORCE_BLANKING || !FORCE_NO_BLANKING && mResources.getBoolean(
                 com.android.internal.R.bool.config_displayBlanksAfterDoze);
