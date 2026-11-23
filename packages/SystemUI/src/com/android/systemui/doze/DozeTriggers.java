@@ -874,6 +874,11 @@ public class DozeTriggers implements DozeMachine.Part {
         }
 
         @Override
+        public void onScreenOffTap(float screenX, float screenY) {
+            onSingleTap(screenX, screenY);
+        }
+
+        @Override
         public void onFingerprintPulseWhileScreenOff(FingerprintAuthenticationStatus state) {
             mUdfpsHelpMessagesThisAodSession++;
             mDozeLog.traceFingerprintScreenOffPulseEvent(state, mUdfpsHelpMessagesThisAodSession);

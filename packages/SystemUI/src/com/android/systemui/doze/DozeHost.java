@@ -136,6 +136,12 @@ public interface DozeHost {
         default void onSideFingerprintAcquisitionStarted() {}
 
         /**
+         * Penguin: a single tap on a screen that only shows the fingerprint icon, which the
+         * shade gets as a touch rather than from the tap sensor.
+         */
+        default void onScreenOffTap(float screenX, float screenY) {}
+
+        /**
          * Called when fingerprint auth events want the screen on to show info.
          */
         default void onFingerprintPulseWhileScreenOff(FingerprintAuthenticationStatus state) {}

@@ -29,6 +29,7 @@ import android.view.MotionEvent
 import com.android.systemui.Dumpable
 import com.android.systemui.dagger.SysUISingleton
 import com.android.systemui.dock.DockManager
+import com.android.systemui.doze.PenguinDozeTap
 import com.android.systemui.dump.DumpManager
 import com.android.systemui.keyguard.domain.interactor.DozeInteractor
 import com.android.systemui.plugins.FalsingManager
@@ -36,8 +37,10 @@ import com.android.systemui.plugins.FalsingManager.LOW_PENALTY
 import com.android.systemui.plugins.statusbar.StatusBarStateController
 import com.android.systemui.power.domain.interactor.PowerInteractor
 import com.android.systemui.settings.UserTracker
+import com.android.systemui.statusbar.phone.DozeServiceHost
 import com.android.systemui.tuner.TunerService
 import com.android.systemui.tuner.TunerService.Tunable
+import dagger.Lazy
 import java.io.PrintWriter
 import javax.inject.Inject
 
@@ -63,6 +66,7 @@ constructor(
     private val shadeLogger: ShadeLogger,
     private val dozeInteractor: DozeInteractor,
     private val userTracker: UserTracker,
+    private val dozeServiceHost: Lazy<DozeServiceHost>,
     tunerService: TunerService,
     dumpManager: DumpManager
 ) : GestureDetector.SimpleOnGestureListener(), Dumpable {
@@ -119,6 +123,13 @@ constructor(
             val proximityIsNotNear = !falsingManager.isProximityNear
             val isNotAFalseTap = !falsingManager.isFalseTap(LOW_PENALTY)
             shadeLogger.logSingleTapUpFalsingState(proximityIsNotNear, isNotAFalseTap)
+            if (proximityIsNotNear && isNotAFalseTap && isDarkScreenTap()) {
+                // Penguin: with AOD off the screen only shows the fingerprint icon here and
+                // looks off, so a tap does what the Laboratory chose, as from the tap sensor.
+                shadeLogger.d("Single tap on the fingerprint icon AOD, running the tap action")
+                dozeServiceHost.get().fireScreenOffTap(x, y)
+                return true
+            }
             if (proximityIsNotNear && isNotAFalseTap) {
                 shadeLogger.d("Single tap handled, requesting centralSurfaces.wakeUpIfDozing")
                 if (ambientDisplayConfiguration.tapGestureVibrate(userTracker.userId)) {
@@ -133,6 +144,21 @@ constructor(
 
         shadeLogger.d("onSingleTapUp event ignored")
         return false
+    }
+
+    /** Penguin: a tap on the dark, icon only AOD rather than on AOD or an ambient pulse. */
+    private fun isDarkScreenTap(): Boolean {
+        val user = userTracker.userId
+        if (statusBarStateController.isPulsing) return false
+        if (ambientDisplayConfiguration.alwaysOnEnabled(user)) return false
+        val action =
+            Settings.Secure.getIntForUser(
+                context.contentResolver,
+                PenguinDozeTap.ACTION,
+                PenguinDozeTap.AMBIENT,
+                user,
+            )
+        return action != PenguinDozeTap.WAKE
     }
 
     /**

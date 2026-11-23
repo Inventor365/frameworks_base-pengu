@@ -233,6 +233,14 @@ public final class DozeServiceHost implements DozeHost {
         }
     }
 
+    /** Penguin: a tap on the fingerprint icon only AOD, to run the screen-off tap action. */
+    public void fireScreenOffTap(float screenX, float screenY) {
+        Assert.isMainThread();
+        for (Callback callback : mCallbacks) {
+            callback.onScreenOffTap(screenX, screenY);
+        }
+    }
+
     void fireNotificationPulse(NotificationEntry entry) {
         Runnable pulseSuppressedListener = () -> {
             mHeadsUpManager.removeNotification(
