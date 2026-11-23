@@ -173,8 +173,10 @@ constructor(
             stackTopPadding: Dp = 0.dp,
         ) {
             Box(modifier = Modifier.fillMaxSize().then(modifier)) {
+                // The AOD icons stand in for the stack while dozing, so they start where it does:
+                // below the large clock content, date row included, not over it.
                 AODNotifications(
-                    Modifier.align(aodAlignment),
+                    Modifier.align(aodAlignment).padding(top = stackTopPadding),
                     horizontalAlignment =
                         if (aodAlignment == Alignment.TopCenter) Alignment.CenterHorizontally
                         else Alignment.Start,
