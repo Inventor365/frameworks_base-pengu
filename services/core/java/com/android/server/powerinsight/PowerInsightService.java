@@ -84,6 +84,7 @@ public class PowerInsightService extends IPowerInsightService.Stub {
     private static final String KEY_BATTERY_ALARM_SOUND = "power_insight_battery_alarm_sound";
     private static final String KEY_BATTERY_ALARM_VIBRATE = "power_insight_battery_alarm_vibrate";
     private static final int DEFAULT_MONITOR_INTERVAL = 10000;
+    private static final int STATS_VERSION = 2;
 
     private final Context mContext;
     private final Handler mHandler;
@@ -129,6 +130,7 @@ public class PowerInsightService extends IPowerInsightService.Stub {
     private long mLastChargingScreenToggleTime = 0;
 
     private String mBatteryBasePath;
+    private boolean mCurrentNodeIsMicroAmps = false;
     private String mCycleCountPath;
     private boolean mIsCharging = false;
     private boolean mIsPlugged = false;
@@ -420,9 +422,12 @@ public class PowerInsightService extends IPowerInsightService.Stub {
         stats.idleDrainRate = hoursOff > 0.01f ? mBatteryDrainOff / hoursOff : 0;
 
         // HW metrics
-        stats.currentNow = readIntFromFile(mBatteryBasePath + "/current_now");
-        if (stats.currentNow == 0) stats.currentNow = readIntFromFile("/sys/class/power_supply/bms/current_now");
-        stats.currentNow /= 1000;
+        int rawCurrent = readIntFromFile(mBatteryBasePath + "/current_now");
+        if (rawCurrent == 0) rawCurrent = readIntFromFile("/sys/class/power_supply/bms/current_now");
+        // Drivers disagree on sign (oplus reports charging as negative); follow the
+        // framework convention of positive while charging.
+        int ma = Math.abs(toMilliamps(rawCurrent));
+        stats.currentNow = mIsCharging ? ma : -ma;
 
         stats.voltage = readIntFromFile(mBatteryBasePath + "/voltage_now");
         if (stats.voltage == 0) stats.voltage = readIntFromFile(mBatteryBasePath + "/voltage_avg");
@@ -520,7 +525,8 @@ public class PowerInsightService extends IPowerInsightService.Stub {
         stats.chargingScreenOffRatePercentPerHour = chargingOffHours > 0.01f ? stats.chargingScreenOffLevelCharged / chargingOffHours : 0f;
 
         // Analytics
-        int current = stats.currentNow;
+        // Track magnitudes so min/max keep their meaning whatever sign the driver uses.
+        int current = Math.abs(stats.currentNow);
         if (current != 0) {
             if (current < mMinCurrent) mMinCurrent = current;
             if (current > mMaxCurrent) mMaxCurrent = current;
@@ -976,6 +982,17 @@ public class PowerInsightService extends IPowerInsightService.Stub {
         if (isNotificationEnabled()) updateNotification();
     }
 
+    /**
+     * current_now is specified in uA, but some charger drivers (e.g. oplus_chg v2)
+     * export the raw gauge value in mA. No phone battery delivers 20 A, so a
+     * reading above that must be uA; once seen, keep treating the node as uA so
+     * small currents near full charge are not misread. Sign is left to the caller.
+     */
+    private int toMilliamps(int raw) {
+        if (Math.abs(raw) > 20000) mCurrentNodeIsMicroAmps = true;
+        return mCurrentNodeIsMicroAmps ? raw / 1000 : raw;
+    }
+
     private int getCurrentCapacityMah() {
         int chargeCounter = readIntFromFile(mBatteryBasePath + "/charge_counter");
         if (chargeCounter == 0) chargeCounter = readIntFromFile(mBatteryBasePath + "/charge_now");
@@ -1019,10 +1036,14 @@ public class PowerInsightService extends IPowerInsightService.Stub {
             XmlPullParser parser = Xml.newPullParser();
             parser.setInput(fis, StandardCharsets.UTF_8.name());
             int type;
+            boolean legacyFlow = false;
             while ((type = parser.next()) != XmlPullParser.END_DOCUMENT) {
                 if (type == XmlPullParser.START_TAG) {
                     String tag = parser.getName();
-                    if ("current-stats".equals(tag)) {
+                    if ("power-insight-stats".equals(tag)) {
+                        // Flow samples before v2 were stored at 1/1000 scale on mA nodes.
+                        legacyFlow = parseIntAttr(parser, "v", 1) < STATS_VERSION;
+                    } else if ("current-stats".equals(tag)) {
                         mScreenOnTime = parseLongAttr(parser, "sot", 0L);
                         mScreenOffTime = parseLongAttr(parser, "soft", 0L);
                         mBatteryDrainOn = parseIntAttr(parser, "don", 0);
@@ -1041,7 +1062,7 @@ public class PowerInsightService extends IPowerInsightService.Stub {
                         mChargingScreenOffTime = parseLongAttr(parser, "soft", 0L);
                         mChargingScreenOffLevelCharged = parseIntAttr(parser, "soff_lvl", 0);
                         mChargingScreenOffMahCharged = parseIntAttr(parser, "soff_mah", 0);
-                    } else if ("flow-sample".equals(tag)) {
+                    } else if ("flow-sample".equals(tag) && !legacyFlow) {
                         addFlowSample(new PowerInsightFlowSample(
                                 parseLongAttr(parser, "t", 0L),
                                 parseIntAttr(parser, "c", 0),
@@ -1091,6 +1112,7 @@ public class PowerInsightService extends IPowerInsightService.Stub {
             s.setOutput(fos, StandardCharsets.UTF_8.name());
             s.startDocument(null, true);
             s.startTag(null, "power-insight-stats");
+            s.attribute(null, "v", String.valueOf(STATS_VERSION));
             s.startTag(null, "current-stats");
             s.attribute(null, "sot", String.valueOf(mScreenOnTime));
             s.attribute(null, "soft", String.valueOf(mScreenOffTime));
