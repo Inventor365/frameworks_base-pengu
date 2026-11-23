@@ -44,11 +44,17 @@ import android.net.Uri;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.IPowerManager;
+import android.os.PowerManagerInternal;
 import android.os.Process;
+import android.os.RemoteException;
+import android.os.ServiceManager;
 import android.os.SystemProperties;
 import android.provider.Settings;
 // QTI_BEGIN: 2018-02-20: Performance: BoostFramework: To Enhance performance.
 import android.util.Log;
+
+import com.android.server.LocalServices;
 // QTI_END: 2018-02-20: Performance: BoostFramework: To Enhance performance.
 
 import dalvik.system.PathClassLoader;
@@ -566,6 +572,8 @@ public class BoostFramework {
             if (sPerfHintFunc != null) {
                 Object retVal = sPerfHintFunc.invoke(mPerf, hint, userDataStr, userData1, userData2);
                 ret = (int)retVal;
+            } else {
+                ret = PowerHalFallback.perfHint(hint, userData1);
             }
 // QTI_BEGIN: 2018-02-20: Performance: BoostFramework: To Enhance performance.
         } catch(Exception e) {
@@ -829,6 +837,61 @@ public class BoostFramework {
     }
 
     /** @hide */
+    /**
+     * Without QPerformance (a device on a libperfmgr Power HAL instead of QTI's perf HAL) every
+     * hint is a no-op. AOSP already boosts touch, flings, launches, window animations and the start
+     * of a rotation through PowerManagerInternal, so only the hints it has no counterpart for are
+     * forwarded: the rotation animation and SystemUI's UDFPS boost. They become an INTERACTION
+     * boost with a duration, which the HAL holds for that long.
+     */
+    private static final class PowerHalFallback {
+        private static final String ENABLE_PROP = "persist.sys.perf.powerhal_fallback";
+        private static final String SYSTEMUI = "com.android.systemui";
+        // Rotation hints carry no duration; the animation plus relayout fit in this.
+        private static final int ROTATION_BOOST_MS = 800;
+        private static final int UDFPS_BOOST_MS = 1000;
+        private static final int MAX_BOOST_MS = 3000;
+
+        static int perfHint(int hint, int durationMs) {
+            final int boostMs;
+            switch (hint) {
+                case VENDOR_HINT_ROTATION_LATENCY_BOOST:
+                case VENDOR_HINT_ROTATION_ANIM_BOOST:
+                    boostMs = durationMs > 0 ? durationMs : ROTATION_BOOST_MS;
+                    break;
+                case VENDOR_HINT_FIRST_LAUNCH_BOOST:
+                    // system_server's launch boosts are already covered by the LAUNCH power mode;
+                    // SystemUI sends this one when the UDFPS overlay shows.
+                    if (!SYSTEMUI.equals(Process.myProcessName())) return -1;
+                    boostMs = durationMs > 0 ? durationMs : UDFPS_BOOST_MS;
+                    break;
+                default:
+                    return -1;
+            }
+            if (!SystemProperties.getBoolean(ENABLE_PROP, true)) return -1;
+            send(Math.min(boostMs, MAX_BOOST_MS));
+            return -1;
+        }
+
+        private static void send(int durationMs) {
+            final PowerManagerInternal pmi = LocalServices.getService(PowerManagerInternal.class);
+            if (pmi != null) {
+                pmi.setPowerBoost(PowerManagerInternal.BOOST_INTERACTION, durationMs);
+                return;
+            }
+            try {
+                // Oneway; PowerManagerService requires DEVICE_POWER, which SystemUI holds.
+                final IPowerManager pm = IPowerManager.Stub.asInterface(
+                        ServiceManager.getService(Context.POWER_SERVICE));
+                if (pm != null) {
+                    pm.setPowerBoost(PowerManagerInternal.BOOST_INTERACTION, durationMs);
+                }
+            } catch (RemoteException e) {
+                Log.w(TAG, "PowerHAL fallback boost failed", e);
+            }
+        }
+    }
+
     public static class ScrollOptimizer {
         /** @hide */
         public static final int FLING_START = 1;
