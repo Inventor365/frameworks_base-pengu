@@ -269,8 +269,10 @@ public class NotificationShelf extends ActivatableNotificationView {
                 viewState.notGoneIndex = Math.min(viewState.notGoneIndex, mNotGoneIndex);
             }
 
+            // Penguin: the lock screen pill stays on the ambient display, so minimised
+            // notifications show there too; AOSP hid the shelf for every pulse.
             viewState.hidden = !mAmbientState.isShadeExpanded()
-                    || mAmbientState.isPulsing()
+                    || (mAmbientState.isPulsing() && !mAmbientState.isOnKeyguard())
                     || algorithmState.firstViewInShelf == null
                     || (mAmbientState.isOnKeyguard() && mDisableNotificationShelfOnKeyguard)
                     // The lock screen stack expanded in place scrolls instead.
