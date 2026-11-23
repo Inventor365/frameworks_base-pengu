@@ -400,7 +400,8 @@ public class DozeTriggers implements DozeMachine.Part {
             case DozeLog.REASON_SENSOR_PICKUP:
                 return mConfig.pickupGestureAmbient(UserHandle.USER_CURRENT);
             case DozeLog.REASON_SENSOR_TAP:
-                return mConfig.tapGestureAmbient(UserHandle.USER_CURRENT);
+                // Penguin: the Laboratory tap action decides; onSingleTap only wakes on purpose.
+                return false;
             case DozeLog.REASON_SENSOR_DOUBLE_TAP:
                 return mConfig.doubleTapGestureAmbient(UserHandle.USER_CURRENT);
         }
